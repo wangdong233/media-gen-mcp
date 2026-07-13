@@ -44,7 +44,7 @@ Apenas a Agnes já basta (remova a linha zhipu). Omita `models` para usar os pad
 ## ③ Adicionar ao Claude Code
 
 ```bash
-claude mcp add media-gen-mcp npx media-gen-mcp
+claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
 O comando de instalação não carrega nenhuma chave (ela está no config acima). Execute `/mcp` — `media-gen-mcp ✓ Connected` indica sucesso.

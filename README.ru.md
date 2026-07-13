@@ -44,7 +44,7 @@
 ## ③ Подключение к Claude Code
 
 ```bash
-claude mcp add media-gen-mcp npx media-gen-mcp
+claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
 Команда установки **не содержит key** (он уже указан в config выше). Выполните `/mcp` — `media-gen-mcp ✓ Connected` означает успешное подключение.

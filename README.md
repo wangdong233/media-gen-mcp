@@ -44,7 +44,7 @@
 ## ③ 接入 Claude Code
 
 ```bash
-claude mcp add media-gen-mcp npx media-gen-mcp
+claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
 接入命令**不带 Key**(Key 在上面的 config 里)。`/mcp` 看到 `media-gen-mcp ✓ Connected` 即成功。

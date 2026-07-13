@@ -44,7 +44,7 @@ Agnes only is fine (remove the zhipu line). Skip `models` to use built-in defaul
 ## ③ Add to Claude Code
 
 ```bash
-claude mcp add media-gen-mcp npx media-gen-mcp
+claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
 The install command carries **no key** (it's in the config above). Run `/mcp` — `media-gen-mcp ✓ Connected` means success.

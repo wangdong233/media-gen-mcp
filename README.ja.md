@@ -44,7 +44,7 @@ Agnes だけでも構いません（zhipu の行は削除してください）�
 ## ③ Claude Code に追加
 
 ```bash
-claude mcp add media-gen-mcp npx media-gen-mcp
+claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
 インストールコマンドには **key を含めません**（上記 config に記述済みのため）。`/mcp` を実行し、`media-gen-mcp ✓ Connected` と表示されれば成功です。
