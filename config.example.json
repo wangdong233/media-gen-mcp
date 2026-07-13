@@ -1,0 +1,39 @@
+{
+  "defaultProvider": "agnes",
+  "defaultImageProvider": "agnes",
+  "defaultVideoProvider": "zhipu",
+  "rateLimitTtlMs": 604800000,
+  "providers": {
+    "agnes": {
+      "apiKey": "sk-your-key-here",
+      "videoMinIntervalMs": 62000,
+      "models": {
+        "image": {
+          "default": "agnes-image-2.1-flash",
+          "available": ["agnes-image-2.0-flash", "agnes-image-2.1-flash"]
+        },
+        "video": {
+          "default": "agnes-video-v2.0",
+          "available": ["agnes-video-v2.0"]
+        }
+      },
+      "rateLimits": {}
+    },
+    "zhipu": {
+      "apiKey": "your-zhipu-api-key",
+      "baseUrl": "https://open.bigmodel.cn/api",
+      "videoMinIntervalMs": 62000,
+      "models": {
+        "image": {
+          "default": "cogview-3-flash",
+          "available": ["cogview-3-flash", "cogview-4", "cogview-4-250304", "glm-image"]
+        },
+        "video": {
+          "default": "cogvideox-flash",
+          "available": ["cogvideox-flash", "cogvideox-2", "cogvideox-3"]
+        }
+      },
+      "rateLimits": {}
+    }
+  }
+}

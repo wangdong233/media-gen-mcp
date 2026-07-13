@@ -1,0 +1,31 @@
+{
+  "name": "media-gen-mcp",
+  "version": "0.1.0",
+  "description": "Multimodal (image + video) MCP server for Claude Code. Provider-pluggable architecture; Agnes AI is the first provider.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "media-gen-mcp": "dist/index.js"
+  },
+  "files": ["dist", "README.md", "README.en.md"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc -w",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "prepublishOnly": "npm run build && chmod +x dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["mcp", "claude-code", "agnes-ai", "image-generation", "video-generation", "model-context-protocol"],
+  "license": "MIT",
+  "homepage": "https://agnes-ai.com/",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
