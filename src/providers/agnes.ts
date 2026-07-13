@@ -79,7 +79,7 @@ export class AgnesProvider implements MediaProvider {
 
   constructor(c: AgnesProviderConfig) {
     this.apiKey = c.apiKey;
-    this.baseUrl = c.baseUrl.replace(/\/$/, "");
+    this.baseUrl = (c.baseUrl || "https://apihub.agnes-ai.com/v1").replace(/\/$/, "");
     this.apiHost = this.baseUrl.replace(/\/v1\/?$/, "");
     this.videoMinIntervalMs = c.videoMinIntervalMs;
     this.rateLimitTtlMs = c.rateLimitTtlMs;

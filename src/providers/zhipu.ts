@@ -104,7 +104,7 @@ export class ZhipuProvider implements MediaProvider {
 
   constructor(c: ZhipuProviderConfig) {
     this.apiKey = c.apiKey;
-    this.baseUrl = c.baseUrl.replace(/\/$/, "");
+    this.baseUrl = (c.baseUrl || "https://open.bigmodel.cn/api").replace(/\/$/, "");
     this.videoMinIntervalMs = c.videoMinIntervalMs;
     this.rateLimitTtlMs = c.rateLimitTtlMs;
     this.models = c.models;
