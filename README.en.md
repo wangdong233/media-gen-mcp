@@ -51,11 +51,19 @@ The install command carries **no key** (it's in the config above). Run `/mcp` �
 
 ## ④ Use
 
-Just say it in Claude Code:
+Just say it in Claude Code (auto-routed to the right provider/model):
 
-> "Generate a photorealistic image of an orange cat on a wooden table"
-> "Turn this image into watercolor"
-> "Generate a 5-second video at the beach"
+| Scenario | Say | Effect |
+|---|---|---|
+| **Default** | "Generate a photorealistic cat image" / "Generate a 5s beach video" | Uses defaultImageProvider / defaultVideoProvider |
+| **Specific provider** | "Use **Zhipu** to draw" / "Use **agnes** for video" | Temporarily switches provider, no config change |
+| **Specific model** | "Use **cogview-4** to draw" / "Use **agnes-video-v2.0**" | Picks a specific model (higher quality etc.) |
+| **Provider + model** | "Use **Zhipu cogvideox-3** for a 4K video" | Exact spec (4K / first-last frame) |
+| **Image-to-image** | "Turn this image into watercolor" | Reference image → new image |
+| **Image-to-video** | "Turn this image into a video" | Single image → video |
+| **Keyframes** | "Make a smooth transition between these two images" | Multiple images → smooth transition |
+
+> Omit specs → uses defaults; specifying provider/model affects only this call, **not your config**.
 
 ## Providers
 
