@@ -11,7 +11,7 @@
 
 文生图 / 图生图 / 文生视频 / 图生视频 / 关键帧动画 —— **全免费**(借 Agnes AI + 智谱 免费模型)
 
-[English](README.en.md) | **中文**
+[English](README.en.md) | **简体中文** | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
 </div>
 

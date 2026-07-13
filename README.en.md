@@ -11,7 +11,7 @@
 
 Text-to-image / image-to-image / text-to-video / image-to-video / keyframe animation — **all free** (via Agnes AI + Zhipu free models)
 
-**English** | [中文](README.md)
+**English** | [简体中文](README.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
 </div>
 
