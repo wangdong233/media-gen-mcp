@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.4" },
+  { name: "media-gen-mcp", version: "0.3.5" },
   { capabilities: { tools: {} } },
 );
 
@@ -226,6 +226,7 @@ function buildTools() {
           titleGradient: { type: "string", description: "CSS gradient applied to the title text via background-clip:text, e.g. linear-gradient(90deg,#f59e0b,#ef4444)" },
           glow: { type: "string", description: "Title glow (text-shadow). Pass true (as the string 'true') to derive from accent, or a full text-shadow value like '0 0 40px rgba(245,158,11,.6)'." },
           blob: { type: "boolean", default: true, description: "hero template only: blurred accent blob behind the title for depth (default true)" },
+          quoteStyle: { type: "string", enum: ["top", "flank"], default: "top", description: "quote template only: 'top' = big quote mark above the text (default); 'flank' = large quote marks flank the text left/right on the same line, wrapping it" },
           fontFamily: { type: "string", description: "Font family from @fontsource (default Inter, Latin only)" },
           fontPath: { type: "string", description: "Local base-font file path (.ttf/.otf/.woff) to override the default Inter; optional (CJK auto-supported via built-in Noto Sans SC)" },
           format: { type: "string", enum: ["svg", "png"], default: "png" },
@@ -484,6 +485,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           titleGradient: optString(a.titleGradient),
           glow: a.glow === true ? true : a.glow === "true" ? true : optString(a.glow),
           blob: a.blob === false ? false : a.blob === "false" ? false : undefined,
+          quoteStyle: optString(a.quoteStyle) as any,
           fontFamily: optString(a.fontFamily),
           fontPath: optString(a.fontPath),
           format,

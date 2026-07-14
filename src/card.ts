@@ -212,6 +212,8 @@ export interface CardRequest {
   glow?: boolean | string;
   /** hero 模板:标题背后加模糊光斑(filter:blur)做纵深感,默认 true。 */
   blob?: boolean;
+  /** quote 模板引号样式:"top"(默认,大引号在文字上方)或 "flank"(左右大引号夹住文字、同行包裹)。 */
+  quoteStyle?: "top" | "flank";
   /** 字体族(默认 Inter,仅 Latin;中文需 fontPath 指向 CJK 字体)。 */
   fontFamily?: string;
   /** 本地字体文件路径(.ttf/.otf/.woff)。 */
@@ -287,11 +289,32 @@ function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; foo
   };
 }
 
-/** quote 模板:居中大字引言。title(必填)作引言主体,body 可选副行,footer 作署名。 */
+/** quote 模板:居中引言。quoteStyle:"top"(默认,大引号在文字上方)或 "flank"(左右大引号夹住文字、同行 baseline 对齐)。title(必填)作引言,body 可选副行,footer 作署名。 */
 function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: any; accent: string; color: string; fontStack: string }): Node {
   const inner: Node[] = [];
-  inner.push(txt("“", { fontFamily: opts.fontStack, fontSize: 160, color: opts.accent, lineHeight: 1, marginBottom: -40 }));
-  inner.push(opts.title);
+  if (req.quoteStyle === "flank") {
+    // 左右大引号夹住引言,同行 baseline 对齐(引号比文字大,形成包裹)
+    inner.push({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "baseline",
+          justifyContent: "center",
+          gap: 28,
+        },
+        children: [
+          txt("“", { fontFamily: opts.fontStack, fontSize: 150, color: opts.accent, lineHeight: 1 }),
+          opts.title,
+          txt("”", { fontFamily: opts.fontStack, fontSize: 150, color: opts.accent, lineHeight: 1 }),
+        ],
+      },
+    });
+  } else {
+    inner.push(txt("“", { fontFamily: opts.fontStack, fontSize: 160, color: opts.accent, lineHeight: 1, marginBottom: -40 }));
+    inner.push(opts.title);
+  }
   if (opts.body) inner.push(opts.body);
   if (opts.footer) inner.push(opts.footer);
   return {
