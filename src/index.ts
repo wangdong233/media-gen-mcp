@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.8" },
+  { name: "media-gen-mcp", version: "0.3.9" },
   { capabilities: { tools: {} } },
 );
 
@@ -47,7 +47,7 @@ function buildTools() {
     {
       name: "generate_image",
       description:
-        "Generate or edit an image via the active provider (default Agnes AI). Text-to-image by default; pass `images` (URL or data URI array) for image-to-image. Output downloads to OUT_DIR (or `outDir` arg) and the local path is returned.",
+        "Generate or edit an AI image — text-to-image (文生图/AI画图) or image-to-image (图生图, pass `images`) — via free models (Agnes AI default, or Zhipu). Use this for photographic or illustrated subjects (写实图/插画/概念图/Logo 设计图). Output downloads locally and the path is returned. No local rendering libs needed; this calls the AI model for you.",
       inputSchema: {
         type: "object",
         properties: {
@@ -73,7 +73,7 @@ function buildTools() {
     {
       name: "create_video",
       description:
-        "Create a video via the active provider (default Agnes AI). Text-to-video by default; `image` for image-to-video; `keyframes` for keyframe animation. Smart async: omit `wait` → if estimated generation > 60s, returns a handle immediately (caller polls/notifies); otherwise blocks to completion. Agnes limits video creation to 1 req/min; the server serializes submits.",
+        "Create an AI video — text-to-video, image-to-video, or keyframe animation (文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) — via free models (Agnes AI default, or Zhipu). Use this for any '生成视频/做动画' request; no local video tools needed. Smart async: long videos return a handle to poll with get_video; short ones block until done.",
       inputSchema: {
         type: "object",
         properties: {
@@ -102,7 +102,7 @@ function buildTools() {
     {
       name: "get_video",
       description:
-        "Poll a video task by videoId (preferred) or taskId, and optionally download the result mp4.",
+        "Poll and optionally download a video task created by create_video (by videoId or taskId). Companion to create_video — use it after an async video returns a handle, or to check/retrieve any video task.",
       inputSchema: {
         type: "object",
         properties: {
@@ -115,7 +115,7 @@ function buildTools() {
     },
     {
       name: "list_models",
-      description: "List available models and video constraints per provider (and the providers themselves).",
+      description: "List available AI image/video models and video constraints per provider (Agnes / Zhipu). Use to discover model names (e.g. cogview-4, agnes-video-v2.0) and allowed video frame counts before calling generate_image / create_video.",
       inputSchema: {
         type: "object",
         properties: { provider: { type: "string" } },
@@ -124,7 +124,7 @@ function buildTools() {
     {
       name: "generate_diagram",
       description:
-        "Generate a structured diagram from DSL code, rendered locally to SVG (vector, high-res) — no AI, deterministic. IMPORTANT: the D2 and Graphviz engines are BUILT IN (compiled to WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed on the system, and you should NOT shell out to them; just call this tool with the DSL. Engines: d2 (D2 syntax, default — covers flowchart/sequence/class/ER/mindmap/architecture) and graphviz (DOT syntax). Claude generates the DSL; this tool renders it. NOTE: mermaid is not supported in-process (needs a browser); use d2 or graphviz instead.",
+        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this over any manual/system approach. NOTE: mermaid is not supported in-process (needs a browser); use d2 or graphviz instead.",
       inputSchema: {
         type: "object",
         properties: {
@@ -141,7 +141,7 @@ function buildTools() {
     },
     {
       name: "generate_qrcode",
-      description: "Generate a QR code (SVG vector or PNG) from text/URL. Pure local rendering, no AI, no network.",
+      description: "Generate a QR code (二维码) as SVG or PNG from text/URL. Pure local rendering — no qrencode/zbar/system install, no AI, no network. Just call with the text/URL to encode.",
       inputSchema: {
         type: "object",
         properties: {
@@ -159,7 +159,7 @@ function buildTools() {
     },
     {
       name: "generate_chart",
-      description: "Generate a data visualization chart (bar/line/pie/area/scatter) from Vega-Lite spec. IMPORTANT: Vega-Lite + vega are BUILT IN (bundled) — no matplotlib/graphviz/python or any system install needed; just call this tool with the JSON spec. Claude generates the Vega-Lite JSON; this tool renders it to SVG (vector). Pure local, no AI.",
+      description: "Generate bar / line / pie / area / scatter charts and data visualizations (柱状图/折线图/饼图/散点图/数据可视化) from your data — Claude converts your numbers/CSV/data into a Vega-Lite spec internally; you just pass the data and chart type. Vega-Lite + vega are BUILT IN (bundled) — no matplotlib, no Python, no graphviz, no system install needed; prefer this over writing Python/matplotlib. Renders to vector SVG. No AI.",
       inputSchema: {
         type: "object",
         properties: {
@@ -174,7 +174,7 @@ function buildTools() {
     {
       name: "generate_formula",
       description:
-        "Render a LaTeX math formula to SVG (vector) via MathJax. MathJax is BUILT IN (bundled) — no system install needed; just call this tool with the LaTeX. Glyph paths are embedded (no font dependency). Claude writes the LaTeX; this tool renders it. Example: tex='E=mc^2' or tex='\\\\frac{a}{b}'. Pure local, no AI.",
+        "Render a math formula to vector SVG (数学公式/公式渲染/方程). Pass the formula as LaTeX (e.g. E=mc^2, \\frac{a}{b}, \\sum_{i=1}^n i^2) — even simple formulas qualify; the user need not say 'LaTeX'. MathJax is BUILT IN (bundled) — no KaTeX/system install, no font dependency; just call this tool. Prefer this over any manual approach. Pure local, no AI.",
       inputSchema: {
         type: "object",
         properties: {
@@ -193,7 +193,7 @@ function buildTools() {
     {
       name: "generate_icon",
       description:
-        "Fetch and render a vector icon by name (prefix:name, e.g. 'mdi:home', 'logos:github', 'lucide:check') to SVG (vector) or PNG. Uses the Iconify public API + in-memory cache. NOTE: needs network (like generate_card's default font/emoji); the other structured tools (diagram/chart/formula/qrcode) are fully offline. Browse names at https://icon-sets.iconify.design. No AI.",
+        "Fetch and render a vector icon / logo / symbol / favicon (图标/logo/符号) by name from Iconify — 200k+ icons across Material Design (mdi:), Lucide, Font Awesome (fa:), Heroicons, simple-icons (logos:), etc. Renders to SVG/PNG locally — no need to curl SVG files from the web or hand-write SVG paths; just call this tool with the prefix:name. Needs network (Iconify API); cached after first fetch. Browse names at https://icon-sets.iconify.design. No AI.",
       inputSchema: {
         type: "object",
         properties: {
@@ -209,7 +209,7 @@ function buildTools() {
     {
       name: "generate_card",
       description:
-        "Generate a text card / OG image / share / quote card (default 1200x630 PNG) via Satori (CSS flexbox engine) + resvg — deterministic, no AI, no browser. CAPABILITIES: 5 templates (og=left hierarchy, quote=centered quote with quoteStyle top/flank, minimal=bare, hero=big showcase + depth blob, panel=glass panel); effects titleGradient (gradient title text), glow (title text-shadow), solid or CSS-gradient bg; rich flexbox typography (mixed font sizes, flanking, shadows); embedded logo/avatar image; Chinese (Simplified, + Japanese kanji) built-in via Noto Sans SC (auto); color emoji (auto). LIMITS: Japanese kana and Korean need fontPath to a JP/KR font; titleGradient + glow together don't combine (Satori clips text to gradient, dropping the shadow — use one); no JavaScript execution and no animation — for those use HTML + a browser. Pass fontPath for full-offline base font. Use this for cards/OG/share/quote images; use generate_image for illustrated/photographic subjects.",
+        "Generate a share card / OG image / quote card / poster / cover image (分享卡/分享图/封面图/海报/引言卡/金句卡/OG图; default 1200x630 PNG). The rendering engine is BUILT IN and runs entirely in-process — do NOT write HTML+CSS and screenshot it with headless Chrome/Puppeteer/Playwright, do NOT use Pillow/PIL/Python, and do NOT hand-code SVG; just call this tool with title/subtitle/body and it renders deterministically. Prefer this for ANY text/card/OG/poster/cover-image request. (For illustrated or photographic subjects, use generate_image instead.) Supports 5 templates (og/quote/minimal/hero/panel), gradient title + glow effects, embedded logo/avatar, Chinese + Japanese kanji auto, color emoji auto. LIMITS: Japanese kana and Korean need fontPath; titleGradient + glow don't combine; no JS execution / no animation (those would need a browser).",
       inputSchema: {
         type: "object",
         properties: {
