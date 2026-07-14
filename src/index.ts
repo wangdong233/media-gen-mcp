@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.11" },
+  { name: "media-gen-mcp", version: "0.3.12" },
   { capabilities: { tools: {} } },
 );
 
@@ -159,7 +159,7 @@ function buildTools() {
     },
     {
       name: "generate_chart",
-      description: "Generate bar / line / pie / area / scatter charts and data visualizations (柱状图/折线图/饼图/散点图/数据可视化) from your data — Claude converts your numbers/CSV/data into a Vega-Lite spec internally; you just pass the data and chart type. Vega-Lite + vega are BUILT IN (bundled) — no matplotlib, no Python, no graphviz, no system install needed; prefer this over writing Python/matplotlib. Renders to vector SVG. No AI. Multilingual triggers: グラフ · gráfico · graphique · Diagramm · график · gráfico (ja/es/fr/de/ru/pt).",
+      description: "Generate bar / line / pie / area / scatter charts and data visualizations (柱状图/折线图/饼图/散点图/数据可视化) from your data — Claude converts your numbers/CSV/data into a Vega-Lite spec internally; you just pass the data and chart type. Vega-Lite + vega are BUILT IN (bundled) — no matplotlib, no Python, no graphviz, no system install needed; prefer this over writing Python/matplotlib. Renders to vector SVG. No AI. NOTE: Vega image marks with external URLs are NOT embedded; use data URIs for self-contained output. Multilingual triggers: グラフ · gráfico · graphique · Diagramm · график · gráfico (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
