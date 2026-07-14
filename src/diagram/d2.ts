@@ -7,7 +7,48 @@ import type { DiagramEngine, DiagramRequest, DiagramRenderOutput } from "./types
  *
  * CQ-1 修复:D2 实例 lazy singleton(复用 worker + WASM),避免每次 new 泄漏 OS 线程 + 22MB 堆。
  * 串行队列:D2.sendMessage 用共享 currentResolve/currentReject,并发会竞态(MCP stdio 通常顺序,但保险)。
+ *
+ * 图标修复:D2 WASM 不嵌入 `icon:` 数据,留 <image href="set:name"> 光引用 → 碎图。
+ * render 后后处理:fetch Iconify → 光栅化 PNG → 嵌 data URI(resvg 对 PNG-in-SVG 渲染可靠);
+ * 无图标时不动(保持离线);无效图标名(404)移除该 <image>(优雅,节点仍显示文字)。
  */
+
+// D2 图标解析(set:name → dataUri | null),进程内缓存;仅当 D2 产出含 icon 引用时才联网
+const ICONIFY_API = "https://api.iconify.design";
+const d2IconCache = new Map<string, string | null>();
+
+async function resolveD2Icons(svg: string): Promise<string> {
+  const refs = [...svg.matchAll(/<image\s+href="([a-z0-9_-]+):([a-z0-9_-]+)"/gi)];
+  if (!refs.length) return svg; // 无图标引用 → 不动(保持离线确定性)
+  let out = svg;
+  for (const m of refs) {
+    const set = m[1], name = m[2], key = `${set}:${name}`;
+    let dataUri: string | null | undefined = d2IconCache.get(key);
+    if (dataUri === undefined) {
+      try {
+        const res = await fetch(`${ICONIFY_API}/${set}/${name}.svg?color=%23334155`);
+        if (!res.ok) { d2IconCache.set(key, null); dataUri = null; }
+        else {
+          const iconSvg = await res.text();
+          const pngBuf = Buffer.from(new Resvg(iconSvg, { fitTo: { mode: "width", value: 64 } }).render().asPng());
+          dataUri = `data:image/png;base64,${pngBuf.toString("base64")}`;
+          d2IconCache.set(key, dataUri);
+        }
+      } catch {
+        d2IconCache.set(key, null);
+        dataUri = null;
+      }
+    }
+    if (dataUri) {
+      out = out.split(`href="${set}:${name}"`).join(`href="${dataUri}"`);
+    } else {
+      // 无效图标名(404):移除该 <image> 元素,避免碎图占位
+      out = out.replace(new RegExp(`<image[^>]*href="${set}:${name}"[^>]*/>`,"gi"), "");
+    }
+  }
+  return out;
+}
+
 export class D2Engine implements DiagramEngine {
   readonly name = "d2" as const;
   private d2?: D2;
@@ -36,21 +77,21 @@ export class D2Engine implements DiagramEngine {
         : compiled.renderOptions;
 
       const svg = await d2.render(compiled.diagram, renderOpts);
+      const resolved = await resolveD2Icons(svg); // 修复 icon: 碎图(解析 Iconify → 嵌 data URI)
 
       let png: Buffer | undefined;
       if (req.format === "png") {
-        const resvg = new Resvg(svg);
+        const resvg = new Resvg(resolved);
         png = Buffer.from(resvg.render().asPng());
       }
-      return { svg, png };
+      return { svg: resolved, png };
     };
 
-    // 串行化:防 D2.sendMessage 并发竞态
+    // 串行化:防 D2.sendMessage 并发竞态。catch 防止 run() rejection 成 unhandled → 杀进程
     const result = run();
-    this.chain = this.chain.then(
-      () => result,
-      () => result,
-    );
+    this.chain = this.chain
+      .then(() => result, () => result)
+      .catch(() => undefined);
     return result as Promise<DiagramRenderOutput>;
   }
 }
