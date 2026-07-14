@@ -67,17 +67,18 @@ Basta dizer no Claude Code (roteamento automático para o provider/modelo certo)
 
 ## ④ Imagens estruturadas locais (sem chave, determinístico)
 
-Estas ferramentas **não chamam nenhuma AI e funcionam offline**¹ — o Claude gera uma DSL/JSON/LaTeX → renderizada localmente em SVG (vetorial, alta resolução):
+Estas ferramentas **não chamam nenhuma AI**¹ — o Claude gera uma DSL/JSON/LaTeX/fields → renderizada localmente em SVG/PNG (vetorial, alta resolução):
 
 | Ferramenta | Diga | Saída |
 |---|---|---|
 | **Diagramas** `generate_diagram` | "Desenhe uma arquitetura: cliente → API gateway → dois microsserviços" | Arquitetura / sequência / fluxograma / classes / ER / mapa mental (D2 DSL → SVG) |
 | **Gráficos** `generate_chart` | "Faça um gráfico de barras com estes dados de vendas" | Barras / linhas / pizza / área / dispersão (Vega-Lite → SVG) |
 | **Fórmulas** `generate_formula` | "Renderize esta fórmula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glifos incorporados, sem fonte necessária) |
+| **Cartões** `generate_card` | "Faça um cartão de compartilhamento OG para este artigo" | Cartões OG / sociais / de citação (Satori → PNG, padrão 1200×630) |
 | **Ícones** `generate_icon` | "Me dê um ícone do logo do GitHub" | 200k+ ícones sob demanda (Iconify, `prefix:name`) |
 | **Códigos QR** `generate_qrcode` | "Gere um código QR para https://..." | SVG / PNG (puramente local, zero rede) |
 
-> ¹ Tudo local e determinístico, exceto ícones. Os **ícones** usam a API pública do Iconify sob demanda + cache em memória (não empacotamos o conjunto completo de 70MB, para manter a instalação via npx leve) — a única ferramenta que precisa de rede. Diagramas usam a [sintaxe D2](https://d2lang.com), gráficos [Vega-Lite](https://vega.github.io/vega-lite), fórmulas [LaTeX](https://www.latex-project.org), ícones em [icon-sets.iconify.design](https://icon-sets.iconify.design) — o Claude gera o código-fonte automaticamente.
+> ¹ Tudo local e determinístico, exceto os **ícones** (API do Iconify) e a **fonte padrão do cartão** (obtida do CDN no primeiro uso, com cache em `~/.media-gen-mcp/fonts/`); passe `fontPath` para que o cartão seja totalmente offline. **Cartões em chinês/CJK**: a fonte Inter padrão é apenas para Latin — passe `fontPath` com uma fonte CJK (.ttf/.otf/.woff). Diagramas usam a [sintaxe D2](https://d2lang.com), gráficos [Vega-Lite](https://vega.github.io/vega-lite), fórmulas [LaTeX](https://www.latex-project.org), ícones em [icon-sets.iconify.design](https://icon-sets.iconify.design) — o Claude gera o código-fonte automaticamente.
 
 ## Providers
 

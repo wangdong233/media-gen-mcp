@@ -29,11 +29,12 @@ import { renderQR } from "./qr.js";
 import { renderChart } from "./chart.js";
 import { renderFormula } from "./formula.js";
 import { renderIcon } from "./icon.js";
+import { renderCard } from "./card.js";
 
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.1.0" },
+  { name: "media-gen-mcp", version: "0.2.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -203,6 +204,32 @@ function buildTools() {
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
         required: ["name"],
+      },
+    },
+    {
+      name: "generate_card",
+      description:
+        "Generate a text card / OG image / social share card (default 1200x630 PNG) from structured fields via Satori + resvg. No AI. Useful for blog OG images, quote cards, share cards. Default font Inter (Latin only); for Chinese/CJK text pass fontPath to a local CJK .ttf/.otf/.woff. Default font fetch needs network (cached); fontPath makes it offline.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Main title (required)" },
+          subtitle: { type: "string", description: "Subtitle / kicker (accent color)" },
+          body: { type: "string", description: "Body / description text" },
+          footer: { type: "string", description: "Footer (author / date / domain)" },
+          template: { type: "string", enum: ["og", "quote", "minimal"], default: "og", description: "Layout template" },
+          width: { type: "number", description: "Pixel width (default 1200, OG standard)" },
+          height: { type: "number", description: "Pixel height (default 630, OG standard)" },
+          bg: { type: "string", description: "Background color (default #0f172a)" },
+          color: { type: "string", description: "Text color (default #f8fafc)" },
+          accent: { type: "string", description: "Accent color (default #6366f1)" },
+          fontFamily: { type: "string", description: "Font family from @fontsource (default Inter, Latin only)" },
+          fontPath: { type: "string", description: "Local font file path (.ttf/.otf/.woff); required for CJK/Chinese cards" },
+          format: { type: "string", enum: ["svg", "png"], default: "png" },
+          name: { type: "string", description: "Output filename (without extension)" },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["title"],
       },
     },
   ];
@@ -432,6 +459,29 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // 输出文件名由图标名派生("mdi:home"→"mdi-home");writeLocalRender 再做 basename 清洗
         const outName = iconName.replace(/[^a-zA-Z0-9._-]+/g, "-");
         const fp = await writeLocalRender(outDir, "icon", outName, format, rendered);
+        return ok({ format, local_path: fp });
+      }
+
+      case "generate_card": {
+        const title = requireString(a.title, "title");
+        const outDir = resolveOutDir(a.outDir);
+        const format: "svg" | "png" = a.format === "svg" ? "svg" : "png";
+        const rendered = await renderCard({
+          title,
+          subtitle: optString(a.subtitle),
+          body: optString(a.body),
+          footer: optString(a.footer),
+          template: optString(a.template) as any,
+          width: optNumber(a.width),
+          height: optNumber(a.height),
+          bg: optString(a.bg),
+          color: optString(a.color),
+          accent: optString(a.accent),
+          fontFamily: optString(a.fontFamily),
+          fontPath: optString(a.fontPath),
+          format,
+        });
+        const fp = await writeLocalRender(outDir, "card", optString(a.name), format, rendered);
         return ok({ format, local_path: fp });
       }
 

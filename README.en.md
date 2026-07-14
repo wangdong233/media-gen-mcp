@@ -67,17 +67,18 @@ Just say it in Claude Code (auto-routed to the right provider/model):
 
 ## ④ Local structured imagery (no key, deterministic)
 
-These tools **don't call any AI and go offline**¹ — Claude generates a DSL/JSON/LaTeX → rendered locally to SVG (vector, high-res):
+These tools **don't call any AI**¹ — Claude generates a DSL/JSON/LaTeX/fields → rendered locally to SVG/PNG (vector, high-res):
 
 | Tool | Say | Output |
 |---|---|---|
 | **Diagrams** `generate_diagram` | "Draw an architecture: client → API gateway → two microservices" | Architecture / sequence / flowchart / class / ER / mindmap (D2 DSL → SVG) |
 | **Charts** `generate_chart` | "Make a bar chart of this sales data" | Bar / line / pie / area / scatter (Vega-Lite → SVG) |
 | **Formula** `generate_formula` | "Render this formula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glyphs embedded, no font needed) |
+| **Cards** `generate_card` | "Make an OG share card for this article" | OG / social / quote cards (Satori → PNG, default 1200×630) |
 | **Icons** `generate_icon` | "Give me a GitHub logo icon" | 200k+ icons on demand (Iconify, `prefix:name`) |
 | **QR codes** `generate_qrcode` | "Generate a QR code for https://..." | SVG / PNG (purely local, zero network) |
 
-> ¹ All local & deterministic except icons. **Icons** use the Iconify public API on demand + in-memory cache (we don't bundle the 70MB full set, to keep the npx install light) — the only tool that needs network. Diagrams use [D2 syntax](https://d2lang.com), charts [Vega-Lite](https://vega.github.io/vega-lite), formulas [LaTeX](https://www.latex-project.org), icons at [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generates the source automatically.
+> ¹ All local & deterministic except **icons** (Iconify API) and the **card's default font** (fetched from CDN on first use, cached to `~/.media-gen-mcp/fonts/`); pass `fontPath` to make the card fully offline. **Chinese/CJK cards**: the default Inter font is Latin-only — pass `fontPath` to a CJK font (.ttf/.otf/.woff). Diagrams use [D2 syntax](https://d2lang.com), charts [Vega-Lite](https://vega.github.io/vega-lite), formulas [LaTeX](https://www.latex-project.org), icons at [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generates the source automatically.
 
 ## Providers
 

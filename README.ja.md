@@ -67,17 +67,18 @@ Claude Code に話しかけるだけです（適切な provider/model に自動�
 
 ## ④ ローカル構造化画像（key 不要、確定的）
 
-これらのツールは **AI を一切呼ばず、オフラインで完結**¹ します — Claude が DSL/JSON/LaTeX を生成 → ローカルで SVG（ベクタ・高解像度）に描画：
+これらのツールは **AI を一切呼びません**¹ — Claude が DSL/JSON/LaTeX/fields を生成 → ローカルで SVG/PNG（ベクタ・高解像度）に描画：
 
 | ツール | 話しかける例 | 出力 |
 |---|---|---|
 | **ダイアグラム** `generate_diagram` | 「アーキテクチャを描いて：client → API gateway → 2つのマイクロサービス」 | アーキテクチャ / シーケンス / フローチャート / クラス / ER / マインドマップ（D2 DSL → SVG） |
 | **チャート** `generate_chart` | 「この売上データで棒グラフを作って」 | 棒 / 折れ線 / 円 / 面積 / 散布（Vega-Lite → SVG） |
 | **数式** `generate_formula` | 「この数式を描画して：`\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`」 | LaTeX → SVG（MathJax、グリフ埋め込み、フォント不要） |
+| **カード** `generate_card` | 「この記事の OG シェアカードを作って」 | OG / ソーシャル / 引用カード（Satori → PNG、デフォルト 1200×630） |
 | **アイコン** `generate_icon` | 「GitHub のロゴアイコンをちょうだい」 | 20万種以上のアイコンをオンデマンドで（Iconify、`prefix:name`） |
 | **QR コード** `generate_qrcode` | 「https://... の QR コードを生成して」 | SVG / PNG（完全ローカル、ネットワークゼロ） |
 
-> ¹ アイコン以外はすべてローカル & 確定的です。**アイコン** は Iconify の公開 API をオンデマンドで利用し、インメモリキャッシュで保持します（70MB のフルセットを同梱せず、npx インストールを軽量に保つため）— ネットワークが必要な唯一のツールです。ダイアグラムは [D2 記法](https://d2lang.com)、チャートは [Vega-Lite](https://vega.github.io/vega-lite)、数式は [LaTeX](https://www.latex-project.org)、アイコンは [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude がソースを自動生成します。
+> ¹ **アイコン**（Iconify API）と**カードのデフォルトフォント**（初回使用時に CDN から取得し、`~/.media-gen-mcp/fonts/` にキャッシュ）以外はすべてローカル & 確定的です。カードを完全にオフラインにするには `fontPath` を渡してください。**中国語/CJK カード**：デフォルトの Inter フォントは Latin 専用です — `fontPath` で CJK フォント（.ttf/.otf/.woff）を指定してください。ダイアグラムは [D2 記法](https://d2lang.com)、チャートは [Vega-Lite](https://vega.github.io/vega-lite)、数式は [LaTeX](https://www.latex-project.org)、アイコンは [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude がソースを自動生成します。
 
 ## Providers
 

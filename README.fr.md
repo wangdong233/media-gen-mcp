@@ -67,17 +67,18 @@ Exprimez-vous simplement dans Claude Code (routage automatique vers le bon provi
 
 ## ④ Imagerie structurée locale (sans clé, déterministe)
 
-Ces outils **n'appellent aucune IA et fonctionnent hors-ligne**¹ — Claude génère un DSL/JSON/LaTeX → rendu localement en SVG (vectoriel, haute résolution) :
+Ces outils **n'appellent aucune IA**¹ — Claude génère un DSL/JSON/LaTeX/fields → rendu localement en SVG/PNG (vectoriel, haute résolution) :
 
 | Outil | Dire | Sortie |
 |---|---|---|
 | **Diagrammes** `generate_diagram` | « Dessine une architecture : client → API gateway → deux microservices » | Architecture / séquence / organigramme / classes / ER / carte mentale (D2 DSL → SVG) |
 | **Graphiques** `generate_chart` | « Fais un graphique en barres de ces données de ventes » | Barres / lignes / camembert / aire / dispersion (Vega-Lite → SVG) |
 | **Formules** `generate_formula` | « Rends cette formule : `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}` » | LaTeX → SVG (MathJax, glyphes intégrés, aucune police requise) |
+| **Cartes** `generate_card` | « Fais une carte de partage OG pour cet article » | Cartes OG / sociales / de citation (Satori → PNG, 1200×630 par défaut) |
 | **Icônes** `generate_icon` | « Donne-moi une icône du logo GitHub » | Plus de 200 k icônes à la demande (Iconify, `prefix:name`) |
 | **Codes QR** `generate_qrcode` | « Génère un code QR pour https://... » | SVG / PNG (purement local, zéro réseau) |
 
-> ¹ Tout est local et déterministe, sauf les icônes. Les **icônes** utilisent l'API publique Iconify à la demande + un cache en mémoire (nous n'intégrons pas le jeu complet de 70 Mo, pour garder l'installation npx légère) — le seul outil nécessitant du réseau. Les diagrammes utilisent la [syntaxe D2](https://d2lang.com), les graphiques [Vega-Lite](https://vega.github.io/vega-lite), les formules [LaTeX](https://www.latex-project.org), les icônes sur [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude génère la source automatiquement.
+> ¹ Tout local et déterministe, sauf les **icônes** (API Iconify) et la **police par défaut de la carte** (récupérée depuis le CDN à la première utilisation, mise en cache dans `~/.media-gen-mcp/fonts/`) ; passez `fontPath` pour rendre la carte totalement hors-ligne. **Cartes en chinois/CJK** : la police Inter par défaut est uniquement Latin — passez `fontPath` vers une police CJK (.ttf/.otf/.woff). Les diagrammes utilisent la [syntaxe D2](https://d2lang.com), les graphiques [Vega-Lite](https://vega.github.io/vega-lite), les formules [LaTeX](https://www.latex-project.org), les icônes sur [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude génère la source automatiquement.
 
 ## Providers
 
