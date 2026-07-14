@@ -3,19 +3,62 @@
 # media-gen-mcp
 
 [![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-get-a-free-key)
+[![Version](https://img.shields.io/badge/version-0.3.0-6f42c1?style=flat-square)](https://www.npmjs.com/package/media-gen-mcp-server)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#license)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**Ein multimodaler Bildgenerierungs-MCP-Server für Claude Code**
+**Der All-in-One-Bildgenerierungs-MCP für Claude Code — KI-Bilderstellung + lokales strukturiertes Zeichnen, in einem Server**
 
-KI-Bilder + strukturierte Bilder, ein Server deckt alles ab: Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation (über die kostenlosen Modelle von Agnes AI + Zhipu) **+ Diagramme / Datendiagramme / QR-Codes** (lokales deterministisches Rendering, kein Key nötig)
+Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation · Diagramme / Charts / Formeln / Karten / Icons / QR-Codes
 
-[简体中文](README.md) | [English](README.en.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | **Deutsch** | [Русский](README.ru.md) | [Português](README.pt.md)
+[English](README.en.md) | [简体中文](README.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | **Deutsch** | [Русский](README.ru.md) | [Português](README.pt.md)
 
 </div>
 
-## ① Kostenlosen Key erhalten
+---
+
+## ✨ Highlights
+
+- 🎨 **KI-Bilderstellung, komplett kostenlos**: Text-zu-Bild, Bild-zu-Bild, Text-zu-Video, Bild-zu-Video, Keyframe-Animation — über die kostenlosen Modelle von **Agnes AI + Zhipu**, ohne Kosten.
+- 📐 **Lokales strukturiertes Zeichnen, deterministisch**: Diagramme, Charts, Formeln, Karten, Icons, QR-Codes — **SVG-Vektor in hoher Auflösung**, keine KI-Aufrufe, unendlich zoombar, knackscharfer Text, vollständig kontrollierbar.
+- 🧠 **Ein mentales Modell**: Sagen Sie einfach „Erstelle ein Bild" — Claude leitet automatisch an die KI oder eine lokale Engine weiter und erzeugt die passende DSL/JSON/LaTeX. **Kein zusätzlicher Schritt** für die Nutzer.
+- 🌏 **Poliert out of the box**: Karten **unterstützen automatisch CJK** (eingebautes Noto Sans SC, offline), **einfarbige/Verlauf-Hintergründe** und **Farb-Emoji**; Diagramme unterstützen **sowohl D2 als auch Graphviz**.
+- 🔌 **Steckbar**: Provider und Render-Engines sind beide erweiterbar, ohne Änderungen auf der Tool-Ebene; Standard-Routing pro Modalität + Rate-Limit-Selbstlernen.
+- 🆓 **Strukturierte Tools brauchen keinen Key**: Nach `claude mcp add` funktionieren die 6 lokalen Tools sofort — **Diagramme/Charts/Karten/QR-Codes zeichnen, ganz ohne KI-Key**.
+- 🌐 8-sprachige README · MIT · Node ≥18
+
+---
+
+## 🛠️ Die 10 Tools
+
+### 🤖 KI-Generierung (online · kostenlos)
+
+| Tool | Fähigkeit |
+|---|---|
+| `generate_image` | **Text-zu-Bild** / **Bild-zu-Bild** (Referenz → neu) |
+| `create_video` | **Text-zu-Video** / **Bild-zu-Video** / **Keyframe-Animation** (intelligente Sync/Async-Umschaltung) |
+| `get_video` | Video-Task abfragen + herunterladen |
+| `list_models` | Modelle & Video-Einschränkungen je Provider auflisten |
+
+### 📐 Strukturiertes Rendering (lokal · deterministisch · meist ohne Key)
+
+| Tool | Ausgabe | Engine |
+|---|---|---|
+| `generate_diagram` | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap | **D2**-DSL · **Graphviz** (DOT) |
+| `generate_chart` | Balken / Linie / Kreis / Fläche / Streuung | Vega-Lite |
+| `generate_formula` | LaTeX-Matheformeln (Glyphen eingebettet, keine Schrift nötig) | MathJax |
+| `generate_card` | OG-/Share-/Zitat-Karten (Standard 1200×630, **autom. CJK/Verlauf/Emoji**) | Satori + resvg |
+| `generate_icon` | 200k+ Vektor-Icons (`prefix:name`) | Iconify |
+| `generate_qrcode` | QR-Codes | qrcode |
+
+> Von den 6 strukturierten Tools sind **5 vollständig offline**; nur `generate_icon` (lädt von Iconify) und die Standardschrift von `generate_card` (erster CDN-Abruf, danach gecacht) benötigen Netzwerk — übergeben Sie `fontPath`, um die Karte vollständig offline zu machen.
+
+---
+
+## 🚀 Schnellstart
+
+### ① Kostenlosen Key holen (nur für KI-Generierung; überspringen, wenn Sie nur strukturierte Bilder zeichnen)
 
 Registrieren Sie sich bei einem (oder beiden) der folgenden Anbieter, um einen kostenlosen API-Key zu erhalten:
 
@@ -24,9 +67,9 @@ Registrieren Sie sich bei einem (oder beiden) der folgenden Anbieter, um einen k
 | **Agnes AI** (Standard) | Alle Bild- + Video-Funktionen kostenlos | https://platform.agnes-ai.com/ → Registrieren → API Keys |
 | **Zhipu BigModel** (optional, 4K / Chinesisch) | cogview-3-flash Bild + cogvideox-flash Video dauerhaft kostenlos | https://bigmodel.cn/usercenter/proj-mgmt/apikeys → verifizieren → Key erstellen |
 
-> Ausführliche Schritte: [doc/Agnes Onboarding](doc/Agnes%20开通指引.md) · [doc/Zhipu Onboarding](doc/Zhipu%20开通指引.md)
+> Ausführliche Schritte: [doc/Agnes-Onboarding](doc/Agnes%20开通指引.md) · [doc/Zhipu-Onboarding](doc/Zhipu%20开通指引.md)
 
-## ② Konfigurieren (einmalig)
+### ② Konfigurieren (einmalig)
 
 Erstellen Sie `~/.media-gen-mcp/config.json` mit Ihrem Key:
 
@@ -41,7 +84,7 @@ Erstellen Sie `~/.media-gen-mcp/config.json` mit Ihrem Key:
 
 Nur Agnes genügt (entfernen Sie die zhipu-Zeile). Lassen Sie `models` weg, um die integrierten Standardwerte zu verwenden.
 
-## ③ Zu Claude Code hinzufügen
+### ③ Zu Claude Code hinzufügen
 
 ```bash
 claude mcp add media-gen-mcp npx media-gen-mcp-server
@@ -49,81 +92,85 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 Der Installationsbefehl enthält **keinen Key** (er steht in der config oben). Führen Sie `/mcp` aus — `media-gen-mcp ✓ Connected` bedeutet Erfolg.
 
-## ④ Verwendung
+---
 
-Sagen Sie es einfach in Claude Code (automatisch an den richtigen provider / das richtige Modell geleitet):
+## 💬 Verwendung
 
-| Szenario | Sagen Sie | Ergebnis |
-|---|---|---|
-| **Standard** | „Erstelle ein fotorealistisches Katzenbild" / „Erstelle ein 5s Strand-Video" | Verwendet defaultImageProvider / defaultVideoProvider |
-| **Bestimmter provider** | „Zeichne mit **Zhipu**" / „Verwende **agnes** für das Video" | Wechselt den provider vorübergehend, ohne die config zu ändern |
-| **Bestimmtes Modell** | „Zeichne mit **cogview-4**" / „Verwende **agnes-video-v2.0**" | Wählt ein bestimmtes Modell (höhere Qualität usw.) |
-| **provider + Modell** | „Erstelle mit **Zhipu cogvideox-3** ein 4K-Video" | Genaue Spezifikation (4K / Erstes-Letztes-Frame) |
-| **Bild-zu-Bild** | „Wandle dieses Bild in Aquarell um" | Referenzbild → neues Bild |
-| **Bild-zu-Video** | „Mach aus diesem Bild ein Video" | Einzelbild → Video |
-| **Keyframes** | „Erzeuge einen fließenden Übergang zwischen diesen beiden Bildern" | Mehrere Bilder → fließender Übergang |
+Sagen Sie es einfach in Claude Code — **automatisches Routing**, Sie müssen sich keine Tool-Namen merken:
 
-> Keine Spezifikation → verwendet Standardwerte; das Angeben von provider / Modell betrifft nur diesen Aufruf, **nicht Ihre config**.
+**KI-Generierung:**
 
-## ④ Lokale strukturierte Bilder (ohne Key, deterministisch)
+| Szenario | Sagen Sie |
+|---|---|
+| Standard | „Erstelle eine fotorealistische orange Katze" / „Erstelle ein 5s Strand-Video" |
+| Bestimmter Provider | „Zeichne mit **Zhipu**" / „Verwende **agnes** für das Video" |
+| Bestimmtes Modell | „Zeichne mit **cogview-4**" / „Verwende **agnes-video-v2.0**" |
+| Bild-zu-Bild / -zu-Video | „Wandle dieses Bild in Aquarell um" / „Mach aus diesem Bild ein Video" |
+| Keyframe-Animation | „Erzeuge einen fließenden Übergang zwischen diesen beiden Bildern" |
 
-Diese Tools **rufen keine KI auf**¹ — Claude erzeugt eine DSL/JSON/LaTeX/fields → lokal zu SVG/PNG (Vektor, hochauflösend) gerendert:
+**Strukturiertes Zeichnen:**
 
-| Werkzeug | Sagen Sie | Ausgabe |
-|---|---|---|
-| **Diagramme** `generate_diagram` | „Zeichne eine Architektur: Client → API-Gateway → zwei Microservices" | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap über **D2** (DSL) oder **Graphviz** (DOT) → SVG |
-| **Datendiagramme** `generate_chart` | „Erstelle ein Balkendiagramm aus diesen Verkaufsdaten" | Balken / Linie / Kreis / Fläche / Streuung (Vega-Lite → SVG) |
-| **Formeln** `generate_formula` | „Rendere diese Formel: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, Glyphen eingebettet, keine Schrift nötig) |
-| **Karten** `generate_card` | „Erstelle eine Share-Karte mit einem Hintergrund im **violett-blauen Verlauf** und einem 🚀-Emoji" | OG-/Social-/Zitat-Karten (Satori → PNG, Standard 1200×630, **CJK automatisch unterstützt**, **einfarbig/Verlauf**, **Farb-Emoji**) |
-| **Icons** `generate_icon` | „Gib mir ein GitHub-Logo-Icon" | 200k+ Icons auf Abruf (Iconify, `prefix:name`) |
-| **QR-Codes** `generate_qrcode` | „Erstelle einen QR-Code für https://..." | SVG / PNG (rein lokal, null Netzwerk) |
+| Szenario | Sagen Sie |
+|---|---|
+| Diagramm | „Zeichne eine Architektur: Client → API-Gateway → zwei Microservices" (D2) oder „Zeichne einen Abhängigkeitsgraphen in DOT" (Graphviz) |
+| Chart | „Erstelle ein Balkendiagramm aus diesen Verkaufsdaten" |
+| Formel | „Rendere diese Formel: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" |
+| Share-Karte | „Erstelle eine OG-Karte mit **violett-blauem Verlauf** und einem 🚀-Emoji für diesen Artikel" |
+| Icon | „Gib mir ein GitHub-Logo-Icon" |
+| QR-Code | „Erstelle einen QR-Code für https://..." |
 
-> ¹ Alles lokal & deterministisch, außer **Icons** (Iconify-API) und der **Standard-Schrift der Karte** (wird bei erster Nutzung vom CDN geladen und in `~/.media-gen-mcp/fonts/` gecacht); übergib `fontPath`, um die Karte vollständig offline zu machen. **Karten-CJK**: integriertes Noto Sans SC (offline, automatische Erkennung von Chinesisch/Japanisch/Koreanisch als Fallback) — kein fontPath nötig. Diagramme verwenden die [D2-Syntax](https://d2lang.com), Datendiagramme [Vega-Lite](https://vega.github.io/vega-lite), Formeln [LaTeX](https://www.latex-project.org), Icons auf [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generiert die Quelle automatisch.
+> Das Angeben von Provider/Modell betrifft nur diesen Aufruf, **nicht Ihre config**. Diagramme verwenden die [D2-Syntax](https://d2lang.com)/[Graphviz DOT](https://graphviz.org/docs/dot/), Charts [Vega-Lite](https://vega.github.io/vega-lite), Formeln [LaTeX](https://www.latex-project.org), Icons auf [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generiert die Quelle automatisch.
 
-## Providers
+> **Mermaid**: `generate_diagram` unterstützt **D2 und Graphviz**; das In-Process-Rendering von Mermaid benötigt einen Browser/Chromium (ungeeignet für ein deterministisches MCP), daher wird es nicht unterstützt — verwenden Sie stattdessen D2 (deckt Flussdiagramm/Sequenz/Klasse/ER/Mindmap ab) oder Graphviz.
+
+---
+
+## 📡 Provider
 
 | | Standard | Bild (kostenlos) | Video (kostenlos) | Stärke |
 |---|:---:|---|---|---|
 | **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | Alles kostenlos, fotorealistisch, nativer Ton |
 | **zhipu** (optional) | | cogview-3-flash | cogvideox-flash | 4K/60fps, natives Chinesisch, China-konform |
 
-Wechseln: `defaultProvider: "zhipu"`, oder je Modalität über `defaultImageProvider` / `defaultVideoProvider`, oder `provider` pro Aufruf übergeben. Unsicher, welcher? Siehe [Benchmark](doc/Agnes_vs_Zhipu_横评.md).
+Wechseln: `defaultProvider: "zhipu"`, oder pro Modalität über `defaultImageProvider`/`defaultVideoProvider`, oder `provider` pro Aufruf übergeben. Unsicher, welcher? Siehe [Benchmark](doc/Agnes_vs_Zhipu_横评.md).
 
-## 📌 Config (erweitert, meist unnötig)
+---
 
-**Dreistufiger provider-Fallback** (Argument pro Aufruf > je Modalität > global):
+## ⚙️ Config (erweitert, meist unnötig)
 
-| Feld | Standard | Beschreibung |
-|---|---|---|
-| `defaultProvider` | `agnes` | Globaler Standard (letzter Fallback, wenn keine Modalität gesetzt ist) |
-| `defaultImageProvider` | wie `defaultProvider` | Standard für Bild-Modalität (verwendet von `generate_image`) |
-| `defaultVideoProvider` | wie `defaultProvider` | Standard für Video-Modalität (verwendet von `create_video` / `get_video`) |
-
-Z. B. `defaultProvider: "agnes"` + `defaultVideoProvider: "zhipu"` → Bilder über agnes, Video über Zhipu. Lassen Sie die letzten beiden Felder weg, um für alles auf `defaultProvider` zurückzufallen.
-
-Verbindungs-config pro provider:
+**Dreistufiger Provider-Fallback** (Argument pro Aufruf > pro Modalität > global):
 
 | Feld | Standard | Beschreibung |
 |---|---|---|
-| `providers.<name>.apiKey` | — | **erforderlich**, einer pro provider |
-| `providers.<name>.models.image.default` | provider-integriert | Standard-Bildmodell |
-| `providers.<name>.models.video.default` | provider-integriert | Standard-Videomodell |
-| `outDir` | session-dir/output | Ausgabeverzeichnis (pro Aufruf überschreibbar) |
+| `defaultProvider` | `agnes` | Globaler Standard (letzter Fallback) |
+| `defaultImageProvider` | wie oben | Standard für Bild-Modalität (`generate_image`) |
+| `defaultVideoProvider` | wie oben | Standard für Video-Modalität (`create_video`/`get_video`) |
 
-> Rate-Limit-Selbstlernen (`rateLimits` / `rateLimitTtlMs`) und weitere fortgeschrittene Felder — siehe [doc/](doc/).
+Z. B. `defaultProvider: "agnes"` + `defaultVideoProvider: "zhipu"` → Bilder über agnes, Video über Zhipu.
 
-## FAQ
+Verbindungs-Config pro Provider: `providers.<name>.apiKey` (erforderlich), `providers.<name>.models.{image,video}.default`, `outDir` (Ausgabeverzeichnis, Standard `session-dir/output`).
 
-**Videos langsam?** 3–18 s, dauert ~1–3 Min. Wenn Sie `wait` weglassen, läuft es asynchron mit Abschlussbenachrichtigung.
+> Rate-Limit-Selbstlernen (`rateLimits` / `rateLimitTtlMs` — bei 429 lernt das System automatisch das echte Limit + TTL-Ablauf-Fallback) und weitere fortgeschrittene Felder — siehe [doc/](doc/).
+
+---
+
+## ❓ FAQ
+
+**Videos langsam?** 3–18 s, dauert ~1–3 Min. Wenn Sie `wait` weglassen, läuft es asynchron (bei geschätzten >60 s wird ein Handle zurückgegeben, mit Abschlussbenachrichtigung).
 **Anzahl Frames?** Geben Sie `durationSeconds` an, um automatisch zu wählen (5/10/18 s). Agnes erlaubt nur 81/121/161/241/441.
 **429 bekommen?** 62-Sekunden-Serializer eingebaut; lernt das echte Rate-Limit automatisch.
-**config wird nicht gelesen?** Muss unter `~/.media-gen-mcp/config.json` liegen (npx installiert in den Cache; eine config im Projekt ist nicht verfügbar).
+**Brauchen strukturierte Tools einen Key?** Nein. Die 6 lokalen Tools funktionieren out of the box; nur die KI-Generierung benötigt einen Key.
+**Karten-CJK/Emoji/Verlauf?** Eingebaute CJK-Schrift (automatisch), twemoji-Farb-Emoji (automatisch); übergeben Sie einen CSS-`linear-gradient(...)` an `bg` für einen Verlauf.
+**Config wird nicht gelesen?** Muss unter `~/.media-gen-mcp/config.json` liegen (npx installiert in den Cache; eine Config im Projekt ist nicht verfügbar).
 
-## Architektur + Doku
+---
 
-provider-erweiterbar (agnes + zhipu; einen provider hinzuzufügen erfordert null Änderungen auf der Tool-Ebene). Mehr in [doc/](doc/):
+## 🏗️ Architektur + Doku
 
-- [doc/Agnes Onboarding](doc/Agnes%20开通指引.md) · [doc/Zhipu Onboarding](doc/Zhipu%20开通指引.md) · [doc/Agnes vs Zhipu Benchmark](doc/Agnes_vs_Zhipu_横评.md)
+- **Provider-steckbar** (agnes + zhipu; einen Provider hinzuzufügen erfordert null Änderungen auf der Tool-Ebene); **Engine-steckbar** (DiagramEngine läuft parallel zu MediaProvider, ohne Cross-Pollution).
+- Mehr in [doc/](doc/): [Agnes-Onboarding](doc/Agnes%20开通指引.md) · [Zhipu-Onboarding](doc/Zhipu%20开通指引.md) · [Agnes-vs-Zhipu-Benchmark](doc/Agnes_vs_Zhipu_横评.md)
+
+---
 
 ## 💝 Unterstützen
 
@@ -137,8 +184,8 @@ WeChat | Alipay
 
 </div>
 
-Oder ⭐ Star vergeben, ein Issue / einen PR öffnen — wir freuen uns über alles.
+Oder ⭐ Star vergeben, ein Issue / einen PR öffnen — über alles freuen wir uns.
 
-## Lizenz
+## License
 
 [MIT](LICENSE)

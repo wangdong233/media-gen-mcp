@@ -3,19 +3,62 @@
 # media-gen-mcp
 
 [![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-get-a-free-key)
+[![Version](https://img.shields.io/badge/version-0.3.0-6f42c1?style=flat-square)](https://www.npmjs.com/package/media-gen-mcp-server)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#license)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**A multimodal image-generation MCP server for Claude Code**
+**The all-in-one image-generation MCP for Claude Code — AI imagery + local structured drawing, in one server**
 
-AI imagery + structured imagery, one server covers all: text-to-image / image-to-image / text-to-video / image-to-video / keyframe animation (via Agnes AI + Zhipu free models) **+ diagrams / data charts / QR codes** (local deterministic rendering, no key needed)
+Text-to-image / image-to-image / text-to-video / image-to-video / keyframe animation · diagrams / charts / formulas / cards / icons / QR codes
 
 **English** | [简体中文](README.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
 </div>
 
-## ① Get a Free Key
+---
+
+## ✨ Highlights
+
+- 🎨 **AI imagery, fully free**: text-to-image, image-to-image, text-to-video, image-to-video, keyframe animation — via **Agnes AI + Zhipu** free models, at no cost.
+- 📐 **Local structured drawing, deterministic**: diagrams, charts, formulas, cards, icons, QR codes — **SVG vector high-res**, no AI calls, infinitely zoomable, crisp text, fully controllable.
+- 🧠 **One mental model**: just say "generate an image" — Claude auto-routes to AI or a local engine and generates the matching DSL/JSON/LaTeX. **Zero added steps** for the user.
+- 🌏 **Polished out of the box**: cards **auto-support CJK** (built-in Noto Sans SC, offline), **solid/gradient backgrounds**, and **color emoji**; diagrams support **both D2 and Graphviz**.
+- 🔌 **Pluggable**: providers and render engines are both extensible with zero tool-layer changes; per-modality default routing + rate-limit self-learning.
+- 🆓 **Structured tools need no key**: after `claude mcp add`, the 6 local tools work immediately — **draw diagrams/charts/cards/QR codes with no AI key at all**.
+- 🌐 8-language README · MIT · Node ≥18
+
+---
+
+## 🛠️ The 10 tools
+
+### 🤖 AI generation (online · free)
+
+| Tool | Capability |
+|---|---|
+| `generate_image` | **text-to-image** / **image-to-image** (reference → new) |
+| `create_video` | **text-to-video** / **image-to-video** / **keyframe animation** (smart sync/async) |
+| `get_video` | poll + download a video task |
+| `list_models` | list per-provider models & video constraints |
+
+### 📐 Structured rendering (local · deterministic · mostly key-free)
+
+| Tool | Output | Engine |
+|---|---|---|
+| `generate_diagram` | architecture / sequence / flowchart / class / ER / mindmap | **D2** DSL · **Graphviz** (DOT) |
+| `generate_chart` | bar / line / pie / area / scatter | Vega-Lite |
+| `generate_formula` | LaTeX math formulas (glyphs embedded, no font needed) | MathJax |
+| `generate_card` | OG / share / quote cards (default 1200×630, **auto CJK/gradient/emoji**) | Satori + resvg |
+| `generate_icon` | 200k+ vector icons (`prefix:name`) | Iconify |
+| `generate_qrcode` | QR codes | qrcode |
+
+> Of the 6 structured tools, **5 are fully offline**; only `generate_icon` (fetches from Iconify) and `generate_card`'s default font (first CDN fetch, then cached) need network — pass `fontPath` to make the card fully offline.
+
+---
+
+## 🚀 Quick start
+
+### ① Get a free key (only for AI generation; skip if you only draw structured images)
 
 Register at one (or both) below to get a free API key:
 
@@ -26,7 +69,7 @@ Register at one (or both) below to get a free API key:
 
 > Detailed steps: [doc/Agnes onboarding](doc/Agnes%20开通指引.md) · [doc/Zhipu onboarding](doc/Zhipu%20开通指引.md)
 
-## ② Configure (once)
+### ② Configure (once)
 
 Create `~/.media-gen-mcp/config.json` with your key:
 
@@ -41,7 +84,7 @@ Create `~/.media-gen-mcp/config.json` with your key:
 
 Agnes only is fine (remove the zhipu line). Skip `models` to use built-in defaults.
 
-## ③ Add to Claude Code
+### ③ Add to Claude Code
 
 ```bash
 claude mcp add media-gen-mcp npx media-gen-mcp-server
@@ -49,38 +92,40 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 The install command carries **no key** (it's in the config above). Run `/mcp` — `media-gen-mcp ✓ Connected` means success.
 
-## ④ Use
+---
 
-Just say it in Claude Code (auto-routed to the right provider/model):
+## 💬 How to use
 
-| Scenario | Say | Effect |
-|---|---|---|
-| **Default** | "Generate a photorealistic cat image" / "Generate a 5s beach video" | Uses defaultImageProvider / defaultVideoProvider |
-| **Specific provider** | "Use **Zhipu** to draw" / "Use **agnes** for video" | Temporarily switches provider, no config change |
-| **Specific model** | "Use **cogview-4** to draw" / "Use **agnes-video-v2.0**" | Picks a specific model (higher quality etc.) |
-| **Provider + model** | "Use **Zhipu cogvideox-3** for a 4K video" | Exact spec (4K / first-last frame) |
-| **Image-to-image** | "Turn this image into watercolor" | Reference image → new image |
-| **Image-to-video** | "Turn this image into a video" | Single image → video |
-| **Keyframes** | "Make a smooth transition between these two images" | Multiple images → smooth transition |
+Just say it in Claude Code — **auto-routed**, no need to remember tool names:
 
-> Omit specs → uses defaults; specifying provider/model affects only this call, **not your config**.
+**AI generation:**
 
-## ④ Local structured imagery (no key, deterministic)
+| Scenario | Say |
+|---|---|
+| Default | "Generate a photorealistic orange cat" / "Generate a 5s beach video" |
+| Specific provider | "Use **Zhipu** to draw" / "Use **agnes** for video" |
+| Specific model | "Use **cogview-4** to draw" / "Use **agnes-video-v2.0**" |
+| Image-to-image / -to-video | "Turn this image into watercolor" / "Turn this image into a video" |
+| Keyframe animation | "Make a smooth transition between these two images" |
 
-These tools **don't call any AI**¹ — Claude generates a DSL/JSON/LaTeX/fields → rendered locally to SVG/PNG (vector, high-res):
+**Structured drawing:**
 
-| Tool | Say | Output |
-|---|---|---|
-| **Diagrams** `generate_diagram` | "Draw an architecture: client → API gateway → two microservices" | Architecture / sequence / flowchart / class / ER / mindmap via **D2** (DSL) or **Graphviz** (DOT) → SVG |
-| **Charts** `generate_chart` | "Make a bar chart of this sales data" | Bar / line / pie / area / scatter (Vega-Lite → SVG) |
-| **Formula** `generate_formula` | "Render this formula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glyphs embedded, no font needed) |
-| **Cards** `generate_card` | "Make a share card with a **purple-to-blue gradient** and a 🚀 emoji" | OG / social / quote cards (Satori → PNG, default 1200×630, **CJK auto-supported**, **solid/gradient bg**, **color emoji**) |
-| **Icons** `generate_icon` | "Give me a GitHub logo icon" | 200k+ icons on demand (Iconify, `prefix:name`) |
-| **QR codes** `generate_qrcode` | "Generate a QR code for https://..." | SVG / PNG (purely local, zero network) |
+| Scenario | Say |
+|---|---|
+| Diagram | "Draw an architecture: client → API gateway → two microservices" (D2) or "Draw a dependency graph in DOT" (Graphviz) |
+| Chart | "Make a bar chart of this sales data" |
+| Formula | "Render this formula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" |
+| Share card | "Make a **purple-to-blue gradient** OG card with a 🚀 emoji for this article" |
+| Icon | "Give me a GitHub logo icon" |
+| QR code | "Generate a QR code for https://..." |
 
-> ¹ All local & deterministic except **icons** (Iconify API) and the **card's default font** (fetched from CDN on first use, cached to `~/.media-gen-mcp/fonts/`); pass `fontPath` to make the card fully offline. **Card CJK**: built-in Noto Sans SC (offline, auto-detected Chinese/Japanese/Korean fallback) — no fontPath needed. Diagrams use [D2 syntax](https://d2lang.com), charts [Vega-Lite](https://vega.github.io/vega-lite), formulas [LaTeX](https://www.latex-project.org), icons at [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generates the source automatically.
+> Specifying provider/model affects only this call, **not your config**. Diagrams use [D2 syntax](https://d2lang.com)/[Graphviz DOT](https://graphviz.org/docs/dot/), charts [Vega-Lite](https://vega.github.io/vega-lite), formulas [LaTeX](https://www.latex-project.org), icons at [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generates the source automatically.
 
-## Providers
+> **Mermaid**: `generate_diagram` supports **D2 and Graphviz**; Mermaid's in-process rendering needs a browser/Chromium (unsuited to a deterministic MCP), so it's not supported — use D2 (covers flowchart/sequence/class/ER/mindmap) or Graphviz instead.
+
+---
+
+## 📡 Providers
 
 | | Default | Image (free) | Video (free) | Strength |
 |---|:---:|---|---|---|
@@ -89,41 +134,43 @@ These tools **don't call any AI**¹ — Claude generates a DSL/JSON/LaTeX/fields
 
 Switch: `defaultProvider: "zhipu"`, or per modality via `defaultImageProvider`/`defaultVideoProvider`, or pass `provider` per call. Not sure which? See [benchmark](doc/Agnes_vs_Zhipu_横评.md).
 
-## 📌 Config (advanced, usually unnecessary)
+---
+
+## ⚙️ Config (advanced, usually unnecessary)
 
 **Three-level provider fallback** (per-call arg > per-modality > global):
 
 | Field | Default | Description |
 |---|---|---|
-| `defaultProvider` | `agnes` | Global default (final fallback when neither modality is set) |
-| `defaultImageProvider` | same as `defaultProvider` | Image-modality default (used by `generate_image`) |
-| `defaultVideoProvider` | same as `defaultProvider` | Video-modality default (used by `create_video` / `get_video`) |
+| `defaultProvider` | `agnes` | Global default (final fallback) |
+| `defaultImageProvider` | same | Image-modality default (`generate_image`) |
+| `defaultVideoProvider` | same | Video-modality default (`create_video`/`get_video`) |
 
-E.g. `defaultProvider: "agnes"` + `defaultVideoProvider: "zhipu"` → images via agnes, video via Zhipu. Omit the last two fields to fall back to `defaultProvider` for everything.
+E.g. `defaultProvider: "agnes"` + `defaultVideoProvider: "zhipu"` → images via agnes, video via Zhipu.
 
-Per-provider connection config:
+Per-provider connection config: `providers.<name>.apiKey` (required), `providers.<name>.models.{image,video}.default`, `outDir` (output dir, default `session-dir/output`).
 
-| Field | Default | Description |
-|---|---|---|
-| `providers.<name>.apiKey` | — | **required**, one per provider |
-| `providers.<name>.models.image.default` | provider built-in | default image model |
-| `providers.<name>.models.video.default` | provider built-in | default video model |
-| `outDir` | session-dir/output | output dir (overridable per call) |
+> Rate-limit self-learning (rateLimits / rateLimitTtlMs — 429 auto-learns the real limit + TTL expiry fallback) and other advanced fields — see [doc/](doc/).
 
-> Rate-limit self-learning (rateLimits / rateLimitTtlMs) and other advanced fields — see [doc/](doc/).
+---
 
-## FAQ
+## ❓ FAQ
 
-**Videos slow?** 3–18s, takes ~1–3 min. Omitting `wait` makes it async with completion notification.
+**Videos slow?** 3–18s, takes ~1–3 min. Omitting `wait` makes it async (est. >60s returns a handle, with completion notice).
 **Frame count?** Pass `durationSeconds` to auto-pick (5/10/18s). Agnes allows only 81/121/161/241/441.
 **Hit 429?** 62s serializer built in; auto-learns the real rate limit.
+**Do structured tools need a key?** No. The 6 local tools work out of the box; only AI generation needs a key.
+**Card CJK/emoji/gradient?** Built-in CJK font (auto), twemoji color emoji (auto); pass a CSS `linear-gradient(...)` to `bg` for a gradient.
 **Config not read?** Must be at `~/.media-gen-mcp/config.json` (npx installs to cache; in-project config is unavailable).
 
-## Architecture + Docs
+---
 
-Provider-pluggable (agnes + zhipu; adding a provider needs zero tool-layer changes). More in [doc/](doc/):
+## 🏗️ Architecture + docs
 
-- [doc/Agnes onboarding](doc/Agnes%20开通指引.md) · [doc/Zhipu onboarding](doc/Zhipu%20开通指引.md) · [doc/Agnes vs Zhipu benchmark](doc/Agnes_vs_Zhipu_横评.md)
+- **Provider-pluggable** (agnes + zhipu; adding a provider needs zero tool-layer changes); **engine-pluggable** (DiagramEngine runs parallel to MediaProvider, no cross-pollution).
+- More in [doc/](doc/): [Agnes onboarding](doc/Agnes%20开通指引.md) · [Zhipu onboarding](doc/Zhipu%20开通指引.md) · [Agnes vs Zhipu benchmark](doc/Agnes_vs_Zhipu_横评.md)
+
+---
 
 ## 💝 Support
 
