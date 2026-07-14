@@ -163,6 +163,13 @@ Per-provider connection config: `providers.<name>.apiKey` (required), `providers
 **Card CJK/emoji/gradient?** Built-in CJK font (auto), twemoji color emoji (auto, **disk-cached — works offline once fetched**); pass a CSS `linear-gradient(...)` to `bg` for a gradient.
 **Card fancy effects?** `titleGradient` (gradient title text), `glow` (title glow), `hero` template (blurred depth blob), `panel` template (glass panel: border/radius/shadow), `quoteStyle:"flank"` (big quotes wrapping text inline), `logo`/`logoRound` (embedded logo / circular avatar). All deterministic, in-process via Satori — no browser needed.
 **Config not read?** Must be at `~/.media-gen-mcp/config.json` (npx installs to cache; in-project config is unavailable).
+**`npx` won't connect / slow start?** Usually a corrupted npx cache or restricted network. Fallback: install globally and point at the local binary (zero network at startup, most robust):
+```bash
+npm i -g media-gen-mcp-server
+claude mcp remove media-gen-mcp
+claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"
+```
+(Trade-off: global install needs a manual `npm i -g media-gen-mcp-server` to update; npx auto-updates. On a healthy network, npx is fine.)
 
 ---
 

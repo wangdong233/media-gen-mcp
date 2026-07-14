@@ -163,6 +163,13 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 **卡片中文/emoji/渐变?** 内置 CJK 字体(自动)、twemoji 彩色 emoji(自动,**落盘缓存,断网也能用**)、`bg` 传 CSS `linear-gradient(...)` 即渐变背景。
 **卡片酷炫特效?** `titleGradient`(标题渐变文字)、`glow`(标题辉光)、`hero` 模板(模糊光斑纵深)、`panel` 模板(玻璃面板:边框/圆角/阴影)、`quoteStyle:"flank"`(左右大引号夹文字)、`logo`/`logoRound`(内嵌 logo / 圆形 avatar)。均 Satori 进程内确定性渲染,无需浏览器。
 **没读到 config?** 必须在 `~/.media-gen-mcp/config.json`(npx 装包到缓存,项目内不可用)。
+**`npx` 连不上 / 启动慢?** 多半是 npx 缓存损坏或网络受限。兜底:全局安装后直接用本地二进制(启动零联网、最稳):
+```bash
+npm i -g media-gen-mcp-server
+claude mcp remove media-gen-mcp
+claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"
+```
+(全局装的代价:更新需手动 `npm i -g media-gen-mcp-server`;npx 则自动跟最新。健康网络用 npx 即可。)
 
 ---
 
