@@ -67,15 +67,17 @@ Just say it in Claude Code (auto-routed to the right provider/model):
 
 ## ④ Local structured imagery (no key, deterministic)
 
-These three **don't call any AI, need no key, and go offline** — Claude generates a DSL/JSON → rendered locally to SVG (vector, high-res):
+These tools **don't call any AI and go offline**¹ — Claude generates a DSL/JSON/LaTeX → rendered locally to SVG (vector, high-res):
 
 | Tool | Say | Output |
 |---|---|---|
 | **Diagrams** `generate_diagram` | "Draw an architecture: client → API gateway → two microservices" | Architecture / sequence / flowchart / class / ER / mindmap (D2 DSL → SVG) |
 | **Charts** `generate_chart` | "Make a bar chart of this sales data" | Bar / line / pie / area / scatter (Vega-Lite → SVG) |
+| **Formula** `generate_formula` | "Render this formula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glyphs embedded, no font needed) |
+| **Icons** `generate_icon` | "Give me a GitHub logo icon" | 200k+ icons on demand (Iconify, `prefix:name`) |
 | **QR codes** `generate_qrcode` | "Generate a QR code for https://..." | SVG / PNG (purely local, zero network) |
 
-> These share the **same mental model** as the AI image tools above (to the user it's all "generate an image"), but run on local deterministic engines: SVG vectors, infinitely zoomable, crisp text, accurate & controllable. Diagrams use [D2 syntax](https://d2lang.com), charts use [Vega-Lite](https://vega.github.io/vega-lite) — Claude generates the DSL/JSON automatically.
+> ¹ All local & deterministic except icons. **Icons** use the Iconify public API on demand + in-memory cache (we don't bundle the 70MB full set, to keep the npx install light) — the only tool that needs network. Diagrams use [D2 syntax](https://d2lang.com), charts [Vega-Lite](https://vega.github.io/vega-lite), formulas [LaTeX](https://www.latex-project.org), icons at [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generates the source automatically.
 
 ## Providers
 

@@ -36,9 +36,10 @@
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@resvg/resvg-js": "^2.6.2",
     "@terrastruct/d2": "^0.1.33",
+    "mathjax-full": "^3.2.1",
     "qrcode": "^1.5.4",
-    "vega-lite": "^5.22.0",
-    "vega": "^5.30.0"
+    "vega": "^5.30.0",
+    "vega-lite": "^5.22.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

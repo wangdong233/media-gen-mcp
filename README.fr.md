@@ -67,15 +67,17 @@ Exprimez-vous simplement dans Claude Code (routage automatique vers le bon provi
 
 ## ④ Imagerie structurée locale (sans clé, déterministe)
 
-Ces trois outils **n'appellent aucune IA, ne nécessitent aucune clé et fonctionnent hors-ligne** — Claude génère un DSL/JSON → rendu localement en SVG (vectoriel, haute résolution) :
+Ces outils **n'appellent aucune IA et fonctionnent hors-ligne**¹ — Claude génère un DSL/JSON/LaTeX → rendu localement en SVG (vectoriel, haute résolution) :
 
 | Outil | Dire | Sortie |
 |---|---|---|
 | **Diagrammes** `generate_diagram` | « Dessine une architecture : client → API gateway → deux microservices » | Architecture / séquence / organigramme / classes / ER / carte mentale (D2 DSL → SVG) |
 | **Graphiques** `generate_chart` | « Fais un graphique en barres de ces données de ventes » | Barres / lignes / camembert / aire / dispersion (Vega-Lite → SVG) |
+| **Formules** `generate_formula` | « Rends cette formule : `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}` » | LaTeX → SVG (MathJax, glyphes intégrés, aucune police requise) |
+| **Icônes** `generate_icon` | « Donne-moi une icône du logo GitHub » | Plus de 200 k icônes à la demande (Iconify, `prefix:name`) |
 | **Codes QR** `generate_qrcode` | « Génère un code QR pour https://... » | SVG / PNG (purement local, zéro réseau) |
 
-> Ils partagent le **même modèle mental** que les outils d'image IA ci-dessus (pour l'utilisateur, tout est « générer une image »), mais s'exécutent sur des moteurs locaux déterministes : vecteurs SVG, zoom infini, texte net, précis et contrôlable. Les diagrammes utilisent la [syntaxe D2](https://d2lang.com), les graphiques utilisent [Vega-Lite](https://vega.github.io/vega-lite) — Claude génère le DSL/JSON automatiquement.
+> ¹ Tout est local et déterministe, sauf les icônes. Les **icônes** utilisent l'API publique Iconify à la demande + un cache en mémoire (nous n'intégrons pas le jeu complet de 70 Mo, pour garder l'installation npx légère) — le seul outil nécessitant du réseau. Les diagrammes utilisent la [syntaxe D2](https://d2lang.com), les graphiques [Vega-Lite](https://vega.github.io/vega-lite), les formules [LaTeX](https://www.latex-project.org), les icônes sur [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude génère la source automatiquement.
 
 ## Providers
 

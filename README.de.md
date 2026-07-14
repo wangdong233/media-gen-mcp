@@ -67,15 +67,17 @@ Sagen Sie es einfach in Claude Code (automatisch an den richtigen provider / das
 
 ## ④ Lokale strukturierte Bilder (ohne Key, deterministisch)
 
-Diese drei **rufen keine KI auf, brauchen keinen Key und funktionieren offline** — Claude erzeugt eine DSL/JSON → lokal zu SVG (Vektor, hochauflösend) gerendert:
+Diese Tools **rufen keine KI auf und funktionieren offline**¹ — Claude erzeugt eine DSL/JSON/LaTeX → lokal zu SVG (Vektor, hochauflösend) gerendert:
 
 | Werkzeug | Sagen Sie | Ausgabe |
 |---|---|---|
 | **Diagramme** `generate_diagram` | „Zeichne eine Architektur: Client → API-Gateway → zwei Microservices" | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap (D2 DSL → SVG) |
 | **Datendiagramme** `generate_chart` | „Erstelle ein Balkendiagramm aus diesen Verkaufsdaten" | Balken / Linie / Kreis / Fläche / Streuung (Vega-Lite → SVG) |
+| **Formeln** `generate_formula` | „Rendere diese Formel: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, Glyphen eingebettet, keine Schrift nötig) |
+| **Icons** `generate_icon` | „Gib mir ein GitHub-Logo-Icon" | 200k+ Icons auf Abruf (Iconify, `prefix:name`) |
 | **QR-Codes** `generate_qrcode` | „Erstelle einen QR-Code für https://..." | SVG / PNG (rein lokal, null Netzwerk) |
 
-> Diese teilen sich das **gleiche mentale Modell** wie die KI-Bild-Tools oben (für den Nutzer ist alles „Bild generieren"), laufen aber auf lokalen deterministischen Engines: SVG-Vektoren, unendlich zoombar, scharfer Text, genau & steuerbar. Diagramme verwenden die [D2-Syntax](https://d2lang.com), Datendiagramme verwenden [Vega-Lite](https://vega.github.io/vega-lite) — Claude generiert die DSL/das JSON automatisch.
+> ¹ Alles lokal & deterministisch, außer Icons. **Icons** nutzen die öffentliche Iconify-API auf Abruf + In-Memory-Cache (wir bündeln nicht den kompletten 70MB-Satz, um die npx-Installation leicht zu halten) — das einzige Tool, das Netzwerk benötigt. Diagramme verwenden die [D2-Syntax](https://d2lang.com), Datendiagramme [Vega-Lite](https://vega.github.io/vega-lite), Formeln [LaTeX](https://www.latex-project.org), Icons auf [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generiert die Quelle automatisch.
 
 ## Providers
 

@@ -27,6 +27,8 @@ import fs from "node:fs/promises";
 import { getDiagramEngine } from "./diagram/render.js";
 import { renderQR } from "./qr.js";
 import { renderChart } from "./chart.js";
+import { renderFormula } from "./formula.js";
+import { renderIcon } from "./icon.js";
 
 const ASYNC_THRESHOLD_SECONDS = 60;
 
@@ -166,6 +168,41 @@ function buildTools() {
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
         required: ["spec"],
+      },
+    },
+    {
+      name: "generate_formula",
+      description:
+        "Render a LaTeX math formula to SVG (vector) via MathJax. Glyph paths are embedded (no font dependency). Claude writes the LaTeX; this tool renders it. Example: tex='E=mc^2' or tex='\\\\frac{a}{b}'. Pure local, no AI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tex: { type: "string", description: "LaTeX source, e.g. \\frac{a}{b} or \\sum_{i=1}^{n} i^2" },
+          display: { type: "boolean", default: true, description: "true=block (display) style, false=inline" },
+          format: { type: "string", enum: ["svg", "png"], default: "svg" },
+          fontSize: { type: "number", description: "Font size in em (default 18)" },
+          width: { type: "number", description: "Target pixel width for PNG (default 600); SVG ignores this" },
+          color: { type: "string", description: "Foreground color (default black)" },
+          name: { type: "string", description: "Output filename (without extension)" },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["tex"],
+      },
+    },
+    {
+      name: "generate_icon",
+      description:
+        "Fetch and render a vector icon by name (prefix:name, e.g. 'mdi:home', 'logos:github', 'lucide:check') to SVG (vector) or PNG. Uses the Iconify public API + in-memory cache. NOTE: this is the only tool that needs network. Browse names at https://icon-sets.iconify.design. No AI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Icon name as prefix:name, e.g. mdi:home, logos:github, lucide:check. Also used (sanitized) as the output filename." },
+          size: { type: "number", description: "Pixel size (square), default 128" },
+          color: { type: "string", description: "Foreground color (default currentColor; PNG defaults to black)" },
+          format: { type: "string", enum: ["svg", "png"], default: "svg" },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["name"],
       },
     },
   ];
@@ -363,6 +400,38 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const format: "svg" | "png" = a.format === "png" ? "png" : "svg";
         const rendered = await renderChart({ spec: a.spec, format });
         const fp = await writeLocalRender(outDir, "chart", optString(a.name), format, rendered);
+        return ok({ format, local_path: fp });
+      }
+
+      case "generate_formula": {
+        const tex = requireString(a.tex, "tex");
+        const outDir = resolveOutDir(a.outDir);
+        const format: "svg" | "png" = a.format === "png" ? "png" : "svg";
+        const rendered = await renderFormula({
+          tex,
+          display: a.display === false ? false : undefined,
+          format,
+          fontSize: optNumber(a.fontSize),
+          width: optNumber(a.width),
+          color: optString(a.color),
+        });
+        const fp = await writeLocalRender(outDir, "formula", optString(a.name), format, rendered);
+        return ok({ format, local_path: fp });
+      }
+
+      case "generate_icon": {
+        const iconName = requireString(a.name, "name");
+        const outDir = resolveOutDir(a.outDir);
+        const format: "svg" | "png" = a.format === "png" ? "png" : "svg";
+        const rendered = await renderIcon({
+          name: iconName,
+          size: optNumber(a.size),
+          color: optString(a.color),
+          format,
+        });
+        // 输出文件名由图标名派生("mdi:home"→"mdi-home");writeLocalRender 再做 basename 清洗
+        const outName = iconName.replace(/[^a-zA-Z0-9._-]+/g, "-");
+        const fp = await writeLocalRender(outDir, "icon", outName, format, rendered);
         return ok({ format, local_path: fp });
       }
 

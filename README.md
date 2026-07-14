@@ -67,15 +67,17 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 ## ④ 本地结构化生图(免 Key,确定性)
 
-以下三类**不调用 AI、不需要 Key、不联网**,Claude 生成 DSL/JSON → 本地渲染成 SVG(矢量高清):
+以下几类**不调用 AI、不联网**¹,Claude 生成 DSL/JSON/LaTeX → 本地渲染成 SVG(矢量高清):
 
 | 工具 | 怎么说 | 产出 |
 |---|---|---|
 | **结构图** `generate_diagram` | "画一个架构图:客户端 → API 网关 → 两个微服务" | 架构 / 时序 / 流程 / 类图 / ER / 脑图(D2 DSL → SVG) |
 | **数据图表** `generate_chart` | "把这组销量数据画成柱状图" | 柱 / 线 / 饼 / 面积 / 散点(Vega-Lite → SVG) |
+| **数学公式** `generate_formula` | "渲染这个公式:`\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG(MathJax,字形内嵌,无需字体) |
+| **矢量图标** `generate_icon` | "给我一个 GitHub 的 logo 图标" | 20 万+ 图标任选(Iconify,`prefix:name`) |
 | **二维码** `generate_qrcode` | "生成一个指向 https://... 的 QR 码" | SVG / PNG(纯本地,零联网) |
 
-> 这三种与上面的 AI 生图是**同一套心智模型**(对用户而言都是"生成一张图"),但走本地确定性引擎,SVG 矢量、可无限放大、文字清晰、内容准确可控。结构图用 [D2 语法](https://d2lang.com),图表用 [Vega-Lite](https://vega.github.io/vega-lite),Claude 会自动生成对应 DSL/JSON。
+> ¹ 除图标外全部本地确定性。**图标**走 Iconify 公共 API 按需取 + 内存缓存(不打包 70MB 全集以保持 npx 轻量),是本 server 唯一联网的工具。结构图用 [D2 语法](https://d2lang.com)、图表用 [Vega-Lite](https://vega.github.io/vega-lite)、公式用 [LaTeX](https://www.latex-project.org)、图标浏览 [icon-sets.iconify.design](https://icon-sets.iconify.design) —— Claude 会自动生成对应源码。
 
 ## Providers
 
