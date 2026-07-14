@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.3" },
+  { name: "media-gen-mcp", version: "0.3.4" },
   { capabilities: { tools: {} } },
 );
 
@@ -217,7 +217,7 @@ function buildTools() {
           subtitle: { type: "string", description: "Subtitle / kicker (accent color)" },
           body: { type: "string", description: "Body / description text" },
           footer: { type: "string", description: "Footer (author / date / domain)" },
-          template: { type: "string", enum: ["og", "quote", "minimal", "hero", "panel"], default: "og", description: "Layout template (og=default hierarchy, quote=centered quote, minimal=title+subtitle, hero=big centered showcase, panel=content in a glass panel)" },
+          template: { type: "string", enum: ["og", "quote", "minimal", "hero", "panel"], default: "og", description: "Layout template. Fields shown: og/panel = title+subtitle+body+footer; quote = title(as quote)+body+footer; minimal = title+subtitle; hero = title+subtitle+footer. (og=left hierarchy, quote=centered quote, minimal=bare, hero=big showcase, panel=glass panel)" },
           width: { type: "number", description: "Pixel width (default 1200, OG standard)" },
           height: { type: "number", description: "Pixel height (default 630, OG standard)" },
           bg: { type: "string", description: "Background: a solid color (default #0f172a) OR a CSS gradient string, e.g. linear-gradient(135deg, #4f46e5, #06b6d4) / radial-gradient(circle at 30% 30%, #f59e0b, #ef4444)" },

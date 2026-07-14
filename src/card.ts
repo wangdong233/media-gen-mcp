@@ -334,10 +334,17 @@ function layoutMinimal(opts: { title: any; sub: any }): Node {
   };
 }
 
-/** hero 模板:居中大字标题(+可选模糊光斑纵深感)+ 副标题。展示型。 */
-function layoutHero(opts: { title: any; sub: any; accent: string; blob: boolean }): Node {
+/** hero 模板:居中大字标题(+可选模糊光斑纵深感)+ 副标题 + 可选页脚(credit/署名)。展示型。 */
+function layoutHero(opts: { title: any; sub: any; footer: any; accent: string; blob: boolean }): Node {
   const contentChildren: Node[] = [opts.title];
   if (opts.sub) contentChildren.push(opts.sub);
+  if (opts.footer) {
+    // credit/署名:副标题下方,小字 muted,与展示主区分开
+    contentChildren.push({
+      type: "div",
+      props: { style: { display: "flex", marginTop: 16 }, children: [opts.footer] },
+    });
+  }
   const content: Node = {
     type: "div",
     props: {
@@ -508,7 +515,7 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   } else if (template === "minimal") {
     layout = layoutMinimal({ title: titleNode, sub: subNode });
   } else if (template === "hero") {
-    layout = layoutHero({ title: titleNode, sub: subNode, accent, blob: req.blob !== false });
+    layout = layoutHero({ title: titleNode, sub: subNode, footer: footerNode, accent, blob: req.blob !== false });
   } else if (template === "panel") {
     layout = layoutPanel({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, accent });
   } else {
