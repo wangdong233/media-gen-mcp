@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.13" },
+  { name: "media-gen-mcp", version: "0.3.14" },
   { capabilities: { tools: {} } },
 );
 
@@ -128,7 +128,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          code: { type: "string", description: "D2 or DOT source code. D2 KEY RULE: in map blocks, each property MUST be on its own line (newline-separated; NOT semicolons or spaces). WRONG: `x: { fill: red; shape: oval }` — D2 rejects this. RIGHT (multi-line): `x: {\n  fill: red\n  shape: oval\n}`. Simple D2: `client -> api gateway: HTTPS\napi gateway -> users: /api/users\napi gateway -> orders: /api/orders`. Connections: `a -> b: label text`. D2 docs: https://d2lang.com. Graphviz DOT (semicolons OK): `digraph G { rankdir=LR; A -> B; B -> C; }`." },
+          code: { type: "string", description: "D2 or DOT source code. D2 SYNTAX (full docs: https://d2lang.com):\nRULE: in { } blocks, each property on its OWN LINE. WRONG: `x: { fill: red; shape: oval }` (single line, space/semicolon-separated = ERROR 'unexpected text'). RIGHT:\nx: {\n  shape: oval\n  style.fill: red\n}\nSHAPES: rectangle(default), oval, circle, diamond, hexagon, cylinder, cloud, person, page, step, stored_data, package, document, parallelogram.\nLAYOUT: `direction: right` (or left/up/down) at top level only.\nCONNECTIONS: `a -> b: label`, `a <-> b`, chain `a -> b -> c`.\nSTYLE: style.fill, style.stroke, style.stroke-width, style.font-color, style.font-size, style.border-radius, style.shadow, style.opacity, style.bold.\nCONTAINERS: nested { }; cross-ref `parent.child`.\nEXAMPLE:\ndirection: right\nclient -> api gateway: HTTPS\napi gateway -> users: /api/users\napi gateway -> orders: /api/orders\nMISTAKES: (1) space-separating properties on one line = ERROR. (2) Referencing by label not key. (3) `direction:` is top-level only.\nGraphviz DOT (semicolons OK): digraph G { rankdir=LR; A -> B; C }" },
           engine: { type: "string", enum: ["d2", "graphviz", "mermaid"], default: "d2", description: "Render engine: d2 (D2 WASM, default) or graphviz (DOT). mermaid is listed for discoverability but unsupported in-process — use d2/graphviz." },
           format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector high-res)" },
           diagramType: { type: "string", description: "Diagram type hint (flowchart/sequence/class/architecture...)" },
@@ -163,7 +163,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          spec: { type: "object", description: "Vega-Lite spec (JSON object). Example bar chart: { data: { values: [{a:'A',b:28},{a:'B',b:55}] }, mark: { type: 'bar' }, encoding: { x: { field: 'a', type: 'nominal' }, y: { field: 'b', type: 'quantitative' } } }. Docs: https://vega.github.io/vega-lite/docs/. NOTE: image marks with external URLs are NOT embedded; use data URIs." },
+          spec: { type: "object", description: "Vega-Lite v5 spec (JSON object). Docs: https://vega.github.io/vega-lite/docs/.\nSkeleton: { data: {...}, mark: '...', encoding: {...} }.\nMARK TYPES: 'bar'(bar chart), 'line'(line), 'area', 'circle'/'point'(scatter), 'arc'(pie/donut, needs theta channel), 'tick', 'text'.\nDATA: { values: [{a:'A',b:28},{a:'B',b:55}] }.\nENCODING channels: x, y, color, size, shape, opacity, text, theta. Field types: 'quantitative'(numbers), 'nominal'(categories), 'temporal'(dates), 'ordinal'(ordered).\nPIE/DONUT: mark='arc' + encoding.theta (NOT 'angle' — v5 changed). Donut: add mark.innerRadius.\nAGGREGATION: { aggregate:'sum', field:'v', type:'quantitative' }.\nEXAMPLE bar: { data:{values:[{cat:'A',v:28}]}, mark:'bar', encoding:{x:{field:'cat',type:'nominal'},y:{field:'v',type:'quantitative'}} }\nMISTAKES: (1) pie uses 'theta' not 'angle'; mark is 'arc' not 'pie'. (2) Always set type on x/y. (3) mark object needs type key.\nNOTE: image marks with external URLs NOT embedded; use data URIs." },
           format: { type: "string", enum: ["svg", "png"], default: "svg" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
