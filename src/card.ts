@@ -132,6 +132,21 @@ function isGradient(bg: string): boolean {
   return /gradient\s*\(/i.test(bg);
 }
 
+/** 把颜色转成 rgba(...,alpha)。支持 #RGB/#RRGGBB;其余(颜色名/rgb())兜底白色。避免拼 `${hex}99` 对 3 位 hex 产生非法值。 */
+function withAlpha(color: string, alpha: number): string {
+  const c = color.trim();
+  let hex: string | null = null;
+  if (/^#[0-9a-f]{3}$/i.test(c)) hex = "#" + c[1] + c[1] + c[2] + c[2] + c[3] + c[3];
+  else if (/^#[0-9a-f]{6}$/i.test(c)) hex = c;
+  if (hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return `rgba(255,255,255,${alpha})`; // 颜色名/rgb()/8位hex 等:白色辉光兜底(不崩)
+}
+
 // ── emoji(twemoji PNG via CDN,data URI 内联以便 resvg 渲染) ──
 const TWEMOJI_PNG_CDN = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
 const EMOJI_CACHE_DIR = path.join(os.homedir(), ".media-gen-mcp", "emoji");
@@ -225,7 +240,6 @@ export interface CardRequest {
   /** 本地字体文件路径(.ttf/.otf/.woff)。 */
   fontPath?: string;
   format?: "svg" | "png";
-  name?: string;
 }
 
 export interface CardRenderOutput {
@@ -241,7 +255,7 @@ function txt(text: string, style: any): Node {
 }
 
 /** og 模板:列布局 [内容行(flex:1) + 页脚],内容行 = 竖强调条 + 文本列。纯 flex,无 absolute。 */
-function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string }): Node {
+function layoutOG(opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string }): Node {
   const textChildren: Node[] = [];
   if (opts.logo) textChildren.push(opts.logo);
   textChildren.push(opts.title);
@@ -277,7 +291,7 @@ function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; foo
     outerChildren.push({
       type: "div",
       props: {
-        style: { display: "flex", paddingLeft: 28, color: opts.footer.props.style.color },
+        style: { display: "flex", paddingLeft: 28 },
         children: [opts.footer],
       },
     });
@@ -298,7 +312,7 @@ function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; foo
 }
 
 /** quote 模板:居中引言。quoteStyle:"top"(默认,大引号在文字上方)或 "flank"(左右大引号夹住文字、同行 baseline 对齐)。title(必填)作引言,body 可选副行,footer 作署名。 */
-function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: any; logo: any; accent: string; color: string; fontStack: string }): Node {
+function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: any; logo: any; accent: string; fontStack: string }): Node {
   const inner: Node[] = [];
   if (opts.logo) inner.push(opts.logo);
   if (req.quoteStyle === "flank") {
@@ -480,22 +494,18 @@ function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; logo:
   };
 }
 
-/** 图片源解析:URL/data URI 原样;本地文件路径 → base64 data URI(按扩展名定 mime)。失败返回 undefined。 */
-async function resolveImageSrc(src: string): Promise<string | undefined> {
+/** 图片源解析:URL/data URI 原样;本地文件路径 → base64 data URI(按扩展名定 mime)。本地文件读失败抛错(与 fontPath 一致,不静默丢弃)。 */
+async function resolveImageSrc(src: string): Promise<string> {
   if (/^https?:\/\//i.test(src) || src.startsWith("data:")) return src;
-  try {
-    const buf = await fs.readFile(src);
-    const ext = path.extname(src).toLowerCase();
-    const mime =
-      ext === ".svg" ? "image/svg+xml"
-      : ext === ".png" ? "image/png"
-      : ext === ".gif" ? "image/gif"
-      : ext === ".webp" ? "image/webp"
-      : "image/jpeg";
-    return `data:${mime};base64,${buf.toString("base64")}`;
-  } catch {
-    return undefined;
-  }
+  const buf = await fs.readFile(src); // ENOENT/EACCES 等向上抛,让用户看到 logo 路径错了
+  const ext = path.extname(src).toLowerCase();
+  const mime =
+    ext === ".svg" ? "image/svg+xml"
+    : ext === ".png" ? "image/png"
+    : ext === ".gif" ? "image/gif"
+    : ext === ".webp" ? "image/webp"
+    : "image/jpeg";
+  return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
 export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
@@ -515,10 +525,11 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   const needsCJK =
     hasCJK(req.title) || hasCJK(req.subtitle) || hasCJK(req.body) || hasCJK(req.footer);
 
-  const baseFonts = await Promise.all([
-    loadFont(family, 400, req.fontPath),
-    loadFont(family, 700, req.fontPath),
-  ]);
+  // fontPath(单文件):只注册 400,Satori 对 700 回退到它(单文件无真粗体,诚实);
+  // 默认(CDN)分别取 Inter 400 与 700 两份(支持粗体)。
+  const baseFonts: LoadedFont[] = req.fontPath
+    ? [await loadFont(family, 400, req.fontPath)]
+    : await Promise.all([loadFont(family, 400), loadFont(family, 700)]);
   let fonts: LoadedFont[] = [...baseFonts];
   if (needsCJK) {
     const cjk = await Promise.all([loadCJKFont(400), loadCJKFont(700)]);
@@ -531,14 +542,13 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   const titleGradient =
     typeof req.titleGradient === "string" && req.titleGradient.trim() ? req.titleGradient.trim() : undefined;
   const glowRaw = req.glow;
-  const glowValue =
-    glowRaw === true
-      ? accent.startsWith("#")
-        ? `0 0 40px ${accent}99`
-        : "0 0 40px rgba(255,255,255,0.55)"
-      : typeof glowRaw === "string" && glowRaw.trim()
-        ? glowRaw.trim()
-        : undefined;
+  let glowValue: string | undefined;
+  if (glowRaw === true) {
+    glowValue = `0 0 40px ${withAlpha(accent, 0.6)}`;
+  } else if (typeof glowRaw === "string") {
+    const t = glowRaw.trim();
+    if (t && t.toLowerCase() !== "false") glowValue = t; // "false" → 关闭辉光(不当 text-shadow 值)
+  }
   const titleSize = template === "hero" ? 104 : template === "panel" ? 72 : 76;
   const titleStyle: Record<string, unknown> = {
     fontFamily: fontStack,
@@ -565,22 +575,20 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   const bodyNode = req.body ? txt(req.body, { fontFamily: fontStack, fontSize: 32, color: muted, lineHeight: 1.4 }) : null;
   const footerNode = req.footer ? txt(req.footer, { fontFamily: fontStack, fontSize: 28, color: muted }) : null;
 
-  // logo:URL/data URI/本地路径 → Satori <img>(置于内容顶部)
+  // logo:URL/data URI/本地路径 → Satori <img>(置于内容顶部)。本地路径读失败会抛错。
   let logoNode: Node | null = null;
   if (typeof req.logo === "string" && req.logo.trim()) {
     const logoSrc = await resolveImageSrc(req.logo.trim());
-    if (logoSrc) {
-      const ls = req.logoSize && req.logoSize > 0 ? Math.floor(req.logoSize) : 88;
-      logoNode = {
-        type: "img",
-        props: { src: logoSrc, style: { width: ls, height: ls, borderRadius: req.logoRound ? ls / 2 : 20 } },
-      };
-    }
+    const ls = req.logoSize && req.logoSize > 0 ? Math.floor(req.logoSize) : 88;
+    logoNode = {
+      type: "img",
+      props: { src: logoSrc, style: { width: ls, height: ls, borderRadius: req.logoRound ? ls / 2 : 20 } },
+    };
   }
 
   let layout: Node;
   if (template === "quote") {
-    layout = layoutQuote(req, { title: titleNode, body: bodyNode, footer: footerNode, logo: logoNode, accent, color, fontStack });
+    layout = layoutQuote(req, { title: titleNode, body: bodyNode, footer: footerNode, logo: logoNode, accent, fontStack });
   } else if (template === "minimal") {
     layout = layoutMinimal({ title: titleNode, sub: subNode, logo: logoNode });
   } else if (template === "hero") {
@@ -588,7 +596,7 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   } else if (template === "panel") {
     layout = layoutPanel({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent });
   } else {
-    layout = layoutOG(req, { title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent });
+    layout = layoutOG({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent });
   }
 
   // 渐变背景:bg 为 CSS gradient 串(linear/radial-gradient(...))→ Satori 用 backgroundImage 烘焙;

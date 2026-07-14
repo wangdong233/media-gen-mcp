@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.6" },
+  { name: "media-gen-mcp", version: "0.3.7" },
   { capabilities: { tools: {} } },
 );
 
@@ -193,7 +193,7 @@ function buildTools() {
     {
       name: "generate_icon",
       description:
-        "Fetch and render a vector icon by name (prefix:name, e.g. 'mdi:home', 'logos:github', 'lucide:check') to SVG (vector) or PNG. Uses the Iconify public API + in-memory cache. NOTE: this is the only tool that needs network. Browse names at https://icon-sets.iconify.design. No AI.",
+        "Fetch and render a vector icon by name (prefix:name, e.g. 'mdi:home', 'logos:github', 'lucide:check') to SVG (vector) or PNG. Uses the Iconify public API + in-memory cache. NOTE: needs network (like generate_card's default font/emoji); the other structured tools (diagram/chart/formula/qrcode) are fully offline. Browse names at https://icon-sets.iconify.design. No AI.",
       inputSchema: {
         type: "object",
         properties: {
@@ -209,7 +209,7 @@ function buildTools() {
     {
       name: "generate_card",
       description:
-        "Generate a text card / OG image / share / quote card (default 1200x630 PNG) via Satori (CSS flexbox engine) + resvg — deterministic, no AI, no browser. CAPABILITIES: 5 templates (og=left hierarchy, quote=centered quote with quoteStyle top/flank, minimal=bare, hero=big showcase + depth blob, panel=glass panel); effects titleGradient (gradient title text), glow (title text-shadow), solid or CSS-gradient bg; rich flexbox typography (mixed font sizes, flanking, shadows); embedded logo/avatar image; built-in CJK (auto) + color emoji (auto). LIMITS: no JavaScript execution and no animation — for those, use HTML + a browser. Pass fontPath for full-offline base font. Use this for cards/OG/share/quote images; use generate_image for illustrated/photographic subjects.",
+        "Generate a text card / OG image / share / quote card (default 1200x630 PNG) via Satori (CSS flexbox engine) + resvg — deterministic, no AI, no browser. CAPABILITIES: 5 templates (og=left hierarchy, quote=centered quote with quoteStyle top/flank, minimal=bare, hero=big showcase + depth blob, panel=glass panel); effects titleGradient (gradient title text), glow (title text-shadow), solid or CSS-gradient bg; rich flexbox typography (mixed font sizes, flanking, shadows); embedded logo/avatar image; Chinese (Simplified, + Japanese kanji) built-in via Noto Sans SC (auto); color emoji (auto). LIMITS: Japanese kana and Korean need fontPath to a JP/KR font; titleGradient + glow together don't combine (Satori clips text to gradient, dropping the shadow — use one); no JavaScript execution and no animation — for those use HTML + a browser. Pass fontPath for full-offline base font. Use this for cards/OG/share/quote images; use generate_image for illustrated/photographic subjects.",
       inputSchema: {
         type: "object",
         properties: {
@@ -221,9 +221,9 @@ function buildTools() {
           width: { type: "number", description: "Pixel width (default 1200, OG standard)" },
           height: { type: "number", description: "Pixel height (default 630, OG standard)" },
           bg: { type: "string", description: "Background: a solid color (default #0f172a) OR a CSS gradient string, e.g. linear-gradient(135deg, #4f46e5, #06b6d4) / radial-gradient(circle at 30% 30%, #f59e0b, #ef4444)" },
-          color: { type: "string", description: "Text color (default #f8fafc)" },
+          color: { type: "string", description: "Title text color (default #f8fafc). Note: only the title uses this; subtitle uses accent, body/footer use a muted gray." },
           accent: { type: "string", description: "Accent color (default #6366f1)" },
-          titleGradient: { type: "string", description: "CSS gradient applied to the title text via background-clip:text, e.g. linear-gradient(90deg,#f59e0b,#ef4444)" },
+          titleGradient: { type: "string", description: "CSS gradient applied to the title text via background-clip:text, e.g. linear-gradient(90deg,#f59e0b,#ef4444). Note: does not combine with glow (Satori drops the shadow when text is clipped to a gradient — use one or the other)." },
           glow: { type: "string", description: "Title glow (text-shadow). Pass true (as the string 'true') to derive from accent, or a full text-shadow value like '0 0 40px rgba(245,158,11,.6)'." },
           blob: { type: "boolean", default: true, description: "hero template only: blurred accent blob behind the title for depth (default true)" },
           quoteStyle: { type: "string", enum: ["top", "flank"], default: "top", description: "quote template only: 'top' = big quote mark above the text (default); 'flank' = large quote marks flank the text left/right on the same line, wrapping it" },
