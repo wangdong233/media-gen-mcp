@@ -52,7 +52,7 @@ Texto-para-imagem / imagem-para-imagem / texto-para-vídeo / imagem-para-vídeo 
 | `generate_icon` | 200k+ ícones vetoriais (`prefix:name`) | Iconify |
 | `generate_qrcode` | códigos QR | qrcode |
 
-> Das 6 ferramentas estruturadas, **5 são totalmente offline**; apenas `generate_icon` (busca do Iconify) e a fonte padrão do `generate_card` (primeira busca no CDN, depois em cache) precisam de rede — passe `fontPath` para que o cartão seja totalmente offline.
+> Das 6 ferramentas estruturadas, **4 são totalmente offline** (diagram / chart / formula / qrcode). A fonte Latina padrão do `generate_card` é buscada uma vez no CDN e cacheada em `~/.media-gen-mcp/fonts/` (offline depois disso, ou passe `fontPath` para ser offline imediatamente); a fonte CJK (Noto Sans SC) é **embutida offline**. No entanto, **emojis** do cartão (twemoji) e `generate_icon` (Iconify) precisam de rede (apenas em cache, não embutidos). As ferramentas de geração com IA estão sempre online.
 
 ---
 

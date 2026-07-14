@@ -52,7 +52,7 @@ Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation
 | `generate_icon` | 200k+ Vektor-Icons (`prefix:name`) | Iconify |
 | `generate_qrcode` | QR-Codes | qrcode |
 
-> Von den 6 strukturierten Tools sind **5 vollständig offline**; nur `generate_icon` (lädt von Iconify) und die Standardschrift von `generate_card` (erster CDN-Abruf, danach gecacht) benötigen Netzwerk — übergeben Sie `fontPath`, um die Karte vollständig offline zu machen.
+> Von den 6 strukturierten Tools sind **4 vollständig offline** (diagram / chart / formula / qrcode). Die Standard-Lateinschrift von `generate_card` wird einmal vom CDN abgerufen und in `~/.media-gen-mcp/fonts/` gecacht (danach offline, oder übergeben Sie `fontPath`, um sofort offline zu sein); die CJK-Schrift (Noto Sans SC) ist **offline eingebündelt**. Allerdings benötigen Karten-**Emojis** (twemoji) und `generate_icon` (Iconify) Netzwerk (nur gecacht, nicht gebündelt). KI-Generierungs-Tools sind immer online.
 
 ---
 

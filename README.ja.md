@@ -52,7 +52,7 @@
 | `generate_icon` | 20万種以上のベクターアイコン（`prefix:name`） | Iconify |
 | `generate_qrcode` | QR コード | qrcode |
 
-> 6つの構造化ツールのうち**5つは完全オフライン**です。ネットワークが必要なのは `generate_icon`（Iconify から取得）と `generate_card` のデフォルトフォント（初回のみ CDN から取得、以降キャッシュ）だけです。`fontPath` を渡せばカードも完全オフラインで動きます。
+> 6つの構造化ツールのうち **4つは完全オフライン** です（diagram / chart / formula / qrcode）。`generate_card` のデフォルトの Latin フォントは初回のみ CDN から取得され `~/.media-gen-mcp/fonts/` にキャッシュされます（以降はオフライン、または `fontPath` を渡せば即座にオフライン）。CJK フォント（Noto Sans SC）は **バンドル済みでオフライン** です。ただし、カードの **絵文字**（twemoji）と `generate_icon`（Iconify）はネットワークが必要です（キャッシュのみ、バンドルなし）。AI 生成ツールは常にオンラインです。
 
 ---
 

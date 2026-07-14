@@ -52,7 +52,7 @@
 | `generate_icon` | 20 万+ 矢量图标(`prefix:name`) | Iconify |
 | `generate_qrcode` | 二维码 | qrcode |
 
-> 6 个结构化工具中,**5 个完全本地离线**;仅 `generate_icon`(Iconify 取图)与 `generate_card` 默认字体(首次 CDN 取并缓存)需联网——卡片传 `fontPath` 即可完全离线。
+> 6 个结构化工具:**4 个完全离线**(diagram / chart / formula / qrcode)。`generate_card` 的默认 Latin 字体(Inter)首次从 CDN 取并缓存到 `~/.media-gen-mcp/fonts/`(之后离线,或传 `fontPath` 立即离线),CJK 字体(Noto Sans SC)已**内置离线**;但卡片 **emoji**(twemoji)与 `generate_icon`(Iconify)**需联网**(仅缓存,未内置)。AI 生成工具始终在线。
 
 ---
 

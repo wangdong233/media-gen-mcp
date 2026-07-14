@@ -52,7 +52,7 @@ Text-to-image / image-to-image / text-to-video / image-to-video / keyframe anima
 | `generate_icon` | 200k+ vector icons (`prefix:name`) | Iconify |
 | `generate_qrcode` | QR codes | qrcode |
 
-> Of the 6 structured tools, **5 are fully offline**; only `generate_icon` (fetches from Iconify) and `generate_card`'s default font (first CDN fetch, then cached) need network — pass `fontPath` to make the card fully offline.
+> Of the 6 structured tools, **4 are fully offline** (diagram / chart / formula / qrcode). `generate_card`'s default Latin font is fetched from CDN once and cached to `~/.media-gen-mcp/fonts/` (offline thereafter, or pass `fontPath` to be offline immediately); the CJK font (Noto Sans SC) is **bundled offline**. However, card **emoji** (twemoji) and `generate_icon` (Iconify) need network (cached only, not bundled). AI-generation tools are always online.
 
 ---
 

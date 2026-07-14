@@ -52,7 +52,7 @@ Texte-vers-image / image-vers-image / texte-vers-vidéo / image-vers-vidéo / an
 | `generate_icon` | plus de 200k icônes vectorielles (`prefix:name`) | Iconify |
 | `generate_qrcode` | codes QR | qrcode |
 
-> Parmi les 6 outils structurés, **5 sont entièrement hors ligne** ; seuls `generate_icon` (récupère depuis Iconify) et la police par défaut de `generate_card` (première récupération CDN, puis mis en cache) nécessitent le réseau — passez `fontPath` pour rendre la carte entièrement hors ligne.
+> Parmi les 6 outils structurés, **4 sont entièrement hors ligne** (diagram / chart / formula / qrcode). La police Latine par défaut de `generate_card` est récupérée une fois depuis le CDN et mise en cache dans `~/.media-gen-mcp/fonts/` (hors ligne ensuite, ou passez `fontPath` pour être hors ligne immédiatement) ; la police CJK (Noto Sans SC) est **intégrée hors ligne**. Cependant, les **emojis** de la carte (twemoji) et `generate_icon` (Iconify) nécessitent le réseau (mis en cache seulement, non intégrés). Les outils de génération IA sont toujours en ligne.
 
 ---
 
