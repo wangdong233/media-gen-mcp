@@ -287,10 +287,11 @@ function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; foo
   };
 }
 
-/** quote 模板:居中大字引言。 */
-function layoutQuote(req: CardRequest, opts: { body: any; footer: any; accent: string; color: string; fontStack: string }): Node {
+/** quote 模板:居中大字引言。title(必填)作引言主体,body 可选副行,footer 作署名。 */
+function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: any; accent: string; color: string; fontStack: string }): Node {
   const inner: Node[] = [];
   inner.push(txt("“", { fontFamily: opts.fontStack, fontSize: 160, color: opts.accent, lineHeight: 1, marginBottom: -40 }));
+  inner.push(opts.title);
   if (opts.body) inner.push(opts.body);
   if (opts.footer) inner.push(opts.footer);
   return {
@@ -503,7 +504,7 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
 
   let layout: Node;
   if (template === "quote") {
-    layout = layoutQuote(req, { body: bodyNode, footer: footerNode, accent, color, fontStack });
+    layout = layoutQuote(req, { title: titleNode, body: bodyNode, footer: footerNode, accent, color, fontStack });
   } else if (template === "minimal") {
     layout = layoutMinimal({ title: titleNode, sub: subNode });
   } else if (template === "hero") {
