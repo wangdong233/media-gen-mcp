@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.7" },
+  { name: "media-gen-mcp", version: "0.3.8" },
   { capabilities: { tools: {} } },
 );
 
@@ -124,7 +124,7 @@ function buildTools() {
     {
       name: "generate_diagram",
       description:
-        "Generate a structured diagram from DSL code, rendered locally to SVG (vector, high-res) — no AI, deterministic. Engines: d2 (D2 syntax, default — covers flowchart/sequence/class/ER/mindmap/architecture) and graphviz (DOT syntax). Claude generates the DSL; this tool renders it. NOTE: mermaid is not supported in-process (needs a browser); use d2 or graphviz instead.",
+        "Generate a structured diagram from DSL code, rendered locally to SVG (vector, high-res) — no AI, deterministic. IMPORTANT: the D2 and Graphviz engines are BUILT IN (compiled to WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed on the system, and you should NOT shell out to them; just call this tool with the DSL. Engines: d2 (D2 syntax, default — covers flowchart/sequence/class/ER/mindmap/architecture) and graphviz (DOT syntax). Claude generates the DSL; this tool renders it. NOTE: mermaid is not supported in-process (needs a browser); use d2 or graphviz instead.",
       inputSchema: {
         type: "object",
         properties: {
@@ -159,7 +159,7 @@ function buildTools() {
     },
     {
       name: "generate_chart",
-      description: "Generate a data visualization chart (bar/line/pie/area/scatter) from Vega-Lite spec. Claude generates the Vega-Lite JSON; this tool renders it to SVG (vector). Pure local, no AI.",
+      description: "Generate a data visualization chart (bar/line/pie/area/scatter) from Vega-Lite spec. IMPORTANT: Vega-Lite + vega are BUILT IN (bundled) — no matplotlib/graphviz/python or any system install needed; just call this tool with the JSON spec. Claude generates the Vega-Lite JSON; this tool renders it to SVG (vector). Pure local, no AI.",
       inputSchema: {
         type: "object",
         properties: {
@@ -174,7 +174,7 @@ function buildTools() {
     {
       name: "generate_formula",
       description:
-        "Render a LaTeX math formula to SVG (vector) via MathJax. Glyph paths are embedded (no font dependency). Claude writes the LaTeX; this tool renders it. Example: tex='E=mc^2' or tex='\\\\frac{a}{b}'. Pure local, no AI.",
+        "Render a LaTeX math formula to SVG (vector) via MathJax. MathJax is BUILT IN (bundled) — no system install needed; just call this tool with the LaTeX. Glyph paths are embedded (no font dependency). Claude writes the LaTeX; this tool renders it. Example: tex='E=mc^2' or tex='\\\\frac{a}{b}'. Pure local, no AI.",
       inputSchema: {
         type: "object",
         properties: {
