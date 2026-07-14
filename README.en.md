@@ -71,7 +71,7 @@ These tools **don't call any AI**¹ — Claude generates a DSL/JSON/LaTeX/fields
 
 | Tool | Say | Output |
 |---|---|---|
-| **Diagrams** `generate_diagram` | "Draw an architecture: client → API gateway → two microservices" | Architecture / sequence / flowchart / class / ER / mindmap (D2 DSL → SVG) |
+| **Diagrams** `generate_diagram` | "Draw an architecture: client → API gateway → two microservices" | Architecture / sequence / flowchart / class / ER / mindmap via **D2** (DSL) or **Graphviz** (DOT) → SVG |
 | **Charts** `generate_chart` | "Make a bar chart of this sales data" | Bar / line / pie / area / scatter (Vega-Lite → SVG) |
 | **Formula** `generate_formula` | "Render this formula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glyphs embedded, no font needed) |
 | **Cards** `generate_card` | "Make a share card with a **purple-to-blue gradient** and a 🚀 emoji" | OG / social / quote cards (Satori → PNG, default 1200×630, **CJK auto-supported**, **solid/gradient bg**, **color emoji**) |

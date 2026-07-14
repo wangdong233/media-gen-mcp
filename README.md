@@ -71,7 +71,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 | 工具 | 怎么说 | 产出 |
 |---|---|---|
-| **结构图** `generate_diagram` | "画一个架构图:客户端 → API 网关 → 两个微服务" | 架构 / 时序 / 流程 / 类图 / ER / 脑图(D2 DSL → SVG) |
+| **结构图** `generate_diagram` | "画一个架构图:客户端 → API 网关 → 两个微服务" | 架构 / 时序 / 流程 / 类图 / ER / 脑图(**D2** DSL)或 **Graphviz**(DOT)→ SVG |
 | **数据图表** `generate_chart` | "把这组销量数据画成柱状图" | 柱 / 线 / 饼 / 面积 / 散点(Vega-Lite → SVG) |
 | **数学公式** `generate_formula` | "渲染这个公式:`\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG(MathJax,字形内嵌,无需字体) |
 | **分享卡片** `generate_card` | "生成一张**紫蓝渐变**背景、带 🚀 emoji 的分享卡片" | OG/social/引言卡片(Satori → PNG,默认 1200×630,**中文自动支持**,**纯色/渐变背景**,**彩色 emoji**) |

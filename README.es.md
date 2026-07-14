@@ -71,7 +71,7 @@ Estas herramientas **no llaman a ninguna IA**¹ — Claude genera un DSL/JSON/La
 
 | Herramienta | Decir | Salida |
 |---|---|---|
-| **Diagramas** `generate_diagram` | "Dibuja una arquitectura: cliente → API gateway → dos microservicios" | Arquitectura / secuencia / flowchart / clases / ER / mapa mental (D2 DSL → SVG) |
+| **Diagramas** `generate_diagram` | "Dibuja una arquitectura: cliente → API gateway → dos microservicios" | Arquitectura / secuencia / flowchart / clases / ER / mapa mental mediante **D2** (DSL) o **Graphviz** (DOT) → SVG |
 | **Gráficos** `generate_chart` | "Haz un gráfico de barras con estos datos de ventas" | Barras / líneas / circular / área / dispersión (Vega-Lite → SVG) |
 | **Fórmulas** `generate_formula` | "Renderiza esta fórmula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glifos incrustados, sin fuente necesaria) |
 | **Tarjetas** `generate_card` | "Haz una tarjeta de compartir con un fondo de **degradado de púrpura a azul** y un 🚀 emoji" | Tarjetas OG / sociales / de citas (Satori → PNG, 1200×630 por defecto, **CJK con soporte automático**, **fondo sólido/degradado**, **emojis en color**) |
