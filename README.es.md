@@ -74,11 +74,11 @@ Estas herramientas **no llaman a ninguna IA**¹ — Claude genera un DSL/JSON/La
 | **Diagramas** `generate_diagram` | "Dibuja una arquitectura: cliente → API gateway → dos microservicios" | Arquitectura / secuencia / flowchart / clases / ER / mapa mental (D2 DSL → SVG) |
 | **Gráficos** `generate_chart` | "Haz un gráfico de barras con estos datos de ventas" | Barras / líneas / circular / área / dispersión (Vega-Lite → SVG) |
 | **Fórmulas** `generate_formula` | "Renderiza esta fórmula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glifos incrustados, sin fuente necesaria) |
-| **Tarjetas** `generate_card` | "Haz una tarjeta de compartir OG para este artículo" | Tarjetas OG / sociales / de citas (Satori → PNG, 1200×630 por defecto) |
+| **Tarjetas** `generate_card` | "Haz una tarjeta de compartir OG para este artículo" | Tarjetas OG / sociales / de citas (Satori → PNG, 1200×630 por defecto, **CJK con soporte automático**) |
 | **Iconos** `generate_icon` | "Dame un icono del logo de GitHub" | Más de 200 k iconos bajo demanda (Iconify, `prefix:name`) |
 | **Códigos QR** `generate_qrcode` | "Genera un código QR para https://..." | SVG / PNG (puramente local, cero red) |
 
-> ¹ Todo local y determinista, excepto los **iconos** (API de Iconify) y la **fuente por defecto de la tarjeta** (se obtiene del CDN en el primer uso y se cachea en `~/.media-gen-mcp/fonts/`); pasa `fontPath` para que la tarjeta sea totalmente offline. **Tarjetas en chino/CJK**: la fuente Inter por defecto es solo para Latin — pasa `fontPath` con una fuente CJK (.ttf/.otf/.woff). Los diagramas usan la [sintaxis D2](https://d2lang.com), los gráficos [Vega-Lite](https://vega.github.io/vega-lite), las fórmulas [LaTeX](https://www.latex-project.org), los iconos en [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude genera el código fuente automáticamente.
+> ¹ Todo local y determinista, excepto los **iconos** (API de Iconify) y la **fuente por defecto de la tarjeta** (se obtiene del CDN en el primer uso y se cachea en `~/.media-gen-mcp/fonts/`); pasa `fontPath` para que la tarjeta sea totalmente offline. **CJK en tarjetas**: Noto Sans SC integrado (sin conexión, detección automática de chino/japonés/coreano como respaldo) — sin necesidad de fontPath. Los diagramas usan la [sintaxis D2](https://d2lang.com), los gráficos [Vega-Lite](https://vega.github.io/vega-lite), las fórmulas [LaTeX](https://www.latex-project.org), los iconos en [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude genera el código fuente automáticamente.
 
 ## Providers
 

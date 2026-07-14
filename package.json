@@ -33,6 +33,7 @@
   "license": "MIT",
   "homepage": "https://github.com/wangdong233/media-gen-mcp",
   "dependencies": {
+    "@fontsource/noto-sans-sc": "^5.2.9",
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@resvg/resvg-js": "^2.6.2",
     "@terrastruct/d2": "^0.1.33",

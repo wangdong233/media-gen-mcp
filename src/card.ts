@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { createRequire } from "node:module";
 
 /**
  * 文本卡片 / OG / social card(Satori + resvg)—— 结构化字段 → SVG → PNG。
@@ -11,8 +12,10 @@ import os from "node:os";
  *
  * 字体策略:Satori 必须传入字体数据(ArrayBuffer)。
  *  - 默认从 jsDelivr @fontsource 按需取(Inter,Latin),磁盘+内存缓存(~/.media-gen-mcp/fonts/)。
- *  - 中文/自定义字体:传 fontPath 指向本地 .ttf/.otf/.woff(中文卡片需 CJK 字体,默认 Inter 仅 Latin)。
- * 这是第二个联网工具(与 icon 同);fontPath 可完全离线。
+ *  - **CJK(中日韩)内置**:依赖 @fontsource/noto-sans-sc,文本含 CJK 时自动加载其 chinese-simplified
+ *    子集(.woff;Satori 不支持 woff2)作为回退字体,逐字形回退,无需用户配置、离线可用。
+ *  - 自定义字体:传 fontPath 指向本地 .ttf/.otf/.woff(覆盖默认;CJK 仍叠加 Noto 回退兜底)。
+ * 第二个联网工具(与 icon 同);fontPath 或已缓存的 CJK 字体可离线。
  */
 
 const FONT_CACHE_DIR = path.join(os.homedir(), ".media-gen-mcp", "fonts");
@@ -78,6 +81,50 @@ async function loadFont(
   const ab = toArrayBuffer(buf);
   memFontCache.set(key, ab);
   return { name: family, data: ab, weight, style: "normal" };
+}
+
+// ── CJK 内置字体(Noto Sans SC chinese-simplified 子集,从 @fontsource 依赖读取,离线) ──
+const CJK_FAMILY = "Noto Sans SC";
+const CJK_FONT_KEY = "noto-sans-sc-cjk";
+let cjkFontDirResolved: string | null | undefined; // undefined=未探测
+
+/** 定位 @fontsource/noto-sans-sc 的 files 目录;失败返回 null(降级,不崩)。 */
+function resolveCjkFontDir(): string | null {
+  if (cjkFontDirResolved !== undefined) return cjkFontDirResolved;
+  try {
+    const pkgPath = createRequire(import.meta.url).resolve(
+      "@fontsource/noto-sans-sc/package.json",
+    );
+    cjkFontDirResolved = path.join(path.dirname(pkgPath), "files");
+  } catch {
+    cjkFontDirResolved = null;
+  }
+  return cjkFontDirResolved;
+}
+
+/** 加载 CJK 字体(400/700);不可用返回 null(调用方降级,中文回退 tofu 但不阻断)。 */
+async function loadCJKFont(weight: FontWeight): Promise<LoadedFont | null> {
+  const key = `${CJK_FONT_KEY}@${weight}`;
+  const cached = memFontCache.get(key);
+  if (cached) return { name: CJK_FAMILY, data: cached, weight, style: "normal" };
+  const dir = resolveCjkFontDir();
+  if (!dir) return null;
+  const file = path.join(dir, `noto-sans-sc-chinese-simplified-${weight}-normal.woff`);
+  try {
+    if (!fsSync.existsSync(file)) return null;
+    const buf = await fs.readFile(file);
+    const ab = toArrayBuffer(buf);
+    memFontCache.set(key, ab);
+    return { name: CJK_FAMILY, data: ab, weight, style: "normal" };
+  } catch {
+    return null;
+  }
+}
+
+/** 检测文本是否含 CJK 统一表意 / 扩展 A 字符。 */
+const CJK_RE = /[一-鿿㐀-䶿]/;
+function hasCJK(text: string | undefined | null): boolean {
+  return !!text && CJK_RE.test(text);
 }
 
 export interface CardRequest {
@@ -174,9 +221,9 @@ function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; foo
 }
 
 /** quote 模板:居中大字引言。 */
-function layoutQuote(req: CardRequest, opts: { body: any; footer: any; accent: string; color: string }): Node {
+function layoutQuote(req: CardRequest, opts: { body: any; footer: any; accent: string; color: string; fontStack: string }): Node {
   const inner: Node[] = [];
-  inner.push(txt("“", { fontSize: 160, color: opts.accent, lineHeight: 1, marginBottom: -40 }));
+  inner.push(txt("“", { fontFamily: opts.fontStack, fontSize: 160, color: opts.accent, lineHeight: 1, marginBottom: -40 }));
   if (opts.body) inner.push(opts.body);
   if (opts.footer) inner.push(opts.footer);
   return {
@@ -232,22 +279,33 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
 
   const muted = "#94a3b8";
 
-  const fonts = await Promise.all([
+  // CJK 检测:任一字段含 CJK → 加载内置 Noto Sans SC 作为回退,逐字形回退
+  const needsCJK =
+    hasCJK(req.title) || hasCJK(req.subtitle) || hasCJK(req.body) || hasCJK(req.footer);
+
+  const baseFonts = await Promise.all([
     loadFont(family, 400, req.fontPath),
     loadFont(family, 700, req.fontPath),
   ]);
+  let fonts: LoadedFont[] = [...baseFonts];
+  if (needsCJK) {
+    const cjk = await Promise.all([loadCJKFont(400), loadCJKFont(700)]);
+    fonts = fonts.concat(cjk.filter((f): f is LoadedFont => f !== null));
+  }
+  // fontFamily 栈:needsCJK 时 base + Noto Sans SC;Satori 按栈逐字形回退
+  const fontStack = needsCJK ? `${family}, ${CJK_FAMILY}` : family;
 
   // 颜色降级:若 fontPath 加载失败已经抛错;此处字体已就绪
-  const titleNode = txt(req.title, { fontSize: 76, fontWeight: 700, color, lineHeight: 1.15, letterSpacing: -1 });
+  const titleNode = txt(req.title, { fontFamily: fontStack, fontSize: 76, fontWeight: 700, color, lineHeight: 1.15, letterSpacing: -1 });
   const subNode = req.subtitle
-    ? txt(req.subtitle, { fontSize: 40, fontWeight: 700, color: accent, lineHeight: 1.2 })
+    ? txt(req.subtitle, { fontFamily: fontStack, fontSize: 40, fontWeight: 700, color: accent, lineHeight: 1.2 })
     : null;
-  const bodyNode = req.body ? txt(req.body, { fontSize: 32, color: muted, lineHeight: 1.4 }) : null;
-  const footerNode = req.footer ? txt(req.footer, { fontSize: 28, color: muted }) : null;
+  const bodyNode = req.body ? txt(req.body, { fontFamily: fontStack, fontSize: 32, color: muted, lineHeight: 1.4 }) : null;
+  const footerNode = req.footer ? txt(req.footer, { fontFamily: fontStack, fontSize: 28, color: muted }) : null;
 
   let layout: Node;
   if (template === "quote") {
-    layout = layoutQuote(req, { body: bodyNode, footer: footerNode, accent, color });
+    layout = layoutQuote(req, { body: bodyNode, footer: footerNode, accent, color, fontStack });
   } else if (template === "minimal") {
     layout = layoutMinimal({ title: titleNode, sub: subNode });
   } else {

@@ -74,11 +74,11 @@ Diese Tools **rufen keine KI auf**¹ — Claude erzeugt eine DSL/JSON/LaTeX/fiel
 | **Diagramme** `generate_diagram` | „Zeichne eine Architektur: Client → API-Gateway → zwei Microservices" | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap (D2 DSL → SVG) |
 | **Datendiagramme** `generate_chart` | „Erstelle ein Balkendiagramm aus diesen Verkaufsdaten" | Balken / Linie / Kreis / Fläche / Streuung (Vega-Lite → SVG) |
 | **Formeln** `generate_formula` | „Rendere diese Formel: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, Glyphen eingebettet, keine Schrift nötig) |
-| **Karten** `generate_card` | „Erstelle eine OG-Share-Karte für diesen Artikel" | OG-/Social-/Zitat-Karten (Satori → PNG, Standard 1200×630) |
+| **Karten** `generate_card` | „Erstelle eine OG-Share-Karte für diesen Artikel" | OG-/Social-/Zitat-Karten (Satori → PNG, Standard 1200×630, **CJK automatisch unterstützt**) |
 | **Icons** `generate_icon` | „Gib mir ein GitHub-Logo-Icon" | 200k+ Icons auf Abruf (Iconify, `prefix:name`) |
 | **QR-Codes** `generate_qrcode` | „Erstelle einen QR-Code für https://..." | SVG / PNG (rein lokal, null Netzwerk) |
 
-> ¹ Alles lokal & deterministisch, außer **Icons** (Iconify-API) und der **Standard-Schrift der Karte** (wird bei erster Nutzung vom CDN geladen und in `~/.media-gen-mcp/fonts/` gecacht); übergib `fontPath`, um die Karte vollständig offline zu machen. **Chinesische/CJK-Karten**: die Standard-Schrift Inter ist nur für Latin — übergib `fontPath` mit einer CJK-Schrift (.ttf/.otf/.woff). Diagramme verwenden die [D2-Syntax](https://d2lang.com), Datendiagramme [Vega-Lite](https://vega.github.io/vega-lite), Formeln [LaTeX](https://www.latex-project.org), Icons auf [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generiert die Quelle automatisch.
+> ¹ Alles lokal & deterministisch, außer **Icons** (Iconify-API) und der **Standard-Schrift der Karte** (wird bei erster Nutzung vom CDN geladen und in `~/.media-gen-mcp/fonts/` gecacht); übergib `fontPath`, um die Karte vollständig offline zu machen. **Karten-CJK**: integriertes Noto Sans SC (offline, automatische Erkennung von Chinesisch/Japanisch/Koreanisch als Fallback) — kein fontPath nötig. Diagramme verwenden die [D2-Syntax](https://d2lang.com), Datendiagramme [Vega-Lite](https://vega.github.io/vega-lite), Formeln [LaTeX](https://www.latex-project.org), Icons auf [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generiert die Quelle automatisch.
 
 ## Providers
 

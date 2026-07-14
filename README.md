@@ -74,11 +74,11 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | **结构图** `generate_diagram` | "画一个架构图:客户端 → API 网关 → 两个微服务" | 架构 / 时序 / 流程 / 类图 / ER / 脑图(D2 DSL → SVG) |
 | **数据图表** `generate_chart` | "把这组销量数据画成柱状图" | 柱 / 线 / 饼 / 面积 / 散点(Vega-Lite → SVG) |
 | **数学公式** `generate_formula` | "渲染这个公式:`\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG(MathJax,字形内嵌,无需字体) |
-| **分享卡片** `generate_card` | "给这篇文章生成一张 OG 分享卡片" | OG/social/引言卡片(Satori → PNG,默认 1200×630) |
+| **分享卡片** `generate_card` | "给这篇文章生成一张 OG 分享卡片" | OG/social/引言卡片(Satori → PNG,默认 1200×630,**中文自动支持**) |
 | **矢量图标** `generate_icon` | "给我一个 GitHub 的 logo 图标" | 20 万+ 图标任选(Iconify,`prefix:name`) |
 | **二维码** `generate_qrcode` | "生成一个指向 https://... 的 QR 码" | SVG / PNG(纯本地,零联网) |
 
-> ¹ 除**图标**(Iconify API 取图)与**卡片默认字体**(首次从 CDN 取并缓存到 `~/.media-gen-mcp/fonts/`)需联网外,其余全本地确定性;卡片传 `fontPath` 即可完全离线。**中文卡片**:默认 Inter 仅含 Latin,需传 `fontPath` 指向 CJK 字体(.ttf/.otf/.woff)。结构图用 [D2 语法](https://d2lang.com)、图表用 [Vega-Lite](https://vega.github.io/vega-lite)、公式用 [LaTeX](https://www.latex-project.org)、图标浏览 [icon-sets.iconify.design](https://icon-sets.iconify.design) —— Claude 会自动生成对应源码。
+> ¹ 除**图标**(Iconify API 取图)与**卡片默认字体**(首次从 CDN 取并缓存到 `~/.media-gen-mcp/fonts/`)需联网外,其余全本地确定性;卡片传 `fontPath` 即可完全离线。**卡片中文**:内置 Noto Sans SC(随包离线,自动检测中文并回退),无需 fontPath。结构图用 [D2 语法](https://d2lang.com)、图表用 [Vega-Lite](https://vega.github.io/vega-lite)、公式用 [LaTeX](https://www.latex-project.org)、图标浏览 [icon-sets.iconify.design](https://icon-sets.iconify.design) —— Claude 会自动生成对应源码。
 
 ## Providers
 

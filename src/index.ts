@@ -209,7 +209,7 @@ function buildTools() {
     {
       name: "generate_card",
       description:
-        "Generate a text card / OG image / social share card (default 1200x630 PNG) from structured fields via Satori + resvg. No AI. Useful for blog OG images, quote cards, share cards. Default font Inter (Latin only); for Chinese/CJK text pass fontPath to a local CJK .ttf/.otf/.woff. Default font fetch needs network (cached); fontPath makes it offline.",
+        "Generate a text card / OG image / social share card (default 1200x630 PNG) from structured fields via Satori + resvg. No AI. Useful for blog OG images, quote cards, share cards. Default font Inter (Latin); CJK (Chinese/Japanese/Korean) is built-in (auto-detected, Noto Sans SC fallback, offline). Default font fetch needs network (cached); pass fontPath to override the base font fully offline.",
       inputSchema: {
         type: "object",
         properties: {
@@ -224,7 +224,7 @@ function buildTools() {
           color: { type: "string", description: "Text color (default #f8fafc)" },
           accent: { type: "string", description: "Accent color (default #6366f1)" },
           fontFamily: { type: "string", description: "Font family from @fontsource (default Inter, Latin only)" },
-          fontPath: { type: "string", description: "Local font file path (.ttf/.otf/.woff); required for CJK/Chinese cards" },
+          fontPath: { type: "string", description: "Local base-font file path (.ttf/.otf/.woff) to override the default Inter; optional (CJK auto-supported via built-in Noto Sans SC)" },
           format: { type: "string", enum: ["svg", "png"], default: "png" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
