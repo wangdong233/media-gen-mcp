@@ -7,9 +7,9 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**面向 Claude Code 的免费文生图 + 文生视频 MCP Server**
+**面向 Claude Code 的多模态生图 MCP Server**
 
-文生图 / 图生图 / 文生视频 / 图生视频 / 关键帧动画 —— **全免费**(借 Agnes AI + 智谱 免费模型)
+AI 生图 + 结构化生图,一个 server 全覆盖:文生图 / 图生图 / 文生视频 / 图生视频 / 关键帧动画(借 Agnes AI + 智谱 免费模型)**+ 结构图 / 数据图表 / 二维码**(本地确定性渲染,免 Key)
 
 [English](README.en.md) | **简体中文** | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -64,6 +64,18 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | **关键帧** | "这两张图做个过渡动画" | 多图 → 平滑过渡 |
 
 > 不指定就走默认;指定厂商/模型只影响本次调用,**不改 config**。
+
+## ④ 本地结构化生图(免 Key,确定性)
+
+以下三类**不调用 AI、不需要 Key、不联网**,Claude 生成 DSL/JSON → 本地渲染成 SVG(矢量高清):
+
+| 工具 | 怎么说 | 产出 |
+|---|---|---|
+| **结构图** `generate_diagram` | "画一个架构图:客户端 → API 网关 → 两个微服务" | 架构 / 时序 / 流程 / 类图 / ER / 脑图(D2 DSL → SVG) |
+| **数据图表** `generate_chart` | "把这组销量数据画成柱状图" | 柱 / 线 / 饼 / 面积 / 散点(Vega-Lite → SVG) |
+| **二维码** `generate_qrcode` | "生成一个指向 https://... 的 QR 码" | SVG / PNG(纯本地,零联网) |
+
+> 这三种与上面的 AI 生图是**同一套心智模型**(对用户而言都是"生成一张图"),但走本地确定性引擎,SVG 矢量、可无限放大、文字清晰、内容准确可控。结构图用 [D2 语法](https://d2lang.com),图表用 [Vega-Lite](https://vega.github.io/vega-lite),Claude 会自动生成对应 DSL/JSON。
 
 ## Providers
 

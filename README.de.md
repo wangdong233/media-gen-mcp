@@ -7,9 +7,9 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**Ein kostenloser Text-zu-Bild + Text-zu-Video MCP-Server für Claude Code**
+**Ein multimodaler Bildgenerierungs-MCP-Server für Claude Code**
 
-Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation — **alles kostenlos** (über die kostenlosen Modelle von Agnes AI + Zhipu)
+KI-Bilder + strukturierte Bilder, ein Server deckt alles ab: Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation (über die kostenlosen Modelle von Agnes AI + Zhipu) **+ Diagramme / Datendiagramme / QR-Codes** (lokales deterministisches Rendering, kein Key nötig)
 
 [简体中文](README.md) | [English](README.en.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | **Deutsch** | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -64,6 +64,18 @@ Sagen Sie es einfach in Claude Code (automatisch an den richtigen provider / das
 | **Keyframes** | „Erzeuge einen fließenden Übergang zwischen diesen beiden Bildern" | Mehrere Bilder → fließender Übergang |
 
 > Keine Spezifikation → verwendet Standardwerte; das Angeben von provider / Modell betrifft nur diesen Aufruf, **nicht Ihre config**.
+
+## ④ Lokale strukturierte Bilder (ohne Key, deterministisch)
+
+Diese drei **rufen keine KI auf, brauchen keinen Key und funktionieren offline** — Claude erzeugt eine DSL/JSON → lokal zu SVG (Vektor, hochauflösend) gerendert:
+
+| Werkzeug | Sagen Sie | Ausgabe |
+|---|---|---|
+| **Diagramme** `generate_diagram` | „Zeichne eine Architektur: Client → API-Gateway → zwei Microservices" | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap (D2 DSL → SVG) |
+| **Datendiagramme** `generate_chart` | „Erstelle ein Balkendiagramm aus diesen Verkaufsdaten" | Balken / Linie / Kreis / Fläche / Streuung (Vega-Lite → SVG) |
+| **QR-Codes** `generate_qrcode` | „Erstelle einen QR-Code für https://..." | SVG / PNG (rein lokal, null Netzwerk) |
+
+> Diese teilen sich das **gleiche mentale Modell** wie die KI-Bild-Tools oben (für den Nutzer ist alles „Bild generieren"), laufen aber auf lokalen deterministischen Engines: SVG-Vektoren, unendlich zoombar, scharfer Text, genau & steuerbar. Diagramme verwenden die [D2-Syntax](https://d2lang.com), Datendiagramme verwenden [Vega-Lite](https://vega.github.io/vega-lite) — Claude generiert die DSL/das JSON automatisch.
 
 ## Providers
 

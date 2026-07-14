@@ -7,9 +7,9 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**Un servidor MCP gratuito de texto a imagen + texto a vídeo para Claude Code**
+**Un servidor MCP multimodal de generación de imágenes para Claude Code**
 
-Texto a imagen / imagen a imagen / texto a vídeo / imagen a vídeo / animación por keyframes — **todo gratis** (mediante Agnes AI + modelos gratuitos de Zhipu)
+Imágenes IA + imágenes estructuradas, un solo servidor lo cubre todo: texto a imagen / imagen a imagen / texto a vídeo / imagen a vídeo / animación por keyframes (mediante Agnes AI + modelos gratuitos de Zhipu) **+ diagramas / gráficos de datos / códigos QR** (renderizado local determinista, sin necesidad de key)
 
 [简体中文](README.md) | [English](README.en.md) | [日本語](README.ja.md) | **Español** | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -64,6 +64,18 @@ Simplemente dilo en Claude Code (se enruta automáticamente al provider/modelo c
 | **Keyframes** | "Crea una transición suave entre estas dos imágenes" | Varias imágenes → transición fluida |
 
 > Omitir especificaciones → usa los valores predeterminados; indicar provider/modelo solo afecta a esta llamada, **no a tu configuración**.
+
+## ④ Imágenes estructuradas locales (sin key, determinista)
+
+Estas tres **no llaman a ninguna IA, no necesitan key y funcionan sin conexión** — Claude genera un DSL/JSON → se renderiza localmente en SVG (vectorial, alta resolución):
+
+| Herramienta | Decir | Salida |
+|---|---|---|
+| **Diagramas** `generate_diagram` | "Dibuja una arquitectura: cliente → API gateway → dos microservicios" | Arquitectura / secuencia / flowchart / clases / ER / mapa mental (D2 DSL → SVG) |
+| **Gráficos** `generate_chart` | "Haz un gráfico de barras con estos datos de ventas" | Barras / líneas / circular / área / dispersión (Vega-Lite → SVG) |
+| **Códigos QR** `generate_qrcode` | "Genera un código QR para https://..." | SVG / PNG (puramente local, cero red) |
+
+> Estos comparten el **mismo modelo mental** que las herramientas de imagen IA anteriores (para el usuario todo es "generar una imagen"), pero se ejecutan en motores locales deterministas: vectores SVG, zoom infinito, texto nítido, preciso y controlable. Los diagramas usan la [sintaxis D2](https://d2lang.com), los gráficos usan [Vega-Lite](https://vega.github.io/vega-lite) — Claude genera el DSL/JSON automáticamente.
 
 ## Providers
 

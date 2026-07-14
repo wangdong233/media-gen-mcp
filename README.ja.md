@@ -7,9 +7,9 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**Claude Code 向けの無料 text-to-image + text-to-video MCP server**
+**Claude Code 向けのマルチモーダル画像生成 MCP server**
 
-text-to-image / image-to-image / text-to-video / image-to-video / keyframe animation —— **すべて無料**（Agnes AI + Zhipu の無料モデル経由）
+AI 画像 + 構造化画像、1つのサーバーで完結：text-to-image / image-to-image / text-to-video / image-to-video / キーフレームアニメーション（Agnes AI + Zhipu の無料モデル経由）**+ ダイアグラム / データチャート / QR コード**（ローカル確定描画、key 不要）
 
 [简体中文](README.md) | [English](README.en.md) | **日本語** | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -64,6 +64,18 @@ Claude Code に話しかけるだけです（適切な provider/model に自動�
 | **キーフレーム** | 「この2枚の画像を滑らかにつないで」 | 複数画像 → 滑らかな変化 |
 
 > 指定を省略すると → デフォルトが使われます。provider/model を指定しても、その呼び出しにのみ影響し、**config は変更されません**。
+
+## ④ ローカル構造化画像（key 不要、確定的）
+
+これら3つは **AI を一切呼ばず、key も不要、オフラインで完結** します — Claude が DSL/JSON を生成 → ローカルで SVG（ベクタ・高解像度）に描画：
+
+| ツール | 話しかける例 | 出力 |
+|---|---|---|
+| **ダイアグラム** `generate_diagram` | 「アーキテクチャを描いて：client → API gateway → 2つのマイクロサービス」 | アーキテクチャ / シーケンス / フローチャート / クラス / ER / マインドマップ（D2 DSL → SVG） |
+| **チャート** `generate_chart` | 「この売上データで棒グラフを作って」 | 棒 / 折れ線 / 円 / 面積 / 散布（Vega-Lite → SVG） |
+| **QR コード** `generate_qrcode` | 「https://... の QR コードを生成して」 | SVG / PNG（完全ローカル、ネットワークゼロ） |
+
+> これらは上の AI 画像ツールと **同じメンタルモデル** を共有します（ユーザーにはすべて「画像を生成する」ように見えます）が、ローカルの確定的エンジンで動作します：SVG ベクタ、無限にズーム可能、くっきりしたテキスト、正確で制御可能。ダイアグラムは [D2 記法](https://d2lang.com)、チャートは [Vega-Lite](https://vega.github.io/vega-lite) を使用 — Claude が DSL/JSON を自動生成します。
 
 ## Providers
 

@@ -7,9 +7,9 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**A free text-to-image + text-to-video MCP server for Claude Code**
+**A multimodal image-generation MCP server for Claude Code**
 
-Text-to-image / image-to-image / text-to-video / image-to-video / keyframe animation — **all free** (via Agnes AI + Zhipu free models)
+AI imagery + structured imagery, one server covers all: text-to-image / image-to-image / text-to-video / image-to-video / keyframe animation (via Agnes AI + Zhipu free models) **+ diagrams / data charts / QR codes** (local deterministic rendering, no key needed)
 
 **English** | [简体中文](README.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -64,6 +64,18 @@ Just say it in Claude Code (auto-routed to the right provider/model):
 | **Keyframes** | "Make a smooth transition between these two images" | Multiple images → smooth transition |
 
 > Omit specs → uses defaults; specifying provider/model affects only this call, **not your config**.
+
+## ④ Local structured imagery (no key, deterministic)
+
+These three **don't call any AI, need no key, and go offline** — Claude generates a DSL/JSON → rendered locally to SVG (vector, high-res):
+
+| Tool | Say | Output |
+|---|---|---|
+| **Diagrams** `generate_diagram` | "Draw an architecture: client → API gateway → two microservices" | Architecture / sequence / flowchart / class / ER / mindmap (D2 DSL → SVG) |
+| **Charts** `generate_chart` | "Make a bar chart of this sales data" | Bar / line / pie / area / scatter (Vega-Lite → SVG) |
+| **QR codes** `generate_qrcode` | "Generate a QR code for https://..." | SVG / PNG (purely local, zero network) |
+
+> These share the **same mental model** as the AI image tools above (to the user it's all "generate an image"), but run on local deterministic engines: SVG vectors, infinitely zoomable, crisp text, accurate & controllable. Diagrams use [D2 syntax](https://d2lang.com), charts use [Vega-Lite](https://vega.github.io/vega-lite) — Claude generates the DSL/JSON automatically.
 
 ## Providers
 
