@@ -132,6 +132,36 @@ function isGradient(bg: string): boolean {
   return /gradient\s*\(/i.test(bg);
 }
 
+// ── emoji(twemoji PNG via CDN,data URI 内联以便 resvg 渲染) ──
+const TWEMOJI_PNG_CDN = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
+const emojiDataUriCache = new Map<string, string | null>();
+
+/** emoji 字符 → twemoji PNG 的 base64 data URI;fetch 失败返回 undefined(降级 tofu)。 */
+async function emojiToDataUri(segment: string): Promise<string | undefined> {
+  // codepoint:过滤 variation selector FE0F,保留 ZWJ 200D(序列 emoji)
+  const cp = [...segment]
+    .map((c) => c.codePointAt(0)!)
+    .filter((p) => p !== 0xfe0f)
+    .map((p) => p.toString(16))
+    .join("-");
+  if (emojiDataUriCache.has(cp)) return emojiDataUriCache.get(cp) ?? undefined;
+  const url = `${TWEMOJI_PNG_CDN}/${cp}.png`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      emojiDataUriCache.set(cp, null);
+      return undefined;
+    }
+    const b64 = Buffer.from(await res.arrayBuffer()).toString("base64");
+    const uri = `data:image/png;base64,${b64}`;
+    emojiDataUriCache.set(cp, uri);
+    return uri;
+  } catch {
+    emojiDataUriCache.set(cp, null);
+    return undefined;
+  }
+}
+
 export interface CardRequest {
   /** 主标题(必填)。 */
   title: string;
@@ -334,7 +364,15 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
         children: layout,
       },
     },
-    { width, height, fonts },
+    {
+      width,
+      height,
+      fonts,
+      // emoji:Satori 检测到 emoji 段时回调,返回 twemoji PNG data URI(内联,resvg 可渲染);
+      // 非 emoji(CJK 等)返回 undefined,交已注册字体(Noto Sans SC)处理。
+      loadAdditionalAsset: async (code: string, segment: string) =>
+        code === "emoji" ? await emojiToDataUri(segment) : undefined,
+    } as any,
   );
 
   let png: Buffer | undefined;

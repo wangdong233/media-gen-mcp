@@ -74,7 +74,7 @@ Claude Code に話しかけるだけです（適切な provider/model に自動�
 | **ダイアグラム** `generate_diagram` | 「アーキテクチャを描いて：client → API gateway → 2つのマイクロサービス」 | アーキテクチャ / シーケンス / フローチャート / クラス / ER / マインドマップ（D2 DSL → SVG） |
 | **チャート** `generate_chart` | 「この売上データで棒グラフを作って」 | 棒 / 折れ線 / 円 / 面積 / 散布（Vega-Lite → SVG） |
 | **数式** `generate_formula` | 「この数式を描画して：`\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`」 | LaTeX → SVG（MathJax、グリフ埋め込み、フォント不要） |
-| **カード** `generate_card` | 「**紫から青へのグラデーション**背景のシェアカードを作って」 | OG / ソーシャル / 引用カード（Satori → PNG、デフォルト 1200×630、**CJK 自動対応**、**純色/グラデーション背景**） |
+| **カード** `generate_card` | 「**紫から青へのグラデーション**背景と🚀の絵文字のシェアカードを作って」 | OG / ソーシャル / 引用カード（Satori → PNG、デフォルト 1200×630、**CJK 自動対応**、**純色/グラデーション背景**、**カラー絵文字**） |
 | **アイコン** `generate_icon` | 「GitHub のロゴアイコンをちょうだい」 | 20万種以上のアイコンをオンデマンドで（Iconify、`prefix:name`） |
 | **QR コード** `generate_qrcode` | 「https://... の QR コードを生成して」 | SVG / PNG（完全ローカル、ネットワークゼロ） |
 

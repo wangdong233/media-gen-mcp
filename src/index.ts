@@ -209,7 +209,7 @@ function buildTools() {
     {
       name: "generate_card",
       description:
-        "Generate a text card / OG image / social share card (default 1200x630 PNG) from structured fields via Satori + resvg. No AI. Useful for blog OG images, quote cards, share cards. Default font Inter (Latin); CJK (Chinese/Japanese/Korean) is built-in (auto-detected, Noto Sans SC fallback, offline). Default font fetch needs network (cached); pass fontPath to override the base font fully offline.",
+        "Generate a text card / OG image / social share card (default 1200x630 PNG) from structured fields via Satori + resvg. No AI. Useful for blog OG images, quote cards, share cards. Default font Inter (Latin); CJK (Chinese/Japanese/Korean) is built-in (auto-detected, Noto Sans SC fallback, offline). Supports solid or CSS-gradient backgrounds, and renders emoji in color (twemoji, auto). Default font fetch + emoji need network (cached); pass fontPath to override the base font fully offline.",
       inputSchema: {
         type: "object",
         properties: {

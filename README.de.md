@@ -74,7 +74,7 @@ Diese Tools **rufen keine KI auf**¹ — Claude erzeugt eine DSL/JSON/LaTeX/fiel
 | **Diagramme** `generate_diagram` | „Zeichne eine Architektur: Client → API-Gateway → zwei Microservices" | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap (D2 DSL → SVG) |
 | **Datendiagramme** `generate_chart` | „Erstelle ein Balkendiagramm aus diesen Verkaufsdaten" | Balken / Linie / Kreis / Fläche / Streuung (Vega-Lite → SVG) |
 | **Formeln** `generate_formula` | „Rendere diese Formel: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, Glyphen eingebettet, keine Schrift nötig) |
-| **Karten** `generate_card` | „Erstelle eine Share-Karte mit einem Hintergrund im **violett-blauen Verlauf**" | OG-/Social-/Zitat-Karten (Satori → PNG, Standard 1200×630, **CJK automatisch unterstützt**, **einfarbig/Verlauf**) |
+| **Karten** `generate_card` | „Erstelle eine Share-Karte mit einem Hintergrund im **violett-blauen Verlauf** und einem 🚀-Emoji" | OG-/Social-/Zitat-Karten (Satori → PNG, Standard 1200×630, **CJK automatisch unterstützt**, **einfarbig/Verlauf**, **Farb-Emoji**) |
 | **Icons** `generate_icon` | „Gib mir ein GitHub-Logo-Icon" | 200k+ Icons auf Abruf (Iconify, `prefix:name`) |
 | **QR-Codes** `generate_qrcode` | „Erstelle einen QR-Code für https://..." | SVG / PNG (rein lokal, null Netzwerk) |
 
