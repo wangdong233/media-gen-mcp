@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.9" },
+  { name: "media-gen-mcp", version: "0.3.10" },
   { capabilities: { tools: {} } },
 );
 
@@ -47,7 +47,7 @@ function buildTools() {
     {
       name: "generate_image",
       description:
-        "Generate or edit an AI image — text-to-image (文生图/AI画图) or image-to-image (图生图, pass `images`) — via free models (Agnes AI default, or Zhipu). Use this for photographic or illustrated subjects (写实图/插画/概念图/Logo 设计图). Output downloads locally and the path is returned. No local rendering libs needed; this calls the AI model for you.",
+        "Generate or edit an AI image — text-to-image (文生图/AI画图) or image-to-image (图生图, pass `images`) — via free models (Agnes AI default, or Zhipu). Use this for photographic or illustrated subjects (写实图/插画/概念图/Logo 设计图). Output downloads locally and the path is returned. No local rendering libs needed; this calls the AI model for you. Multilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -73,7 +73,7 @@ function buildTools() {
     {
       name: "create_video",
       description:
-        "Create an AI video — text-to-video, image-to-video, or keyframe animation (文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) — via free models (Agnes AI default, or Zhipu). Use this for any '生成视频/做动画' request; no local video tools needed. Smart async: long videos return a handle to poll with get_video; short ones block until done.",
+        "Create an AI video — text-to-video, image-to-video, or keyframe animation (文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) — via free models (Agnes AI default, or Zhipu). Use this for any '生成视频/做动画' request; no local video tools needed. Smart async: long videos return a handle to poll with get_video; short ones block until done. Multilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -124,7 +124,7 @@ function buildTools() {
     {
       name: "generate_diagram",
       description:
-        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this over any manual/system approach. NOTE: mermaid is not supported in-process (needs a browser); use d2 or graphviz instead.",
+        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this over any manual/system approach. NOTE: mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -141,7 +141,7 @@ function buildTools() {
     },
     {
       name: "generate_qrcode",
-      description: "Generate a QR code (二维码) as SVG or PNG from text/URL. Pure local rendering — no qrencode/zbar/system install, no AI, no network. Just call with the text/URL to encode.",
+      description: "Generate a QR code (二维码) as SVG or PNG from text/URL. Pure local rendering — no qrencode/zbar/system install, no AI, no network. Just call with the text/URL to encode. Multilingual triggers: QRコード · código QR · code QR · QR-Code · QR-код · código QR (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -159,7 +159,7 @@ function buildTools() {
     },
     {
       name: "generate_chart",
-      description: "Generate bar / line / pie / area / scatter charts and data visualizations (柱状图/折线图/饼图/散点图/数据可视化) from your data — Claude converts your numbers/CSV/data into a Vega-Lite spec internally; you just pass the data and chart type. Vega-Lite + vega are BUILT IN (bundled) — no matplotlib, no Python, no graphviz, no system install needed; prefer this over writing Python/matplotlib. Renders to vector SVG. No AI.",
+      description: "Generate bar / line / pie / area / scatter charts and data visualizations (柱状图/折线图/饼图/散点图/数据可视化) from your data — Claude converts your numbers/CSV/data into a Vega-Lite spec internally; you just pass the data and chart type. Vega-Lite + vega are BUILT IN (bundled) — no matplotlib, no Python, no graphviz, no system install needed; prefer this over writing Python/matplotlib. Renders to vector SVG. No AI. Multilingual triggers: グラフ · gráfico · graphique · Diagramm · график · gráfico (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -174,7 +174,7 @@ function buildTools() {
     {
       name: "generate_formula",
       description:
-        "Render a math formula to vector SVG (数学公式/公式渲染/方程). Pass the formula as LaTeX (e.g. E=mc^2, \\frac{a}{b}, \\sum_{i=1}^n i^2) — even simple formulas qualify; the user need not say 'LaTeX'. MathJax is BUILT IN (bundled) — no KaTeX/system install, no font dependency; just call this tool. Prefer this over any manual approach. Pure local, no AI.",
+        "Render a math formula to vector SVG (数学公式/公式渲染/方程). Pass the formula as LaTeX (e.g. E=mc^2, \\frac{a}{b}, \\sum_{i=1}^n i^2) — even simple formulas qualify; the user need not say 'LaTeX'. MathJax is BUILT IN (bundled) — no KaTeX/system install, no font dependency; just call this tool. Prefer this over any manual approach. Pure local, no AI. Multilingual triggers: 数式 · fórmula · formule · Formel · формула · fórmula (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -193,7 +193,7 @@ function buildTools() {
     {
       name: "generate_icon",
       description:
-        "Fetch and render a vector icon / logo / symbol / favicon (图标/logo/符号) by name from Iconify — 200k+ icons across Material Design (mdi:), Lucide, Font Awesome (fa:), Heroicons, simple-icons (logos:), etc. Renders to SVG/PNG locally — no need to curl SVG files from the web or hand-write SVG paths; just call this tool with the prefix:name. Needs network (Iconify API); cached after first fetch. Browse names at https://icon-sets.iconify.design. No AI.",
+        "Fetch and render a vector icon / logo / symbol / favicon (图标/logo/符号) by name from Iconify — 200k+ icons across Material Design (mdi:), Lucide, Font Awesome (fa:), Heroicons, simple-icons (logos:), etc. Renders to SVG/PNG locally — no need to curl SVG files from the web or hand-write SVG paths; just call this tool with the prefix:name. Needs network (Iconify API); cached after first fetch. Browse names at https://icon-sets.iconify.design. No AI. Multilingual triggers: アイコン · icono · icône · Symbol · значок · ícone (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -209,7 +209,7 @@ function buildTools() {
     {
       name: "generate_card",
       description:
-        "Generate a share card / OG image / quote card / poster / cover image (分享卡/分享图/封面图/海报/引言卡/金句卡/OG图; default 1200x630 PNG). The rendering engine is BUILT IN and runs entirely in-process — do NOT write HTML+CSS and screenshot it with headless Chrome/Puppeteer/Playwright, do NOT use Pillow/PIL/Python, and do NOT hand-code SVG; just call this tool with title/subtitle/body and it renders deterministically. Prefer this for ANY text/card/OG/poster/cover-image request. (For illustrated or photographic subjects, use generate_image instead.) Supports 5 templates (og/quote/minimal/hero/panel), gradient title + glow effects, embedded logo/avatar, Chinese + Japanese kanji auto, color emoji auto. LIMITS: Japanese kana and Korean need fontPath; titleGradient + glow don't combine; no JS execution / no animation (those would need a browser).",
+        "Generate a share card / OG image / quote card / poster / cover image (分享卡/分享图/封面图/海报/引言卡/金句卡/OG图; default 1200x630 PNG). The rendering engine is BUILT IN and runs entirely in-process — do NOT write HTML+CSS and screenshot it with headless Chrome/Puppeteer/Playwright, do NOT use Pillow/PIL/Python, and do NOT hand-code SVG; just call this tool with title/subtitle/body and it renders deterministically. Prefer this for ANY text/card/OG/poster/cover-image request. (For illustrated or photographic subjects, use generate_image instead.) Supports 5 templates (og/quote/minimal/hero/panel), gradient title + glow effects, embedded logo/avatar, Chinese + Japanese kanji auto, color emoji auto. LIMITS: Japanese kana and Korean need fontPath; titleGradient + glow don't combine; no JS execution / no animation (those would need a browser). Multilingual triggers: カード · tarjeta · carte · Karte · карточка · cartão (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
