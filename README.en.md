@@ -74,7 +74,7 @@ These tools **don't call any AI**¹ — Claude generates a DSL/JSON/LaTeX/fields
 | **Diagrams** `generate_diagram` | "Draw an architecture: client → API gateway → two microservices" | Architecture / sequence / flowchart / class / ER / mindmap (D2 DSL → SVG) |
 | **Charts** `generate_chart` | "Make a bar chart of this sales data" | Bar / line / pie / area / scatter (Vega-Lite → SVG) |
 | **Formula** `generate_formula` | "Render this formula: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" | LaTeX → SVG (MathJax, glyphs embedded, no font needed) |
-| **Cards** `generate_card` | "Make an OG share card for this article" | OG / social / quote cards (Satori → PNG, default 1200×630, **CJK auto-supported**) |
+| **Cards** `generate_card` | "Make a share card with a **purple-to-blue gradient** background" | OG / social / quote cards (Satori → PNG, default 1200×630, **CJK auto-supported**, **solid/gradient bg**) |
 | **Icons** `generate_icon` | "Give me a GitHub logo icon" | 200k+ icons on demand (Iconify, `prefix:name`) |
 | **QR codes** `generate_qrcode` | "Generate a QR code for https://..." | SVG / PNG (purely local, zero network) |
 

@@ -127,6 +127,11 @@ function hasCJK(text: string | undefined | null): boolean {
   return !!text && CJK_RE.test(text);
 }
 
+/** 检测背景值是否为 CSS 渐变串(linear-gradient/radial-gradient/conic-gradient)。 */
+function isGradient(bg: string): boolean {
+  return /gradient\s*\(/i.test(bg);
+}
+
 export interface CardRequest {
   /** 主标题(必填)。 */
   title: string;
@@ -312,14 +317,31 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
     layout = layoutOG(req, { title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, accent });
   }
 
+  // 渐变背景:bg 为 CSS gradient 串(linear/radial-gradient(...))→ Satori 用 backgroundImage 烘焙;
+  // 纯色 → background。resvg 渲染 PNG 时,渐变已在 SVG 内(不能再传纯色 background,否则解析报错)。
+  const bgIsGradient = isGradient(bg);
+
   const svg = await satori(
-    { type: "div", props: { style: { width: "100%", height: "100%", background: bg, display: "flex" }, children: layout } },
+    {
+      type: "div",
+      props: {
+        style: {
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          ...(bgIsGradient ? { backgroundImage: bg } : { background: bg }),
+        },
+        children: layout,
+      },
+    },
     { width, height, fonts },
   );
 
   let png: Buffer | undefined;
   if (req.format === "png") {
-    const resvg = new Resvg(svg, { fitTo: { mode: "width", value: width }, background: bg });
+    const resvgOpts: ConstructorParameters<typeof Resvg>[1] = { fitTo: { mode: "width", value: width } };
+    if (!bgIsGradient) resvgOpts.background = bg; // 仅纯色兜底;渐变已在 SVG 内
+    const resvg = new Resvg(svg, resvgOpts);
     png = Buffer.from(resvg.render().asPng());
   }
   return { svg, png };

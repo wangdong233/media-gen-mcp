@@ -220,7 +220,7 @@ function buildTools() {
           template: { type: "string", enum: ["og", "quote", "minimal"], default: "og", description: "Layout template" },
           width: { type: "number", description: "Pixel width (default 1200, OG standard)" },
           height: { type: "number", description: "Pixel height (default 630, OG standard)" },
-          bg: { type: "string", description: "Background color (default #0f172a)" },
+          bg: { type: "string", description: "Background: a solid color (default #0f172a) OR a CSS gradient string, e.g. linear-gradient(135deg, #4f46e5, #06b6d4) / radial-gradient(circle at 30% 30%, #f59e0b, #ef4444)" },
           color: { type: "string", description: "Text color (default #f8fafc)" },
           accent: { type: "string", description: "Accent color (default #6366f1)" },
           fontFamily: { type: "string", description: "Font family from @fontsource (default Inter, Latin only)" },
