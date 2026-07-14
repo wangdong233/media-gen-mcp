@@ -48,7 +48,7 @@ Texto-a-imagen / imagen-a-imagen / texto-a-vídeo / imagen-a-vídeo / animación
 | `generate_diagram` | arquitectura / secuencia / flowchart / clases / ER / mapa mental | DSL **D2** · **Graphviz** (DOT) |
 | `generate_chart` | barras / líneas / circular / área / dispersión | Vega-Lite |
 | `generate_formula` | fórmulas matemáticas LaTeX (glifos incrustados, sin fuente necesaria) | MathJax |
-| `generate_card` | tarjetas OG / compartir / citas (1200×630 por defecto, **CJK/degradado/emoji automáticos**) | Satori + resvg |
+| `generate_card` | tarjetas OG / compartir / citas (1200×630 por defecto; plantillas og/quote/minimal/hero/panel; CJK/fondo degradado/emoji en color automáticos, título en degradado + glow) | Satori + resvg |
 | `generate_icon` | más de 200k iconos vectoriales (`prefix:name`) | Iconify |
 | `generate_qrcode` | códigos QR | qrcode |
 
@@ -161,6 +161,7 @@ Configuración de conexión por provider: `providers.<name>.apiKey` (obligatorio
 **¿Te devuelve un 429?** Lleva integrado un serializador de 62s; aprende automáticamente el rate limit real.
 **¿Las herramientas estructuradas necesitan key?** No. Las 6 herramientas locales funcionan desde el principio; solo la generación con IA necesita una key.
 **¿CJK/emoji/degradado en tarjetas?** Fuente CJK integrada (automática), emojis en color con twemoji (automáticos); pasa un `linear-gradient(...)` CSS a `bg` para un degradado.
+**¿Efectos sofisticados en tarjetas?** `titleGradient` (título en degradado), `glow` (brillo del título), plantilla `hero` (blob de profundidad desenfocado), plantilla `panel` (panel de cristal: border/radius/shadow). Todo determinista, in-process vía Satori — sin navegador.
 **¿No lee la configuración?** Debe estar en `~/.media-gen-mcp/config.json` (npx instala en la caché; la configuración dentro del proyecto no está disponible).
 
 ---

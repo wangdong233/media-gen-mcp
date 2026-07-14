@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.1" },
+  { name: "media-gen-mcp", version: "0.3.2" },
   { capabilities: { tools: {} } },
 );
 
@@ -217,12 +217,15 @@ function buildTools() {
           subtitle: { type: "string", description: "Subtitle / kicker (accent color)" },
           body: { type: "string", description: "Body / description text" },
           footer: { type: "string", description: "Footer (author / date / domain)" },
-          template: { type: "string", enum: ["og", "quote", "minimal"], default: "og", description: "Layout template" },
+          template: { type: "string", enum: ["og", "quote", "minimal", "hero", "panel"], default: "og", description: "Layout template (og=default hierarchy, quote=centered quote, minimal=title+subtitle, hero=big centered showcase, panel=content in a glass panel)" },
           width: { type: "number", description: "Pixel width (default 1200, OG standard)" },
           height: { type: "number", description: "Pixel height (default 630, OG standard)" },
           bg: { type: "string", description: "Background: a solid color (default #0f172a) OR a CSS gradient string, e.g. linear-gradient(135deg, #4f46e5, #06b6d4) / radial-gradient(circle at 30% 30%, #f59e0b, #ef4444)" },
           color: { type: "string", description: "Text color (default #f8fafc)" },
           accent: { type: "string", description: "Accent color (default #6366f1)" },
+          titleGradient: { type: "string", description: "CSS gradient applied to the title text via background-clip:text, e.g. linear-gradient(90deg,#f59e0b,#ef4444)" },
+          glow: { type: "string", description: "Title glow (text-shadow). Pass true (as the string 'true') to derive from accent, or a full text-shadow value like '0 0 40px rgba(245,158,11,.6)'." },
+          blob: { type: "boolean", default: true, description: "hero template only: blurred accent blob behind the title for depth (default true)" },
           fontFamily: { type: "string", description: "Font family from @fontsource (default Inter, Latin only)" },
           fontPath: { type: "string", description: "Local base-font file path (.ttf/.otf/.woff) to override the default Inter; optional (CJK auto-supported via built-in Noto Sans SC)" },
           format: { type: "string", enum: ["svg", "png"], default: "png" },
@@ -478,6 +481,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           bg: optString(a.bg),
           color: optString(a.color),
           accent: optString(a.accent),
+          titleGradient: optString(a.titleGradient),
+          glow: a.glow === true ? true : a.glow === "true" ? true : optString(a.glow),
+          blob: a.blob === false ? false : a.blob === "false" ? false : undefined,
           fontFamily: optString(a.fontFamily),
           fontPath: optString(a.fontPath),
           format,

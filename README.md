@@ -48,7 +48,7 @@
 | `generate_diagram` | 架构 / 时序 / 流程 / 类图 / ER / 脑图 | **D2** DSL · **Graphviz**(DOT) |
 | `generate_chart` | 柱 / 线 / 饼 / 面积 / 散点 | Vega-Lite |
 | `generate_formula` | LaTeX 数学公式(字形内嵌,无需字体) | MathJax |
-| `generate_card` | OG / 分享 / 引言卡片(默认 1200×630,**中文/渐变/emoji 自动**) | Satori + resvg |
+| `generate_card` | OG / 分享 / 引言卡片(默认 1200×630;模板 og/quote/minimal/**hero**/**panel**;**中文/渐变背景/彩色 emoji 自动**、**渐变标题+辉光**) | Satori + resvg |
 | `generate_icon` | 20 万+ 矢量图标(`prefix:name`) | Iconify |
 | `generate_qrcode` | 二维码 | qrcode |
 
@@ -160,7 +160,8 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 **帧数?** 传 `durationSeconds` 自动选(5/10/18s)。Agnes 仅允许 81/121/161/241/441。
 **撞 429?** 内置 62s 串行 + 自动学习真实限流。
 **结构化工具要 Key 吗?** 不要。6 个本地工具装上即用;只 AI 生成需要 Key。
-**卡片中文/emoji/渐变?** 内置 CJK 字体(自动)、twemoji 彩色 emoji(自动)、`bg` 传 CSS `linear-gradient(...)` 即渐变。
+**卡片中文/emoji/渐变?** 内置 CJK 字体(自动)、twemoji 彩色 emoji(自动,**落盘缓存,断网也能用**)、`bg` 传 CSS `linear-gradient(...)` 即渐变背景。
+**卡片酷炫特效?** `titleGradient`(标题渐变文字)、`glow`(标题辉光)、`hero` 模板(模糊光斑纵深)、`panel` 模板(玻璃面板:边框/圆角/阴影)。均 Satori 进程内确定性渲染,无需浏览器。
 **没读到 config?** 必须在 `~/.media-gen-mcp/config.json`(npx 装包到缓存,项目内不可用)。
 
 ---

@@ -48,7 +48,7 @@ Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation
 | `generate_diagram` | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap | **D2**-DSL · **Graphviz** (DOT) |
 | `generate_chart` | Balken / Linie / Kreis / Fläche / Streuung | Vega-Lite |
 | `generate_formula` | LaTeX-Matheformeln (Glyphen eingebettet, keine Schrift nötig) | MathJax |
-| `generate_card` | OG-/Share-/Zitat-Karten (Standard 1200×630, **autom. CJK/Verlauf/Emoji**) | Satori + resvg |
+| `generate_card` | OG-/Share-/Zitat-Karten (Standard 1200×630; Vorlagen og/quote/minimal/hero/panel; autom. CJK/Verlauf-Hintergrund/Farb-Emoji, Verlaufstitel + Glow) | Satori + resvg |
 | `generate_icon` | 200k+ Vektor-Icons (`prefix:name`) | Iconify |
 | `generate_qrcode` | QR-Codes | qrcode |
 
@@ -161,6 +161,7 @@ Verbindungs-Config pro Provider: `providers.<name>.apiKey` (erforderlich), `prov
 **429 bekommen?** 62-Sekunden-Serializer eingebaut; lernt das echte Rate-Limit automatisch.
 **Brauchen strukturierte Tools einen Key?** Nein. Die 6 lokalen Tools funktionieren out of the box; nur die KI-Generierung benötigt einen Key.
 **Karten-CJK/Emoji/Verlauf?** Eingebaute CJK-Schrift (automatisch), twemoji-Farb-Emoji (automatisch); übergeben Sie einen CSS-`linear-gradient(...)` an `bg` für einen Verlauf.
+**Schicke Karten-Effekte?** `titleGradient` (Verlaufstitel), `glow` (Titel-Glow), Vorlage `hero` (verschwommener Tiefen-Blob), Vorlage `panel` (Glas-Panel: border/radius/shadow). Alles deterministisch, in-process via Satori — kein Browser nötig.
 **Config wird nicht gelesen?** Muss unter `~/.media-gen-mcp/config.json` liegen (npx installiert in den Cache; eine Config im Projekt ist nicht verfügbar).
 
 ---

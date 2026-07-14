@@ -48,7 +48,7 @@
 | `generate_diagram` | アーキテクチャ / シーケンス / フローチャート / クラス / ER / マインドマップ | **D2** DSL · **Graphviz** (DOT) |
 | `generate_chart` | 棒 / 折れ線 / 円 / 面積 / 散布 | Vega-Lite |
 | `generate_formula` | LaTeX 数式（グリフ埋め込み、フォント不要） | MathJax |
-| `generate_card` | OG / シェア / 引用カード（デフォルト 1200×630、**CJK/グラデーション/絵文字を自動対応**） | Satori + resvg |
+| `generate_card` | OG / シェア / 引用カード（デフォルト 1200×630、テンプレート og/quote/minimal/hero/panel、CJK/グラデーション背景/カラー絵文字を自動対応、グラデーションタイトル＋グロー） | Satori + resvg |
 | `generate_icon` | 20万種以上のベクターアイコン（`prefix:name`） | Iconify |
 | `generate_qrcode` | QR コード | qrcode |
 
@@ -161,6 +161,7 @@ provider 別の接続 config：`providers.<name>.apiKey`（必須）、`provider
 **429 が出る？** 62秒のシリアライザを内蔵、実際のレートリミットを自動学習します。
 **構造化ツールに key は必要？** いいえ。6つのローカルツールはインストール後すぐ動きます。key が必要なのは AI 生成だけです。
 **カードの CJK/絵文字/グラデーションは？** 内蔵 CJK フォント（自動）、twemoji カラー絵文字（自動）。`bg` に CSS の `linear-gradient(...)` を渡せばグラデーションになります。
+**カードの派手なエフェクトは？** `titleGradient`（グラデーションタイトル）、`glow`（タイトルのグロー）、`hero` テンプレート（ぼかした奥行きブロブ）、`panel` テンプレート（ガラスパネル：border/radius/shadow）。すべて確定的、Satori によりインプロセスで動作 —— ブラウザ不要。
 **config が読み込まれない？** `~/.media-gen-mcp/config.json` に配置する必要があります（npx はキャッシュにインストールされるため、プロジェクト内の config は利用できません）。
 
 ---

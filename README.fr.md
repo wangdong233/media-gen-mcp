@@ -48,7 +48,7 @@ Texte-vers-image / image-vers-image / texte-vers-vidéo / image-vers-vidéo / an
 | `generate_diagram` | architecture / séquence / organigramme / classe / ER / carte heuristique | DSL **D2** · **Graphviz** (DOT) |
 | `generate_chart` | barres / lignes / camembert / aires / nuage de points | Vega-Lite |
 | `generate_formula` | formules mathématiques LaTeX (glyphes intégrés, aucune police requise) | MathJax |
-| `generate_card` | cartes OG / de partage / de citation (défaut 1200×630, **CJK/dégradé/emoji auto**) | Satori + resvg |
+| `generate_card` | cartes OG / de partage / de citation (défaut 1200×630 ; modèles og/quote/minimal/hero/panel ; CJK/fond dégradé/emoji couleur auto, titre en dégradé + glow) | Satori + resvg |
 | `generate_icon` | plus de 200k icônes vectorielles (`prefix:name`) | Iconify |
 | `generate_qrcode` | codes QR | qrcode |
 
@@ -161,6 +161,7 @@ Configuration de connexion par fournisseur : `providers.<name>.apiKey` (requis),
 **Erreur 429 ?** Sérialiseur de 62 s intégré ; apprend automatiquement la vraie limite de débit.
 **Les outils structurés nécessitent-ils une clé ?** Non. Les 6 outils locaux fonctionnent immédiatement ; seule la génération IA nécessite une clé.
 **CJK/emoji/dégradé sur les cartes ?** Police CJK intégrée (auto), emojis couleur twemoji (auto) ; passez un `linear-gradient(...)` CSS à `bg` pour un dégradé.
+**Effets sophistiqués sur les cartes ?** `titleGradient` (titre en dégradé), `glow` (lueur du titre), modèle `hero` (blob de profondeur flouté), modèle `panel` (panneau en verre : border/radius/shadow). Tout déterministe, in-process via Satori — sans navigateur.
 **Configuration non lue ?** Doit se trouver à `~/.media-gen-mcp/config.json` (npx s'installe dans le cache ; la configuration dans le projet est indisponible).
 
 ---

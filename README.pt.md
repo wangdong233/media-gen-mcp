@@ -48,7 +48,7 @@ Texto-para-imagem / imagem-para-imagem / texto-para-vídeo / imagem-para-vídeo 
 | `generate_diagram` | arquitetura / sequência / fluxograma / classes / ER / mapa mental | **D2** DSL · **Graphviz** (DOT) |
 | `generate_chart` | barras / linhas / pizza / área / dispersão | Vega-Lite |
 | `generate_formula` | fórmulas matemáticas em LaTeX (glifos incorporados, sem fonte necessária) | MathJax |
-| `generate_card` | cartões OG / de compartilhamento / de citação (padrão 1200×630, **CJK/gradiente/emoji automáticos**) | Satori + resvg |
+| `generate_card` | cartões OG / de compartilhamento / de citação (padrão 1200×630; templates og/quote/minimal/hero/panel; CJK/fundo gradiente/emoji colorido automáticos, título em gradiente + glow) | Satori + resvg |
 | `generate_icon` | 200k+ ícones vetoriais (`prefix:name`) | Iconify |
 | `generate_qrcode` | códigos QR | qrcode |
 
@@ -161,6 +161,7 @@ Config de conexão por provider: `providers.<name>.apiKey` (obrigatório), `prov
 **Recebeu 429?** Serializador de 62s embutido; aprende automaticamente o rate limit real.
 **As ferramentas estruturadas precisam de chave?** Não. As 6 ferramentas locais funcionam imediatamente; apenas a geração com IA precisa de chave.
 **CJK/emoji/gradiente no cartão?** Fonte CJK embutida (automática), emojis coloridos twemoji (automáticos); passe um `linear-gradient(...)` CSS para `bg` para obter um gradiente.
+**Efeitos sofisticados no cartão?** `titleGradient` (título em gradiente), `glow` (brilho do título), template `hero` (blob de profundidade desfocado), template `panel` (painel de vidro: border/radius/shadow). Tudo determinístico, in-process via Satori — sem navegador.
 **Config não é lido?** Precisa estar em `~/.media-gen-mcp/config.json` (o npx instala no cache; um config dentro do projeto não fica disponível).
 
 ---

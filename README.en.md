@@ -48,7 +48,7 @@ Text-to-image / image-to-image / text-to-video / image-to-video / keyframe anima
 | `generate_diagram` | architecture / sequence / flowchart / class / ER / mindmap | **D2** DSL · **Graphviz** (DOT) |
 | `generate_chart` | bar / line / pie / area / scatter | Vega-Lite |
 | `generate_formula` | LaTeX math formulas (glyphs embedded, no font needed) | MathJax |
-| `generate_card` | OG / share / quote cards (default 1200×630, **auto CJK/gradient/emoji**) | Satori + resvg |
+| `generate_card` | OG / share / quote cards (default 1200×630; templates og/quote/minimal/**hero**/**panel**; **auto CJK/gradient bg/color emoji**, **gradient title + glow**) | Satori + resvg |
 | `generate_icon` | 200k+ vector icons (`prefix:name`) | Iconify |
 | `generate_qrcode` | QR codes | qrcode |
 
@@ -160,7 +160,8 @@ Per-provider connection config: `providers.<name>.apiKey` (required), `providers
 **Frame count?** Pass `durationSeconds` to auto-pick (5/10/18s). Agnes allows only 81/121/161/241/441.
 **Hit 429?** 62s serializer built in; auto-learns the real rate limit.
 **Do structured tools need a key?** No. The 6 local tools work out of the box; only AI generation needs a key.
-**Card CJK/emoji/gradient?** Built-in CJK font (auto), twemoji color emoji (auto); pass a CSS `linear-gradient(...)` to `bg` for a gradient.
+**Card CJK/emoji/gradient?** Built-in CJK font (auto), twemoji color emoji (auto, **disk-cached — works offline once fetched**); pass a CSS `linear-gradient(...)` to `bg` for a gradient.
+**Card fancy effects?** `titleGradient` (gradient title text), `glow` (title glow), `hero` template (blurred depth blob), `panel` template (glass panel: border/radius/shadow). All deterministic, in-process via Satori — no browser needed.
 **Config not read?** Must be at `~/.media-gen-mcp/config.json` (npx installs to cache; in-project config is unavailable).
 
 ---
