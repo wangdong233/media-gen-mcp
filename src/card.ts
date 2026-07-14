@@ -214,6 +214,12 @@ export interface CardRequest {
   blob?: boolean;
   /** quote 模板引号样式:"top"(默认,大引号在文字上方)或 "flank"(左右大引号夹住文字、同行包裹)。 */
   quoteStyle?: "top" | "flank";
+  /** 内嵌图片(logo/avatar/品牌标):URL、data URI 或本地文件路径(.png/.jpg/.webp/.svg)。置于内容顶部。 */
+  logo?: string;
+  /** logo 像素尺寸(边长,默认 88)。 */
+  logoSize?: number;
+  /** logo 是否圆形(avatar 用,默认 false=圆角方形)。 */
+  logoRound?: boolean;
   /** 字体族(默认 Inter,仅 Latin;中文需 fontPath 指向 CJK 字体)。 */
   fontFamily?: string;
   /** 本地字体文件路径(.ttf/.otf/.woff)。 */
@@ -228,15 +234,17 @@ export interface CardRenderOutput {
 }
 
 // Satori VNode(无 React 依赖的对象形式)
-type Node = { type: string; props: { style?: any; children?: any } };
+type Node = { type: string; props: { style?: any; children?: any; src?: string } };
 
 function txt(text: string, style: any): Node {
   return { type: "div", props: { style, children: text } };
 }
 
 /** og 模板:列布局 [内容行(flex:1) + 页脚],内容行 = 竖强调条 + 文本列。纯 flex,无 absolute。 */
-function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; footer: any; accent: string }): Node {
-  const textChildren: Node[] = [opts.title];
+function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string }): Node {
+  const textChildren: Node[] = [];
+  if (opts.logo) textChildren.push(opts.logo);
+  textChildren.push(opts.title);
   if (opts.sub) textChildren.push(opts.sub);
   if (opts.body) textChildren.push(opts.body);
   const textColumn: Node = {
@@ -290,8 +298,9 @@ function layoutOG(req: CardRequest, opts: { title: any; sub: any; body: any; foo
 }
 
 /** quote 模板:居中引言。quoteStyle:"top"(默认,大引号在文字上方)或 "flank"(左右大引号夹住文字、同行 baseline 对齐)。title(必填)作引言,body 可选副行,footer 作署名。 */
-function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: any; accent: string; color: string; fontStack: string }): Node {
+function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: any; logo: any; accent: string; color: string; fontStack: string }): Node {
   const inner: Node[] = [];
+  if (opts.logo) inner.push(opts.logo);
   if (req.quoteStyle === "flank") {
     // 左右大引号夹住引言,同行 baseline 对齐(引号比文字大,形成包裹)
     inner.push({
@@ -336,8 +345,10 @@ function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: an
 }
 
 /** minimal 模板:仅居中标题 + 副标题。 */
-function layoutMinimal(opts: { title: any; sub: any }): Node {
-  const inner: Node[] = [opts.title];
+function layoutMinimal(opts: { title: any; sub: any; logo: any }): Node {
+  const inner: Node[] = [];
+  if (opts.logo) inner.push(opts.logo);
+  inner.push(opts.title);
   if (opts.sub) inner.push(opts.sub);
   return {
     type: "div",
@@ -358,8 +369,10 @@ function layoutMinimal(opts: { title: any; sub: any }): Node {
 }
 
 /** hero 模板:居中大字标题(+可选模糊光斑纵深感)+ 副标题 + 可选页脚(credit/署名)。展示型。 */
-function layoutHero(opts: { title: any; sub: any; footer: any; accent: string; blob: boolean }): Node {
-  const contentChildren: Node[] = [opts.title];
+function layoutHero(opts: { title: any; sub: any; footer: any; logo: any; accent: string; blob: boolean }): Node {
+  const contentChildren: Node[] = [];
+  if (opts.logo) contentChildren.push(opts.logo);
+  contentChildren.push(opts.title);
   if (opts.sub) contentChildren.push(opts.sub);
   if (opts.footer) {
     // credit/署名:副标题下方,小字 muted,与展示主区分开
@@ -420,8 +433,10 @@ function layoutHero(opts: { title: any; sub: any; footer: any; accent: string; b
 }
 
 /** panel 模板:标题/副标题/正文置于玻璃面板(border+圆角+阴影+半透明)内,浮于背景。 */
-function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; accent: string }): Node {
-  const inner: Node[] = [opts.title];
+function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string }): Node {
+  const inner: Node[] = [];
+  if (opts.logo) inner.push(opts.logo);
+  inner.push(opts.title);
   if (opts.sub) inner.push(opts.sub);
   if (opts.body) inner.push(opts.body);
   const panel: Node = {
@@ -463,6 +478,24 @@ function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; accen
       children: outerChildren,
     },
   };
+}
+
+/** 图片源解析:URL/data URI 原样;本地文件路径 → base64 data URI(按扩展名定 mime)。失败返回 undefined。 */
+async function resolveImageSrc(src: string): Promise<string | undefined> {
+  if (/^https?:\/\//i.test(src) || src.startsWith("data:")) return src;
+  try {
+    const buf = await fs.readFile(src);
+    const ext = path.extname(src).toLowerCase();
+    const mime =
+      ext === ".svg" ? "image/svg+xml"
+      : ext === ".png" ? "image/png"
+      : ext === ".gif" ? "image/gif"
+      : ext === ".webp" ? "image/webp"
+      : "image/jpeg";
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
@@ -532,17 +565,30 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   const bodyNode = req.body ? txt(req.body, { fontFamily: fontStack, fontSize: 32, color: muted, lineHeight: 1.4 }) : null;
   const footerNode = req.footer ? txt(req.footer, { fontFamily: fontStack, fontSize: 28, color: muted }) : null;
 
+  // logo:URL/data URI/本地路径 → Satori <img>(置于内容顶部)
+  let logoNode: Node | null = null;
+  if (typeof req.logo === "string" && req.logo.trim()) {
+    const logoSrc = await resolveImageSrc(req.logo.trim());
+    if (logoSrc) {
+      const ls = req.logoSize && req.logoSize > 0 ? Math.floor(req.logoSize) : 88;
+      logoNode = {
+        type: "img",
+        props: { src: logoSrc, style: { width: ls, height: ls, borderRadius: req.logoRound ? ls / 2 : 20 } },
+      };
+    }
+  }
+
   let layout: Node;
   if (template === "quote") {
-    layout = layoutQuote(req, { title: titleNode, body: bodyNode, footer: footerNode, accent, color, fontStack });
+    layout = layoutQuote(req, { title: titleNode, body: bodyNode, footer: footerNode, logo: logoNode, accent, color, fontStack });
   } else if (template === "minimal") {
-    layout = layoutMinimal({ title: titleNode, sub: subNode });
+    layout = layoutMinimal({ title: titleNode, sub: subNode, logo: logoNode });
   } else if (template === "hero") {
-    layout = layoutHero({ title: titleNode, sub: subNode, footer: footerNode, accent, blob: req.blob !== false });
+    layout = layoutHero({ title: titleNode, sub: subNode, footer: footerNode, logo: logoNode, accent, blob: req.blob !== false });
   } else if (template === "panel") {
-    layout = layoutPanel({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, accent });
+    layout = layoutPanel({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent });
   } else {
-    layout = layoutOG(req, { title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, accent });
+    layout = layoutOG(req, { title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent });
   }
 
   // 渐变背景:bg 为 CSS gradient 串(linear/radial-gradient(...))→ Satori 用 backgroundImage 烘焙;

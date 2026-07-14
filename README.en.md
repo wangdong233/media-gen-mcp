@@ -161,7 +161,7 @@ Per-provider connection config: `providers.<name>.apiKey` (required), `providers
 **Hit 429?** 62s serializer built in; auto-learns the real rate limit.
 **Do structured tools need a key?** No. The 6 local tools work out of the box; only AI generation needs a key.
 **Card CJK/emoji/gradient?** Built-in CJK font (auto), twemoji color emoji (auto, **disk-cached — works offline once fetched**); pass a CSS `linear-gradient(...)` to `bg` for a gradient.
-**Card fancy effects?** `titleGradient` (gradient title text), `glow` (title glow), `hero` template (blurred depth blob), `panel` template (glass panel: border/radius/shadow). All deterministic, in-process via Satori — no browser needed.
+**Card fancy effects?** `titleGradient` (gradient title text), `glow` (title glow), `hero` template (blurred depth blob), `panel` template (glass panel: border/radius/shadow), `quoteStyle:"flank"` (big quotes wrapping text inline), `logo`/`logoRound` (embedded logo / circular avatar). All deterministic, in-process via Satori — no browser needed.
 **Config not read?** Must be at `~/.media-gen-mcp/config.json` (npx installs to cache; in-project config is unavailable).
 
 ---

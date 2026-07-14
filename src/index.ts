@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.5" },
+  { name: "media-gen-mcp", version: "0.3.6" },
   { capabilities: { tools: {} } },
 );
 
@@ -209,7 +209,7 @@ function buildTools() {
     {
       name: "generate_card",
       description:
-        "Generate a text card / OG image / social share card (default 1200x630 PNG) from structured fields via Satori + resvg. No AI. Useful for blog OG images, quote cards, share cards. Default font Inter (Latin); CJK (Chinese/Japanese/Korean) is built-in (auto-detected, Noto Sans SC fallback, offline). Supports solid or CSS-gradient backgrounds, and renders emoji in color (twemoji, auto). Default font fetch + emoji need network (cached); pass fontPath to override the base font fully offline.",
+        "Generate a text card / OG image / share / quote card (default 1200x630 PNG) via Satori (CSS flexbox engine) + resvg — deterministic, no AI, no browser. CAPABILITIES: 5 templates (og=left hierarchy, quote=centered quote with quoteStyle top/flank, minimal=bare, hero=big showcase + depth blob, panel=glass panel); effects titleGradient (gradient title text), glow (title text-shadow), solid or CSS-gradient bg; rich flexbox typography (mixed font sizes, flanking, shadows); embedded logo/avatar image; built-in CJK (auto) + color emoji (auto). LIMITS: no JavaScript execution and no animation — for those, use HTML + a browser. Pass fontPath for full-offline base font. Use this for cards/OG/share/quote images; use generate_image for illustrated/photographic subjects.",
       inputSchema: {
         type: "object",
         properties: {
@@ -227,6 +227,9 @@ function buildTools() {
           glow: { type: "string", description: "Title glow (text-shadow). Pass true (as the string 'true') to derive from accent, or a full text-shadow value like '0 0 40px rgba(245,158,11,.6)'." },
           blob: { type: "boolean", default: true, description: "hero template only: blurred accent blob behind the title for depth (default true)" },
           quoteStyle: { type: "string", enum: ["top", "flank"], default: "top", description: "quote template only: 'top' = big quote mark above the text (default); 'flank' = large quote marks flank the text left/right on the same line, wrapping it" },
+          logo: { type: "string", description: "Embedded image (brand logo / avatar): a URL, data URI, or local file path (.png/.jpg/.webp/.svg). Placed at the top of the card content." },
+          logoSize: { type: "number", description: "Logo pixel size (square edge), default 88" },
+          logoRound: { type: "boolean", default: false, description: "Logo circular (for avatars); default false = rounded square" },
           fontFamily: { type: "string", description: "Font family from @fontsource (default Inter, Latin only)" },
           fontPath: { type: "string", description: "Local base-font file path (.ttf/.otf/.woff) to override the default Inter; optional (CJK auto-supported via built-in Noto Sans SC)" },
           format: { type: "string", enum: ["svg", "png"], default: "png" },
@@ -486,6 +489,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           glow: a.glow === true ? true : a.glow === "true" ? true : optString(a.glow),
           blob: a.blob === false ? false : a.blob === "false" ? false : undefined,
           quoteStyle: optString(a.quoteStyle) as any,
+          logo: optString(a.logo),
+          logoSize: optNumber(a.logoSize),
+          logoRound: a.logoRound === true || a.logoRound === "true",
           fontFamily: optString(a.fontFamily),
           fontPath: optString(a.fontPath),
           format,
