@@ -35,7 +35,7 @@ import { renderSvg } from "./render-svg.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.4.5" },
+  { name: "media-gen-mcp", version: "0.4.6" },
   { capabilities: { tools: {} } },
 );
 
@@ -194,17 +194,18 @@ function buildTools() {
     {
       name: "generate_icon",
       description:
-        "Fetch and render a vector icon / logo / symbol / favicon (图标/logo/符号) by name from Iconify — 200k+ icons across Material Design (mdi:), Lucide, Font Awesome (fa:), Heroicons, simple-icons (logos:), etc. Renders to SVG/PNG locally — no need to curl SVG files from the web or hand-write SVG paths; just call this tool with the prefix:name. Needs network (Iconify API); cached after first fetch. Browse names at https://icon-sets.iconify.design. No AI. Multilingual triggers: アイコン · icono · icône · Symbol · значок · ícone (ja/es/fr/de/ru/pt).",
+        "Fetch and render a vector icon / logo / symbol / favicon (图标/logo/符号) from Iconify — 200k+ icons. Renders to SVG/PNG locally. Needs network (Iconify API); cached after first fetch. Browse at https://icon-sets.iconify.design. No AI. Multilingual triggers: アイコン · icono · icône · Symbol · значок · ícone (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
-          name: { type: "string", description: "Icon identifier in Iconify format: prefix:name (colon required, NOT hyphen/filename). Examples: mdi:home, logos:github, lucide:check-circle, fa-brands:twitter. Prefix = icon set (mdi=Material Design, logos=brand logos, lucide=Lucide, fa-solid/fa-brands=Font Awesome). Browse at https://icon-sets.iconify.design. WRONG: 'anthropic-logo'; RIGHT: 'logos:anthropic'." },
+          icon: { type: "string", description: "Iconify icon ID, format: SET:NAME. Common sets: mdi (Material Design), lucide (Lucide), logos (brand logos), fa-solid / fa-brands (Font Awesome). Examples: mdi:home, lucide:gem, logos:github, fa-brands:twitter. Browse all at https://icon-sets.iconify.design" },
           size: { type: "number", description: "Pixel size (square), default 128" },
           color: { type: "string", description: "Foreground color (default currentColor; PNG defaults to black)" },
           format: { type: "string", enum: ["svg", "png"], default: "svg" },
+          name: { type: "string", description: "Output filename (without extension); defaults to sanitized icon ID" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
-        required: ["name"],
+        required: ["icon"],
       },
     },
     {
@@ -474,17 +475,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
 
       case "generate_icon": {
-        const iconName = requireString(a.name, "name");
+        const iconId = requireString(a.icon ?? a.name, "icon");
         const outDir = resolveOutDir(a.outDir);
         const format: "svg" | "png" = a.format === "png" ? "png" : "svg";
         const rendered = await renderIcon({
-          name: iconName,
+          name: iconId,
           size: optNumber(a.size),
           color: optString(a.color),
           format,
         });
-        // 输出文件名由图标名派生("mdi:home"→"mdi-home");writeLocalRender 再做 basename 清洗
-        const outName = iconName.replace(/[^a-zA-Z0-9._-]+/g, "-");
+        const outName = optString(a.name) ?? iconId.replace(/[^a-zA-Z0-9._-]+/g, "-");
         const fp = await writeLocalRender(outDir, "icon", outName, format, rendered);
         return ok({ format, local_path: fp });
       }
