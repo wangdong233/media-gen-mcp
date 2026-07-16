@@ -30,11 +30,12 @@ import { renderChart } from "./chart.js";
 import { renderFormula } from "./formula.js";
 import { renderIcon } from "./icon.js";
 import { renderCard } from "./card.js";
+import { renderSvg } from "./render-svg.js";
 
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.18" },
+  { name: "media-gen-mcp", version: "0.4.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -237,6 +238,24 @@ function buildTools() {
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
         required: ["title"],
+      },
+    },
+    {
+      name: "render_svg",
+      description:
+        "Render SVG source to high-quality PNG or SVG. Dual backend: resvg (92% filter fidelity, in-process, lightweight) or Chrome (100% filter fidelity, needs system Chrome/Edge). AUTO-selects: if SVG contains <filter>/<feGaussianBlur>/<feTurbulence> AND Chrome is available → Chrome; else resvg. Use this for '酷炫/霓虹/科技感' graphics with glow/blur/depth that D2 cannot produce — write the SVG (with feGaussianBlur, radial gradients, etc.) and this tool renders it. No AI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          svg: { type: "string", description: "SVG source code (XML string starting with <svg). Can include feGaussianBlur, feMerge, gradients, patterns — all SVG filter primitives supported." },
+          format: { type: "string", enum: ["svg", "png"], default: "png", description: "Output format (png = rasterized; svg = pass-through)" },
+          width: { type: "number", description: "Target pixel width for PNG (default: auto-detect from SVG viewBox/width)" },
+          backend: { type: "string", enum: ["auto", "resvg", "chrome"], default: "auto", description: "Rendering backend: 'auto' = detect filters + Chrome availability; 'resvg' = force lightweight (92%); 'chrome' = force Chrome (100%, needs Chrome installed)" },
+          scale: { type: "number", description: "Retina scale factor for Chrome backend (default 2; only affects Chrome renders)" },
+          name: { type: "string", description: "Output filename (without extension)" },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["svg"],
       },
     },
   ];
@@ -498,6 +517,30 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         const fp = await writeLocalRender(outDir, "card", optString(a.name), format, rendered);
         return ok({ format, local_path: fp });
+      }
+
+      case "render_svg": {
+        const svg = requireString(a.svg, "svg");
+        const outDir = resolveOutDir(a.outDir);
+        const format: "svg" | "png" = a.format === "svg" ? "svg" : "png";
+        const rendered = await renderSvg({
+          svg,
+          format,
+          width: optNumber(a.width),
+          backend: optString(a.backend) as any,
+          scale: optNumber(a.scale),
+        });
+        await fs.mkdir(outDir, { recursive: true });
+        const safeName = path.basename(a.name ?? `svg_${Date.now().toString(36)}`);
+        const ext = format === "png" ? ".png" : ".svg";
+        const fp = path.join(outDir, safeName + ext);
+        if (format === "png") {
+          if (!rendered.png) throw new Error("render_svg produced no PNG");
+          await fs.writeFile(fp, rendered.png);
+        } else {
+          await fs.writeFile(fp, rendered.svg, "utf-8");
+        }
+        return ok({ format, backend: rendered.backendUsed, local_path: fp });
       }
 
       default:
