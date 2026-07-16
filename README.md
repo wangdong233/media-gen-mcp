@@ -2,200 +2,153 @@
 
 # media-gen-mcp
 
+[![npm](https://img.shields.io/npm/v/media-gen-mcp-server?style=flat-square&color=6f42c1)](https://www.npmjs.com/package/media-gen-mcp-server)
 [![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-获取免费-key)
-[![Version](https://img.shields.io/badge/version-0.4.6-6f42c1?style=flat-square)](https://www.npmjs.com/package/media-gen-mcp-server)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#license)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**Claude Code 的全能生图 MCP —— AI 出图 + 本地结构化绘图,一个 server 全包**
-
-文生图 / 图生图 / 文生视频 / 图生视频 / 关键帧动画 · 结构图 / 图表 / 公式 / 卡片 / 图标 / 二维码 / **酷炫 SVG 渲染**
-
-[English](README.en.md) | **简体中文** | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
+**给 Claude Code 装上"出图超能力"——一句话生成图片 / 视频 / 图表 / 卡片 / 二维码**
 
 </div>
 
 ---
 
-## ✨ 特点
+## 你能用它做什么?
 
-- 🎨 **AI 出图全免费**:文生图、图生图、文生视频、图生视频、关键帧动画——借 **Agnes AI + 智谱** 的免费模型,零成本。
-- 📐 **结构化本地绘图,确定性**:结构图、数据图表、数学公式、分享卡片、矢量图标、二维码——**SVG 矢量高清**,不调用 AI、可无限放大、文字清晰、内容可控。
-- 🧠 **一个心智模型**:用户只说"生成一张图",Claude 自动判别走 AI 还是本地引擎、自动生成对应 DSL/JSON/LaTeX,**步骤零增多**。
-- 🌏 **开箱即用的细节**:卡片**自动支持中文**(内置 Noto Sans SC 离线)、**纯色/渐变背景**、**彩色 emoji**;结构图支持 **D2 + Graphviz** 双引擎;酷炫 SVG 图(feGaussianBlur 辉光/渐变/景深)自动走 **Chrome 高保真渲染**。
-- 🔌 **可插拔**:provider 与渲染引擎皆可扩展,新增零改工具层;按模态默认路由 + 限流自学习。
-- 🆓 **结构化工具免 Key**:`claude mcp add` 装上即可用 7 个本地工具,**不配 AI Key 也能画图/图表/卡片/二维码**。
-- 🌐 8 语言 README · MIT · Node ≥18
+装上后,在 Claude Code 里**说一句话**,就能:
 
----
-
-## 🛠️ 11 个工具一览
-
-### 🤖 AI 生成(在线 · 免费)
-
-| 工具 | 能力 |
+| 你说 | 你得到 |
 |---|---|
-| `generate_image` | **文生图** / **图生图**(参考图 → 新图) |
-| `create_video` | **文生视频** / **图生视频** / **关键帧动画**(智能同步/异步) |
-| `get_video` | 轮询 + 下载视频任务 |
-| `list_models` | 列各 provider 模型与视频约束 |
+| "生成一张橙猫武侠写实图" | 🖼️ AI 生成的写实图片 |
+| "生成 5 秒海边视频" | 🎬 AI 生成的短视频 |
+| "画个架构图:客户端 → API 网关 → 两个微服务" | 📐 清晰的矢量架构图 |
+| "把这组销量数据画成柱状图" | 📊 数据可视化图表 |
+| "渲染这个公式 `E=mc^2`" | ➗ 高清数学公式图 |
+| "做张带 🚀 emoji 的渐变分享卡片" | 🎴 OG / 社交分享图(中文自动) |
+| "给我一个 GitHub logo" | 🏷️ 矢量图标 |
+| "生成一个二维码" | ▪️ QR 码 |
+| "画个酷炫暗黑科技感架构图,要辉光" | ✨ 高保真 Chrome 渲染图 |
 
-### 📐 结构化渲染(本地 · 确定性 · 大多免 Key)
-
-| 工具 | 产出 | 引擎 |
-|---|---|---|
-| `generate_diagram` | 架构 / 时序 / 流程 / 类图 / ER / 脑图 | **D2** DSL · **Graphviz**(DOT) |
-| `generate_chart` | 柱 / 线 / 饼 / 面积 / 散点 | Vega-Lite |
-| `generate_formula` | LaTeX 数学公式(字形内嵌,无需字体) | MathJax |
-| `generate_card` | OG / 分享 / 引言卡片(默认 1200×630;模板 og/quote/minimal/**hero**/**panel**;**中文/渐变背景/彩色 emoji 自动**、**渐变标题+辉光**) | Satori + resvg |
-| `generate_icon` | 20 万+ 矢量图标(`icon: "mdi:home"` 格式) | Iconify |
-| `generate_qrcode` | 二维码 | qrcode |
-| `render_svg` | **酷炫 SVG → 高质量 PNG**(自动选 Chrome 100%/resvg 92%) | Chrome / resvg |
-
-> 7 个结构化工具:**4 个完全离线**(diagram / chart / formula / qrcode)。`render_svg` 无滤镜时用 resvg(离线),有滤镜时自动走 Chrome(需系统 Chrome)。`generate_card` 的默认 Latin 字体(Inter)首次从 CDN 取并缓存到 `~/.media-gen-mcp/fonts/`(之后离线,或传 `fontPath` 立即离线),CJK 字体(Noto Sans SC)已**内置离线**;但卡片 **emoji**(twemoji)与 `generate_icon`(Iconify)**需联网**(仅缓存,未内置)。AI 生成工具始终在线。
+**全部只需说一句话。** Claude 自动选方法、自动生成代码、自动出图。你不需要学任何工具名或参数。
 
 ---
 
-## 🚀 快速开始
+## 为什么用它?
 
-### ① 获取免费 Key(用 AI 生成才需要;只画结构图可跳过)
+- 🆓 **全免费**——AI 生图生视频走免费模型,结构化绘图完全本地
+- 🧠 **零学习**——不用记工具名,说人话就行
+- 📐 **确定性出图**——架构图/图表/公式/卡片,同一输入永远同一输出,内容可控
+- 🇨🇳 **中文友好**——卡片自动渲染中文(内置字体);智谱模型中文原生
+- 🔌 **不用装别的**——所有渲染引擎(D2/Graphviz/Vega/MathJax)都打包在内,不需要系统装 d2/dot/matplotlib
+- 🌐 8 语言文档
 
-到下面任一家(或都)注册,拿一个免费 API Key:
+---
 
-| Provider | 免费 | 申请 |
-|---|---|---|
-| **Agnes AI**(默认) | 文生图 + 文生视频 全免费 | https://platform.agnes-ai.com/ → 注册 → API Keys |
-| **智谱 BigModel**(可选,4K / 中文) | cogview-3-flash 图 + cogvideox-flash 视频 永久免费 | https://bigmodel.cn/usercenter/proj-mgmt/apikeys → 实名 → 创建 Key |
+## 30 秒接入
 
-> 详细图文步骤:[doc/Agnes 开通指引](doc/Agnes%20开通指引.md) · [doc/Zhipu 开通指引](doc/Zhipu%20开通指引.md)
-
-### ② 配置(一次性)
-
-新建 `~/.media-gen-mcp/config.json`,填 Key:
-
-```json
-{
-  "providers": {
-    "agnes": { "apiKey": "sk-你的agnes-key" },
-    "zhipu": { "apiKey": "你的智谱-key" }
-  }
-}
-```
-
-只配 agnes 也行(删掉 zhipu 那行)。不填 `models` 用内置默认模型即可。
-
-### ③ 接入 Claude Code
-
+**① 装上**(只需一行):
 ```bash
 claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
-接入命令**不带 Key**(Key 在上面的 config 里)。`/mcp` 看到 `media-gen-mcp ✓ Connected` 即成功。
+**② 说一句话**——在 Claude Code 里说"画个架构图"或"做张卡片"就行。
+
+**就这样。** 画架构图/图表/公式/卡片/二维码**不需要任何 Key**,装上就能用。
+
+> **想用 AI 生图/视频?** 多配一步 Key(免费):
+> 新建 `~/.media-gen-mcp/config.json`:
+> ```json
+> { "providers": { "agnes": { "apiKey": "sk-你的key" } } }
+> ```
+> 到 https://platform.agnes-ai.com/ 注册拿免费 Key。详见 [开通指引](doc/Agnes%20开通指引.md)。
 
 ---
 
-## 💬 怎么用
+## 能力详解
 
-在 Claude Code 里直接说,**自动路由**,无需记工具名:
+### 🤖 AI 生成(免费模型 · 在线)
 
-**AI 生成:**
+用 Agnes AI 或智谱的免费模型:
+- **文生图 / 图生图**——写实、插画、概念图
+- **文生视频 / 图生视频 / 关键帧动画**——智能异步(长视频后台生成,完成通知)
+- 指定厂商/模型:"用**智谱 cogview-4** 画一张" / "用 **agnes** 生成视频"
 
-| 场景 | 怎么说 |
-|---|---|
-| 默认 | "生成一张橙猫写实图" / "生成 5 秒海边视频" |
-| 指定厂商 | "用**智谱**画张图" / "用 **agnes** 生成视频" |
-| 指定模型 | "用 **cogview-4** 画一张" / "用 **agnes-video-v2.0** 生成" |
-| 图生图 / 图生视频 | "把这张图转水彩" / "把这张图变成视频" |
-| 关键帧动画 | "这两张图做个过渡动画" |
-
-**结构化绘图:**
-
-| 场景 | 怎么说 |
-|---|---|
-| 结构图 | "画一个架构图:客户端 → API 网关 → 两个微服务"(D2)或 "用 DOT 画个依赖图"(Graphviz) |
-| 数据图表 | "把这组销量数据画成柱状图" |
-| 公式 | "渲染这个公式:`\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" |
-| 分享卡片 | "给这篇文章生成一张**紫蓝渐变**、带 🚀 emoji 的 OG 卡片" |
-| 图标 | "给我一个 GitHub 的 logo 图标" |
-| 二维码 | "生成一个指向 https://... 的 QR 码" |
-| **酷炫 SVG** | "画个**酷炫暗黑科技感架构图**,要辉光、渐变、景深"(D2 做不到的 feGaussianBlur 滤镜效果→ Claude 手写 SVG → `render_svg` → Chrome 渲染) |
-
-> 指定厂商/模型只影响本次调用,**不改 config**。结构图用 [D2 语法](https://d2lang.com)/[Graphviz DOT](https://graphviz.org/docs/dot/)、图表用 [Vega-Lite](https://vega.github.io/vega-lite)、公式用 [LaTeX](https://www.latex-project.org)、图标浏览 [icon-sets.iconify.design](https://icon-sets.iconify.design)——Claude 自动生成源码。
-
-> **Mermaid**:本 server 的 `generate_diagram` 支持 **D2 与 Graphviz**;Mermaid 进程内渲染需浏览器/Chromium(不适合确定性 MCP),故未支持——用 D2(覆盖 flowchart/sequence/class/er/mindmap)或 Graphviz 替代。
-
----
-
-## 📡 Providers
+<details>
+<summary>📖 Provider 对比</summary>
 
 | | 默认 | 图像(免费) | 视频(免费) | 特点 |
 |---|:---:|---|---|---|
-| **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | 全免费、写实质感、原生音画 |
-| **zhipu**(可选) | | cogview-3-flash | cogvideox-flash | 4K/60fps、中文原生、国内合规 |
+| **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | 全免费、写实质感 |
+| **zhipu** | | cogview-3-flash | cogvideox-flash | 4K/60fps、中文原生 |
 
-切换:`defaultProvider: "zhipu"`,或按模态 `defaultImageProvider`/`defaultVideoProvider`,或单次工具传 `provider`。不知道选谁?见 [横评](doc/Agnes_vs_Zhipu_横评.md)。
+切换:`defaultProvider: "zhipu"`,或按模态 `defaultImageProvider`/`defaultVideoProvider`。见 [横评](doc/Agnes_vs_Zhipu_横评.md)。
+</details>
 
----
+### 📐 结构化绘图(本地 · 确定性 · 免 Key)
 
-## ⚙️ 配置项(进阶,一般用不到)
+以下能力**不调用 AI、不联网、确定性出图**(SVG 矢量高清):
 
-**默认 provider 三级回退**(工具参数 > 按模态 > 全局):
-
-| 字段 | 默认 | 说明 |
+| 能力 | 引擎(全部内置,不需要系统安装) | 说明 |
 |---|---|---|
-| `defaultProvider` | `agnes` | 全局默认(最终回退) |
-| `defaultImageProvider` | 同上 | 图像模态默认(`generate_image`) |
-| `defaultVideoProvider` | 同上 | 视频模态默认(`create_video`/`get_video`) |
+| **结构图** | D2 + Graphviz | 架构/流程/时序/类图/ER/脑图,自动布局 |
+| **数据图表** | Vega-Lite | 柱/线/饼/面积/散点,Claude 自动从数据生成 |
+| **数学公式** | MathJax | LaTeX → SVG,字形内嵌 |
+| **分享卡片** | Satori | OG/海报/引言卡(中文+渐变+emoji+辉光自动) |
+| **二维码** | qrcode | URL/文本 → SVG/PNG |
+| **矢量图标** | Iconify | 20 万+ 图标(联网取,缓存) |
+| **酷炫 SVG** | Chrome / resvg | 手写 SVG(辉光/滤镜/景深)→ Chrome 高保真渲染 |
 
-例如 `defaultProvider: "agnes"` + `defaultVideoProvider: "zhipu"` → 图走 agnes、视频走智谱。
+<details>
+<summary>📖 卡片能做什么?</summary>
 
-各 provider 连接配置:`providers.<name>.apiKey`(必填)、`providers.<name>.models.{image,video}.default`、`outDir`(输出目录,默认 `会话目录/output`)。
+- 5 种模板:og(左对齐层次)/ quote(引言,引号可左右夹)/ minimal(极简)/ hero(大字展示+光斑)/ panel(玻璃面板)
+- 渐变标题文字 + 辉光 + 模糊光斑纵深
+- 内嵌 logo / 圆形 avatar
+- 自动中文(Noto Sans SC 离线)+ 自动彩色 emoji(落盘缓存,断网可用)
+- 自定义尺寸(默认 1200×630 OG 标准)
+</details>
 
-> 限流自适应(rateLimits / rateLimitTtlMs,429 自动学习真实限流 + TTL 过期降级)等高级字段详见 [doc/](doc/)。
+<details>
+<summary>📖 酷炫 SVG 渲染是什么?</summary>
+
+D2 引擎不支持 SVG 滤镜(feGaussianBlur 辉光),所以当你想要"酷炫暗黑科技感、辉光、景深"这种效果时:
+1. Claude 手写 SVG(带 feGaussianBlur 等滤镜)
+2. 调 `render_svg` 工具
+3. 工具自动选后端:有 `<filter>` + 系统 Chrome 可用 → Chrome(100% 滤镜保真);否则 → resvg(92%,轻量)
+</details>
 
 ---
 
-## ❓ FAQ
+## ❓ 常见问题
 
-**视频慢?** 3–18s,生成约 1–3 分钟。省略 `wait` 自动异步(预估 >60s 返回 handle,完成通知)。
-**帧数?** 传 `durationSeconds` 自动选(5/10/18s)。Agnes 仅允许 81/121/161/241/441。
+**视频慢?** 3–18s,约 1–3 分钟。省略 `wait` 自动异步。
 **撞 429?** 内置 62s 串行 + 自动学习真实限流。
-**结构化工具要 Key 吗?** 不要。7 个本地工具装上即用;只 AI 生成需要 Key。
-**卡片中文/emoji/渐变?** 内置 CJK 字体(自动)、twemoji 彩色 emoji(自动,**落盘缓存,断网也能用**)、`bg` 传 CSS `linear-gradient(...)` 即渐变背景。
-**酷炫 SVG 图?** Claude 手写 SVG(带 feGaussianBlur 辉光/渐变/景深)→ 调 `render_svg` → 自动选 Chrome(100% 滤镜保真)或 resvg(92%,轻量)。D2 做不到的发光/景深效果用这条路径。
-**卡片酷炫特效?** `titleGradient`(标题渐变文字)、`glow`(标题辉光)、`hero` 模板(模糊光斑纵深)、`panel` 模板(玻璃面板:边框/圆角/阴影)、`quoteStyle:"flank"`(左右大引号夹文字)、`logo`/`logoRound`(内嵌 logo / 圆形 avatar)。均 Satori 进程内确定性渲染,无需浏览器。
-**没读到 config?** 必须在 `~/.media-gen-mcp/config.json`(npx 装包到缓存,项目内不可用)。
-**`npx` 连不上 / 启动慢?** 多半是 npx 缓存损坏或网络受限。兜底:全局安装后直接用本地二进制(启动零联网、最稳):
-```bash
-npm i -g media-gen-mcp-server
-claude mcp remove media-gen-mcp
-claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"
-```
-(全局装的代价:更新需手动 `npm i -g media-gen-mcp-server`;npx 则自动跟最新。健康网络用 npx 即可。)
+**画图/图表要 Key?** 不要。装上就能画。
+**卡片能做中文?** 能。内置中文字体,自动检测渲染,无需配置。
+**Mermaid 支持吗?** 不支持(需浏览器)。用 D2 替代(覆盖流程/时序/类图/ER/脑图)。
+**npx 连不上?** 全局安装兜底:`npm i -g media-gen-mcp-server` → `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`
 
 ---
 
-## 🏗️ 架构 + 文档
+## 📚 更多
 
-- **Provider 可插拔**(agnes + zhipu,新增 provider 零改工具层);**引擎可插拔**(DiagramEngine 与 MediaProvider 并行,互不污染)。
-- 更多见 [doc/](doc/):[Agnes 开通指引](doc/Agnes%20开通指引.md) · [Zhipu 开通指引](doc/Zhipu%20开通指引.md) · [Agnes vs 智谱 横评](doc/Agnes_vs_Zhipu_横评.md)
+- [架构要求清单](doc/架构要求清单.md)——项目架构规范(持续维护)
+- [Agnes 开通指引](doc/Agnes%20开通指引.md) · [智谱开通指引](doc/Zhipu%20开通指引.md) · [Provider 横评](doc/Agnes_vs_Zhipu_横评.md)
+- [npm 包](https://www.npmjs.com/package/media-gen-mcp-server) · [GitHub](https://github.com/wangdong233/media-gen-mcp)
 
 ---
 
 ## 💝 支持作者
 
-如果 media-gen-mcp 帮到你,欢迎请作者喝杯咖啡 ☕
-
 <div align="center">
 
 微信 | 支付宝
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="220" alt="微信"> | <img src="doc/support-alipay.jpg" height="220" alt="支付宝">
+<img src="doc/support-wechat.jpg" height="200" alt="微信"> | <img src="doc/support-alipay.jpg" height="200" alt="支付宝">
 
 </div>
 
-或 ⭐ Star、提 Issue / PR —— 都是对作者的支持。
+⭐ Star / Issue / PR 都是对作者的支持。
 
 ## License
 
