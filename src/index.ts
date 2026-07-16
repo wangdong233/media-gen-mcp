@@ -530,17 +530,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           backend: optString(a.backend) as any,
           scale: optNumber(a.scale),
         });
-        await fs.mkdir(outDir, { recursive: true });
-        const safeName = path.basename(a.name ?? `svg_${Date.now().toString(36)}`);
-        const ext = format === "png" ? ".png" : ".svg";
-        const fp = path.join(outDir, safeName + ext);
-        if (format === "png") {
-          if (!rendered.png) throw new Error("render_svg produced no PNG");
-          await fs.writeFile(fp, rendered.png);
-        } else {
-          await fs.writeFile(fp, rendered.svg, "utf-8");
-        }
-        return ok({ format, backend: rendered.backendUsed, local_path: fp });
+        const fp = await writeLocalRender(outDir, "svg", optString(a.name), format, rendered);
+        return ok({ format, backend: rendered.backendUsed, warning: rendered.warning, local_path: fp });
       }
 
       default:
