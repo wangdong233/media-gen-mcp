@@ -50,7 +50,11 @@ export async function renderIcon(req: IconRequest): Promise<IconRenderOutput> {
   if (!req.name || !req.name.trim()) throw new Error("`name` is required");
   const name = req.name.trim();
   if (!name.includes(":")) {
-    throw new Error(`icon name must be "prefix:name" (e.g. "mdi:home"); got "${name}"`);
+    // 尝试智能提示:如果含连字符,可能是文件名格式
+    const hint = name.includes("-")
+      ? `HINT: "${name}" looks like a filename — use Iconify format prefix:name. Try the most likely set: "lucide:${name.split("-")[0]}" or "mdi:${name.split("-")[0]}" or browse https://icon-sets.iconify.design`
+      : `HINT: use Iconify format prefix:name, e.g. "mdi:home" or "logos:github". Browse at https://icon-sets.iconify.design`;
+    throw new Error(`Invalid icon name "${name}": must be "prefix:name" (colon separator). ${hint}`);
   }
   const size = req.size && req.size > 0 ? Math.floor(req.size) : 128;
   const color = req.color && req.color.trim() ? req.color.trim() : "currentColor";

@@ -143,7 +143,7 @@ function extractSvgSize(svg: string): { width: number; height: number } {
 /** Chrome 渲染 SVG → PNG(puppeteer-core + 系统 Chrome/Edge)。 */
 async function renderWithChrome(svg: string, scale: number): Promise<Buffer> {
   const b = await getBrowser();
-  if (!b) throw new Error("Chrome/Edge not available");
+  if (!b) throw new Error("Chrome/Edge not available — install Google Chrome or Microsoft Edge, or use backend:'resvg' for lightweight rendering (92% filter fidelity).");
   const { width: svgW, height: svgH } = extractSvgSize(svg);
   const page = await b.newPage();
   try {
