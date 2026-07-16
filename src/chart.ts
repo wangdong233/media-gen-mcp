@@ -29,7 +29,13 @@ export async function renderChart(req: ChartRequest): Promise<ChartRenderOutput>
     throw new Error(`Vega-Lite mark object must have a "type" key. Example: mark: { type: "bar" }.`);
   }
   let vegaSpec;
-  const view = new View(parse(vegaSpec as any), { renderer: "none" });
+  try {
+    const compiled = compile(req.spec as any);
+    vegaSpec = compiled.spec;
+  } catch (e: any) {
+    throw new Error(`Vega-Lite spec error: ${e?.message ?? String(e)}`);
+  }
+  const view = new View(parse(vegaSpec), { renderer: "none" });
   try {
     const svg = await view.toSVG();
     let png: Buffer | undefined;
