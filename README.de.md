@@ -2,15 +2,15 @@
 
 # media-gen-mcp
 
-[![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-get-a-free-key)
-[![Version](https://img.shields.io/badge/version-0.3.0-6f42c1?style=flat-square)](https://www.npmjs.com/package/media-gen-mcp-server)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#license)
+[![npm](https://img.shields.io/npm/v/media-gen-mcp-server?style=flat-square&color=6f42c1)](https://www.npmjs.com/package/media-gen-mcp-server)
+[![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-kostenlosen-key-besorgen)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#lizenz)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**Der All-in-One-Bildgenerierungs-MCP für Claude Code — KI-Bilderstellung + lokales strukturiertes Zeichnen, in einem Server**
+**Gib Claude Code die „Superkraft der Bildgenerierung" – mit einem einzigen Satz Bilder / Videos / Diagramme / Karten / QR-Codes erzeugen**
 
-Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation · Diagramme / Charts / Formeln / Karten / Icons / QR-Codes
+KI-Bild- & Videogenerierung (kostenlos) + strukturiertes Zeichnen (lokal, deterministisch) + cooles SVG-Rendering (Chrome, hochpräzise)
 
 [English](README.en.md) | [简体中文](README.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | **Deutsch** | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -18,175 +18,187 @@ Text-zu-Bild / Bild-zu-Bild / Text-zu-Video / Bild-zu-Video / Keyframe-Animation
 
 ---
 
-## ✨ Highlights
+## ✨ Merkmale
 
-- 🎨 **KI-Bilderstellung, komplett kostenlos**: Text-zu-Bild, Bild-zu-Bild, Text-zu-Video, Bild-zu-Video, Keyframe-Animation — über die kostenlosen Modelle von **Agnes AI + Zhipu**, ohne Kosten.
-- 📐 **Lokales strukturiertes Zeichnen, deterministisch**: Diagramme, Charts, Formeln, Karten, Icons, QR-Codes — **SVG-Vektor in hoher Auflösung**, keine KI-Aufrufe, unendlich zoombar, knackscharfer Text, vollständig kontrollierbar.
-- 🧠 **Ein mentales Modell**: Sagen Sie einfach „Erstelle ein Bild" — Claude leitet automatisch an die KI oder eine lokale Engine weiter und erzeugt die passende DSL/JSON/LaTeX. **Kein zusätzlicher Schritt** für die Nutzer.
-- 🌏 **Poliert out of the box**: Karten **unterstützen automatisch CJK** (eingebautes Noto Sans SC, offline), **einfarbige/Verlauf-Hintergründe** und **Farb-Emoji**; Diagramme unterstützen **sowohl D2 als auch Graphviz**.
-- 🔌 **Steckbar**: Provider und Render-Engines sind beide erweiterbar, ohne Änderungen auf der Tool-Ebene; Standard-Routing pro Modalität + Rate-Limit-Selbstlernen.
-- 🆓 **Strukturierte Tools brauchen keinen Key**: Nach `claude mcp add` funktionieren die 6 lokalen Tools sofort — **Diagramme/Charts/Karten/QR-Codes zeichnen, ganz ohne KI-Key**.
-- 🌐 8-sprachige README · MIT · Node ≥18
+- 🆓 **Komplett kostenlos** – KI-Bild- & Videogenerierung läuft über Agnes AI + Zhipus kostenlose Modelle; strukturiertes Zeichnen vollständig lokal, null Kosten
+- 🧠 **Null Lernaufwand** – einfach in normaler Sprache beschreiben, Claude wählt automatisch das Werkzeug, generiert den Code und erstellt das Bild
+- 📐 **Deterministische Ausgabe** – Strukturdiagramme/Diagramme/Formeln/Karten: gleiche Eingabe liefert immer dieselbe Ausgabe, Inhalte voll kontrollierbar
+- 🇨🇳 **Chinesisch-freundlich** – Karten rendern automatisch Chinesisch (eingebettete Schrift); Zhipu-Modelle nativ Chinesisch
+- 🔌 **Keine weiteren Abhängigkeiten** – D2 / Graphviz / Vega / MathJax sind vollständig gebündelt, keine Systeminstallation von d2/dot/matplotlib nötig
+- 🎨 **Cooles Rendering** – feGaussianBlur-Glow/Verläufe/Tiefenunschärfe, automatisch über Chrome hochpräzise gerendert
+- 🌐 8-sprachige Dokumentation · MIT · Node ≥18
 
 ---
 
-## 🛠️ Die 10 Tools
+## 💬 Was bekommst du?
 
-### 🤖 KI-Generierung (online · kostenlos)
+Nach der Installation genügt in Claude Code **ein einziger Satz**, um:
 
-| Tool | Fähigkeit |
+| Du sagst | Du erhältst |
 |---|---|
-| `generate_image` | **Text-zu-Bild** / **Bild-zu-Bild** (Referenz → neu) |
-| `create_video` | **Text-zu-Video** / **Bild-zu-Video** / **Keyframe-Animation** (intelligente Sync/Async-Umschaltung) |
-| `get_video` | Video-Task abfragen + herunterladen |
-| `list_models` | Modelle & Video-Einschränkungen je Provider auflisten |
+| „Generiere ein realistisches Bild einer orangen Katze im Wuxia-Stil" | 🖼️ KI-generiertes realistisches Bild |
+| „Erzeuge ein 5-Sekunden-Video am Meer" | 🎬 KI-generiertes Kurzvideo |
+| „Zeichne ein Architekturdiagramm: Client → API-Gateway → zwei Microservices" | 📐 Sauberes Vektor-Architekturdiagramm |
+| „Stelle diese Verkaufsdaten als Balkendiagramm dar" | 📊 Datenvisualisierung |
+| „Rendere diese Formel `E=mc^2`" | ➗ Hochauflösendes Formel-Bild |
+| „Erstelle eine Verlauf-Share-Karte mit 🚀 Emoji" | 🎴 OG-/Social-Share-Bild (Chinesisch automatisch) |
+| „Gib mir ein GitHub-Logo" | 🏷️ Vektor-Icon |
+| „Generiere einen QR-Code" | ▪️ QR-Code |
+| „Zeichne ein cooles, düsteres Tech-Architekturdiagramm mit Glow" | ✨ Hochpräzises Chrome-Rendering |
 
-### 📐 Strukturiertes Rendering (lokal · deterministisch · meist ohne Key)
-
-| Tool | Ausgabe | Engine |
-|---|---|---|
-| `generate_diagram` | Architektur / Sequenz / Flussdiagramm / Klasse / ER / Mindmap | **D2**-DSL · **Graphviz** (DOT) |
-| `generate_chart` | Balken / Linie / Kreis / Fläche / Streuung | Vega-Lite |
-| `generate_formula` | LaTeX-Matheformeln (Glyphen eingebettet, keine Schrift nötig) | MathJax |
-| `generate_card` | OG-/Share-/Zitat-Karten (Standard 1200×630; Vorlagen og/quote/minimal/hero/panel; autom. CJK/Verlauf-Hintergrund/Farb-Emoji, Verlaufstitel + Glow) | Satori + resvg |
-| `generate_icon` | 200k+ Vektor-Icons (`prefix:name`) | Iconify |
-| `generate_qrcode` | QR-Codes | qrcode |
-
-> Von den 6 strukturierten Tools sind **4 vollständig offline** (diagram / chart / formula / qrcode). Die Standard-Lateinschrift von `generate_card` wird einmal vom CDN abgerufen und in `~/.media-gen-mcp/fonts/` gecacht (danach offline, oder übergeben Sie `fontPath`, um sofort offline zu sein); die CJK-Schrift (Noto Sans SC) ist **offline eingebündelt**. Allerdings benötigen Karten-**Emojis** (twemoji) und `generate_icon` (Iconify) Netzwerk (nur gecacht, nicht gebündelt). KI-Generierungs-Tools sind immer online.
+> **All das mit nur einem einzigen Satz.** Du musst keinen Werkzeugnamen und keine Parameter lernen.
 
 ---
 
 ## 🚀 Schnellstart
 
-### ① Kostenlosen Key holen (nur für KI-Generierung; überspringen, wenn Sie nur strukturierte Bilder zeichnen)
+### ① Kostenlosen Key besorgen
 
-Registrieren Sie sich bei einem (oder beiden) der folgenden Anbieter, um einen kostenlosen API-Key zu erhalten:
+Registriere dich bei einem der folgenden Anbieter (oder beiden) und hole dir einen kostenlosen API-Key:
 
-| Provider | Kostenlos | Registrierung |
+| Anbieter | Kostenlos | Anmeldung |
 |---|---|---|
-| **Agnes AI** (Standard) | Alle Bild- + Video-Funktionen kostenlos | https://platform.agnes-ai.com/ → Registrieren → API Keys |
-| **Zhipu BigModel** (optional, 4K / Chinesisch) | cogview-3-flash Bild + cogvideox-flash Video dauerhaft kostenlos | https://bigmodel.cn/usercenter/proj-mgmt/apikeys → verifizieren → Key erstellen |
+| **Agnes AI** (Standard) | Text-zu-Bild + Text-zu-Video komplett kostenlos | https://platform.agnes-ai.com/ → Registrieren → API Keys |
+| **Zhipu BigModel** (optional, 4K / Chinesisch) | cogview-3-flash Bild + cogvideox-flash Video dauerhaft kostenlos | https://bigmodel.cn/usercenter/proj-mgmt/apikeys → Identität verifizieren → Key erstellen |
 
-> Ausführliche Schritte: [doc/Agnes-Onboarding](doc/Agnes%20开通指引.md) · [doc/Zhipu-Onboarding](doc/Zhipu%20开通指引.md)
+> Ausführliche bebilderte Anleitungen: [Agnes-Einrichtungsanleitung](doc/Agnes%20开通指引.md) · [Zhipu-Einrichtungsanleitung](doc/Zhipu%20开通指引.md)
 
-### ② Konfigurieren (einmalig)
+### ② Konfiguration
 
-Erstellen Sie `~/.media-gen-mcp/config.json` mit Ihrem Key:
+Erstelle `~/.media-gen-mcp/config.json` und trage deinen Key ein:
 
 ```json
 {
   "providers": {
-    "agnes": { "apiKey": "sk-your-agnes-key" },
-    "zhipu": { "apiKey": "your-zhipu-key" }
+    "agnes": { "apiKey": "sk-dein-agnes-key" },
+    "zhipu": { "apiKey": "dein-zhipu-key" }
   }
 }
 ```
 
-Nur Agnes genügt (entfernen Sie die zhipu-Zeile). Lassen Sie `models` weg, um die integrierten Standardwerte zu verwenden.
+Nur agnes zu konfigurieren reicht ebenfalls aus (lösche die zhipu-Zeile). Wenn du `models` nicht angibst, werden die integrierten Standardmodelle verwendet.
 
-### ③ Zu Claude Code hinzufügen
+### ③ In Claude Code einbinden
 
 ```bash
 claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
-Der Installationsbefehl enthält **keinen Key** (er steht in der config oben). Führen Sie `/mcp` aus — `media-gen-mcp ✓ Connected` bedeutet Erfolg.
+Der Einbindungsbefehl enthält **keinen Key** (der Key steht in der obigen config). Wenn du unter `/mcp` `media-gen-mcp ✓ Connected` siehst, war es erfolgreich.
+
+### ④ Sag einen Satz
+
+Sag in Claude Code einfach „Zeichne ein Architekturdiagramm" oder „Generiere ein realistisches Bild einer orangen Katze" – fertig.
+
+> **Nur Strukturdiagramme/Diagramme/Karten/QR-Codes zeichnen?** Dafür brauchst du keinen Key – nach der Installation (③) sofort einsatzbereit.
 
 ---
 
-## 💬 Verwendung
+## 📡 Anbieter
 
-Sagen Sie es einfach in Claude Code — **automatisches Routing**, Sie müssen sich keine Tool-Namen merken:
-
-**KI-Generierung:**
-
-| Szenario | Sagen Sie |
-|---|---|
-| Standard | „Erstelle eine fotorealistische orange Katze" / „Erstelle ein 5s Strand-Video" |
-| Bestimmter Provider | „Zeichne mit **Zhipu**" / „Verwende **agnes** für das Video" |
-| Bestimmtes Modell | „Zeichne mit **cogview-4**" / „Verwende **agnes-video-v2.0**" |
-| Bild-zu-Bild / -zu-Video | „Wandle dieses Bild in Aquarell um" / „Mach aus diesem Bild ein Video" |
-| Keyframe-Animation | „Erzeuge einen fließenden Übergang zwischen diesen beiden Bildern" |
-
-**Strukturiertes Zeichnen:**
-
-| Szenario | Sagen Sie |
-|---|---|
-| Diagramm | „Zeichne eine Architektur: Client → API-Gateway → zwei Microservices" (D2) oder „Zeichne einen Abhängigkeitsgraphen in DOT" (Graphviz) |
-| Chart | „Erstelle ein Balkendiagramm aus diesen Verkaufsdaten" |
-| Formel | „Rendere diese Formel: `\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`" |
-| Share-Karte | „Erstelle eine OG-Karte mit **violett-blauem Verlauf** und einem 🚀-Emoji für diesen Artikel" |
-| Icon | „Gib mir ein GitHub-Logo-Icon" |
-| QR-Code | „Erstelle einen QR-Code für https://..." |
-
-> Das Angeben von Provider/Modell betrifft nur diesen Aufruf, **nicht Ihre config**. Diagramme verwenden die [D2-Syntax](https://d2lang.com)/[Graphviz DOT](https://graphviz.org/docs/dot/), Charts [Vega-Lite](https://vega.github.io/vega-lite), Formeln [LaTeX](https://www.latex-project.org), Icons auf [icon-sets.iconify.design](https://icon-sets.iconify.design) — Claude generiert die Quelle automatisch.
-
-> **Mermaid**: `generate_diagram` unterstützt **D2 und Graphviz**; das In-Process-Rendering von Mermaid benötigt einen Browser/Chromium (ungeeignet für ein deterministisches MCP), daher wird es nicht unterstützt — verwenden Sie stattdessen D2 (deckt Flussdiagramm/Sequenz/Klasse/ER/Mindmap ab) oder Graphviz.
-
----
-
-## 📡 Provider
-
-| | Standard | Bild (kostenlos) | Video (kostenlos) | Stärke |
+| | Standard | Bild (kostenlos) | Video (kostenlos) | Besonderheiten |
 |---|:---:|---|---|---|
-| **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | Alles kostenlos, fotorealistisch, nativer Ton |
+| **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | Komplett kostenlos, realistische Qualität, natives Audio & Bild |
 | **zhipu** (optional) | | cogview-3-flash | cogvideox-flash | 4K/60fps, natives Chinesisch, China-konform |
 
-Wechseln: `defaultProvider: "zhipu"`, oder pro Modalität über `defaultImageProvider`/`defaultVideoProvider`, oder `provider` pro Aufruf übergeben. Unsicher, welcher? Siehe [Benchmark](doc/Agnes_vs_Zhipu_横评.md).
+Wechseln via `defaultProvider: "zhipu"`, nach Modalität über `defaultImageProvider`/`defaultVideoProvider`, oder pro Aufruf über `provider`. Weißt du nicht, welchen du wählen sollst? Siehe [Vergleichstest](doc/Agnes_vs_Zhipu_横评.md).
 
 ---
 
-## ⚙️ Config (erweitert, meist unnötig)
+## 🛠️ Fähigkeiten im Detail
 
-**Dreistufiger Provider-Fallback** (Argument pro Aufruf > pro Modalität > global):
+### 🤖 KI-Generierung (kostenlose Modelle · online)
 
-| Feld | Standard | Beschreibung |
+Nutze die kostenlosen Modelle von Agnes AI oder Zhipu:
+- **Text-zu-Bild / Bild-zu-Bild** – realistisch, Illustration, Konzeptkunst
+- **Text-zu-Video / Bild-zu-Video / Keyframe-Animation** – intelligentes asynchrones Verhalten (lange Videos werden im Hintergrund generiert, Benachrichtigung bei Fertigstellung)
+- Anbieter/Modell angeben: „Zeichne mit **Zhipu cogview-4** ein Bild" / „Generiere mit **agnes** ein Video"
+
+### 📐 Strukturiertes Zeichnen (lokal · deterministisch · ohne Key)
+
+Die folgenden Fähigkeiten **rufen keine KI auf und liefern deterministische Ausgaben** (SVG-Vektor, hochauflösend):
+
+| Fähigkeit | Engine (alle eingebettet) | Beschreibung |
 |---|---|---|
-| `defaultProvider` | `agnes` | Globaler Standard (letzter Fallback) |
-| `defaultImageProvider` | wie oben | Standard für Bild-Modalität (`generate_image`) |
-| `defaultVideoProvider` | wie oben | Standard für Video-Modalität (`create_video`/`get_video`) |
+| **Strukturdiagramme** | D2 + Graphviz | Architektur/Fluss/Sequenz/Klassendiagramm/ER/Mindmap, automatisches Layout |
+| **Datendiagramme** | Vega-Lite | Balken/Linie/Kuchen/Fläche/Streuung, Claude generiert automatisch aus den Daten |
+| **Mathematische Formeln** | MathJax | LaTeX → SVG, Glyphen eingebettet |
+| **Share-Karten** | Satori | OG/Poster/Zitat-Karten (Chinesisch + Verlauf + Emoji + Glow automatisch) |
+| **QR-Codes** | qrcode | URL/Text → SVG/PNG |
+| **Vektor-Icons** | Iconify | 200.000+ Icons (`icon: "mdi:home"`) |
+| **Cooles SVG** | Chrome / resvg | Handgeschriebenes SVG (Glow/Filter/Tiefenunschärfe) → hochpräzises Chrome-Rendering |
 
-Z. B. `defaultProvider: "agnes"` + `defaultVideoProvider: "zhipu"` → Bilder über agnes, Video über Zhipu.
+<details>
+<summary>📖 Was können Karten?</summary>
 
-Verbindungs-Config pro Provider: `providers.<name>.apiKey` (erforderlich), `providers.<name>.models.{image,video}.default`, `outDir` (Ausgabeverzeichnis, Standard `session-dir/output`).
+- 5 Vorlagen: og (linksbündige Hierarchie) / quote (Zitat, Anführungszeichen links/rechts positionierbar) / minimal (minimalistisch) / hero (große Schautypografie + Lichtflecken) / panel (Glas-Panel)
+- Verlaufs-Titeltext + Glow + verschwommene Lichtflecken für Tiefe
+- Eingebettetes Logo / runder Avatar
+- Automatisches Chinesisch (Noto Sans SC offline) + automatische farbige Emojis (auf Festplatte gecacht, ohne Netz nutzbar)
+- Benutzerdefinierte Größe (Standard 1200×630, OG-Norm)
+</details>
 
-> Rate-Limit-Selbstlernen (`rateLimits` / `rateLimitTtlMs` — bei 429 lernt das System automatisch das echte Limit + TTL-Ablauf-Fallback) und weitere fortgeschrittene Felder — siehe [doc/](doc/).
+<details>
+<summary>📖 Was ist das coole SVG-Rendering?</summary>
+
+Die D2-Engine unterstützt keine SVG-Filter (feGaussianBlur-Glow). Wenn du also Effekte wie „cooles düsteres Tech-Feeling, Glow, Tiefenunschärfe" möchtest:
+1. Claude schreibt das SVG von Hand (mit Filtern wie feGaussianBlur)
+2. Aufruf des Werkzeugs `render_svg`
+3. Das Werkzeug wählt automatisch das Backend: wenn `<filter>` vorhanden + System-Chrome verfügbar → Chrome (100 % Filter-Treue); sonst → resvg (92 %, leichtgewichtig)
+</details>
+
+<details>
+<summary>📖 Offline-Hinweise (welche Werkzeuge brauchen Internet?)</summary>
+
+- **Vollständig offline**: generate_diagram / generate_chart / generate_formula / generate_qrcode
+- **Nach erstem Online-Abruf gecacht & offline**: generate_card (Standard-Lateinschrift Inter wird beim ersten Mal aus dem CDN geholt und unter `~/.media-gen-mcp/fonts/` gecacht; CJK-Schrift Noto Sans SC ist bereits offline eingebettet; twemoji-Emojis werden auf Festplatte gecacht und sind ohne Netz nutzbar)
+- **Internet erforderlich**: generate_icon (holt Icons über die Iconify-API), render_svg bei Filtern (benötigt Chrome)
+- **Immer online**: KI-Generierungswerkzeuge (generate_image / create_video)
+</details>
 
 ---
 
 ## ❓ FAQ
 
-**Videos langsam?** 3–18 s, dauert ~1–3 Min. Wenn Sie `wait` weglassen, läuft es asynchron (bei geschätzten >60 s wird ein Handle zurückgegeben, mit Abschlussbenachrichtigung).
-**Anzahl Frames?** Geben Sie `durationSeconds` an, um automatisch zu wählen (5/10/18 s). Agnes erlaubt nur 81/121/161/241/441.
-**429 bekommen?** 62-Sekunden-Serializer eingebaut; lernt das echte Rate-Limit automatisch.
-**Brauchen strukturierte Tools einen Key?** Nein. Die 6 lokalen Tools funktionieren out of the box; nur die KI-Generierung benötigt einen Key.
-**Karten-CJK/Emoji/Verlauf?** Eingebaute CJK-Schrift (automatisch), twemoji-Farb-Emoji (automatisch); übergeben Sie einen CSS-`linear-gradient(...)` an `bg` für einen Verlauf.
-**Schicke Karten-Effekte?** `titleGradient` (Verlaufstitel), `glow` (Titel-Glow), Vorlage `hero` (verschwommener Tiefen-Blob), Vorlage `panel` (Glas-Panel: border/radius/shadow). Alles deterministisch, in-process via Satori — kein Browser nötig.
-**Config wird nicht gelesen?** Muss unter `~/.media-gen-mcp/config.json` liegen (npx installiert in den Cache; eine Config im Projekt ist nicht verfügbar).
+**Video langsam?** 3–18s, ca. 1–3 Minuten. Lass `wait` weg für asynchrones Verhalten (>60s liefert ein Handle zurück, Benachrichtigung bei Fertigstellung).
+**Anzahl Frames?** Übergib `durationSeconds`, es wird automatisch gewählt (5/10/18s). Agnes erlaubt nur 81/121/161/241/441.
+**429er-Fehler?** Eingebaut: 62s seriell + automatisches Lernen der echten Rate-Limits.
+**Brauchen strukturierte Werkzeuge einen Key?** Nein. Nach der Installation kannst du sofort Diagramme/Charts/Karten/QR-Codes zeichnen.
+**Karten mit Chinesisch/Emoji/Verlauf?** Alles automatisch: eingebettete CJK-Schrift + twemoji-Emojis (auf Festplatte gecacht) + CSS-Verlaufshintergrund.
+**Cooles SVG?** Claude schreibt das SVG von Hand (mit feGaussianBlur-Glow) → `render_svg` → Chrome mit 100 % Filter-Treue.
+**Wird Mermaid unterstützt?** Nein (bräuchte einen Browser). Nutze stattdessen D2 (deckt Fluss/Sequenz/Klassendiagramm/ER/Mindmap ab).
+**Config wird nicht gelesen?** Sie muss unter `~/.media-gen-mcp/config.json` liegen.
+**`npx` funktioniert nicht?** Fallback: globale Installation:
+```bash
+npm i -g media-gen-mcp-server
+claude mcp remove media-gen-mcp
+claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"
+```
 
 ---
 
-## 🏗️ Architektur + Doku
+## 🏗️ Architektur + Dokumentation
 
-- **Provider-steckbar** (agnes + zhipu; einen Provider hinzuzufügen erfordert null Änderungen auf der Tool-Ebene); **Engine-steckbar** (DiagramEngine läuft parallel zu MediaProvider, ohne Cross-Pollution).
-- Mehr in [doc/](doc/): [Agnes-Onboarding](doc/Agnes%20开通指引.md) · [Zhipu-Onboarding](doc/Zhipu%20开通指引.md) · [Agnes-vs-Zhipu-Benchmark](doc/Agnes_vs_Zhipu_横评.md)
+- **Provider steckbar** (agnes + Zhipu, einen neuen Provider hinzufügen, ohne die Werkzeugschicht zu ändern); **Engine steckbar** (DiagramEngine und MediaProvider laufen parallel, ohne sich gegenseitig zu beeinflussen)
+- [Architektur-Anforderungsliste](doc/架构要求清单.md) – Architekturnormen des Projekts (fortlaufend gepflegt)
+- Mehr unter [doc/](doc/): [Agnes-Einrichtungsanleitung](doc/Agnes%20开通指引.md) · [Zhipu-Einrichtungsanleitung](doc/Zhipu%20开通指引.md) · [Provider-Vergleichstest](doc/Agnes_vs_Zhipu_横评.md)
 
 ---
 
-## 💝 Unterstützen
+## 💝 Autor unterstützen
 
-Wenn Ihnen media-gen-mcp hilft, laden Sie den Autor doch auf einen Kaffee ein ☕
+Wenn media-gen-mcp dir hilft, lade den Autor gern auf einen Kaffee ein ☕
 
 <div align="center">
 
 WeChat | Alipay
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="220" alt="WeChat"> | <img src="doc/support-alipay.jpg" height="220" alt="Alipay">
+<img src="doc/support-wechat.jpg" height="200" alt="WeChat"> | <img src="doc/support-alipay.jpg" height="200" alt="Alipay">
 
 </div>
 
-Oder ⭐ Star vergeben, ein Issue / einen PR öffnen — über alles freuen wir uns.
+Oder ⭐ Star vergeben, ein Issue / PR einreichen – all das unterstützt den Autor.
 
-## License
+## Lizenz
 
 [MIT](LICENSE)

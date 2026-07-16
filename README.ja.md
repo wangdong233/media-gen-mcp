@@ -2,15 +2,15 @@
 
 # media-gen-mcp
 
-[![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#①-無料-key-を取得)
-[![Version](https://img.shields.io/badge/version-0.3.0-6f42c1?style=flat-square)](https://www.npmjs.com/package/media-gen-mcp-server)
+[![npm](https://img.shields.io/npm/v/media-gen-mcp-server?style=flat-square&color=6f42c1)](https://www.npmjs.com/package/media-gen-mcp-server)
+[![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-無料-key-を取得)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#license)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
-**Claude Code 向けのオールインワン画像生成 MCP — AI 画像生成とローカル構造化描画を、1つのサーバーで**
+**Claude Code に"画像生成スーパー能力"を搭載——ひと言で画像 / 動画 / チャート / カード / QRコードを生成**
 
-テキスト to 画像 / 画像 to 画像 / テキスト to 動画 / 画像 to 動画 / キーフレームアニメーション · ダイアグラム / チャート / 数式 / カード / アイコン / QR コード
+AI 画像・動画生成(無料) + 構造化描画(ローカルで決定論的) + リッチ SVG レンダリング(Chrome で高忠実度)
 
 [English](README.en.md) | [简体中文](README.md) | **日本語** | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -18,174 +18,186 @@
 
 ---
 
-## ✨ ハイライト
+## ✨ 特徴
 
-- 🎨 **AI 画像生成、完全無料**：テキスト to 画像、画像 to 画像、テキスト to 動画、画像 to 動画、キーフレームアニメーション —— **Agnes AI + Zhipu** の無料モデル経由で、コストゼロ。
-- 📐 **ローカル構造化描画、確定的**：ダイアグラム、チャート、数式、カード、アイコン、QR コード —— **SVG ベクターで高解像度**、AI 呼び出しなし、無限にズームしても鮮明、テキストはくっきり、完全に制御可能。
-- 🧠 **ワンメンタルモデル**：「画像を生成して」と伝えるだけで、Claude が AI とローカルエンジンを自動で振り分け、対応する DSL/JSON/LaTeX を生成します。ユーザーの追加手順は**ゼロ**。
-- 🌏 **初期状態で洗練された仕上がり**：カードは **CJK を自動サポート**（内蔵 Noto Sans SC、オフライン）、**単色/グラデーション背景**、**カラー絵文字**に対応。ダイアグラムは **D2 と Graphviz の両方**をサポート。
-- 🔌 **プラグイン可能**：provider もレンダーエンジンも、ツールレイヤーを一切変えずに拡張可能。モダリティ別のデフォルトルーティング＋レートリミットの自己学習。
-- 🆓 **構造化ツールは key 不要**：`claude mcp add` 後、6つのローカルツールがすぐ動きます —— **AI key なしでダイアグラム/チャート/カード/QR コードを描画**できます。
-- 🌐 8言語 README · MIT · Node ≥18
+- 🆓 **完全無料**——AI 画像・動画生成は Agnes AI + 智譜の無料モデルを利用、構造化描画は完全ローカルでコストゼロ
+- 🧠 **学習コストゼロ**——自然な言葉で話すだけ、Claude がツール選択、コード生成、画像出力を自動化
+- 📐 **決定論的出力**——構造図/チャート/数式/カードは、同じ入力なら常に同じ出力、内容をコントロール可能
+- 🇨🇳 **中国語フレンドリー**——カードは中国語を自動レンダリング(内蔵フォント)、智譜モデルは中国語ネイティブ
+- 🔌 **他に何もインストール不要**——D2 / Graphviz / Vega / MathJax はすべて同梱、システムに d2/dot/matplotlib のインストール不要
+- 🎨 **リッチレンダリング**——feGaussianBlur グロー/グラデーション/被写界深度、自動で Chrome の高忠実度レンダリングを使用
+- 🌐 8言語ドキュメント · MIT · Node ≥18
 
 ---
 
-## 🛠️ 10のツール
+## 💬 何ができるようになる?
 
-### 🤖 AI 生成（オンライン・無料）
+インストール後、Claude Code で**ひと言**言うだけで:
 
-| ツール | 機能 |
+| 言うこと | 得られるもの |
 |---|---|
-| `generate_image` | **テキスト to 画像** / **画像 to 画像**（参照画像 → 新画像） |
-| `create_video` | **テキスト to 動画** / **画像 to 動画** / **キーフレームアニメーション**（同期/非同期を自動判定） |
-| `get_video` | 動画タスクのポーリング＋ダウンロード |
-| `list_models` | provider 別のモデルと動画制約を一覧表示 |
+| "オレンジ猫の武侠リアル画を生成" | 🖼️ AI 生成のリアル画像 |
+| "5秒の海辺の動画を生成" | 🎬 AI 生成の短い動画 |
+| "アーキテクチャ図を描いて:クライアント → API ゲートウェイ → 2つのマイクロサービス" | 📐 くっきりしたベクターアーキテクチャ図 |
+| "この売上データを棒グラフにして" | 📊 データ可視化チャート |
+| "この数式をレンダリング `E=mc^2`" | ➗ 高解像度の数式画像 |
+| "🚀 emoji 入りグラデーション共有カードを作って" | 🎴 OG / ソーシャル共有画像(中国語対応自動) |
+| "GitHub のロゴをちょうだい" | 🏷️ ベクターアイコン |
+| "QRコードを生成して" | ▪️ QR コード |
+| "カッコいいダークでハイテク感あるアーキテクチャ図を、グロー付きで" | ✨ 高忠実度 Chrome レンダリング画像 |
 
-### 📐 構造化レンダリング（ローカル・確定的・ほぼ key 不要）
-
-| ツール | 出力 | エンジン |
-|---|---|---|
-| `generate_diagram` | アーキテクチャ / シーケンス / フローチャート / クラス / ER / マインドマップ | **D2** DSL · **Graphviz** (DOT) |
-| `generate_chart` | 棒 / 折れ線 / 円 / 面積 / 散布 | Vega-Lite |
-| `generate_formula` | LaTeX 数式（グリフ埋め込み、フォント不要） | MathJax |
-| `generate_card` | OG / シェア / 引用カード（デフォルト 1200×630、テンプレート og/quote/minimal/hero/panel、CJK/グラデーション背景/カラー絵文字を自動対応、グラデーションタイトル＋グロー） | Satori + resvg |
-| `generate_icon` | 20万種以上のベクターアイコン（`prefix:name`） | Iconify |
-| `generate_qrcode` | QR コード | qrcode |
-
-> 6つの構造化ツールのうち **4つは完全オフライン** です（diagram / chart / formula / qrcode）。`generate_card` のデフォルトの Latin フォントは初回のみ CDN から取得され `~/.media-gen-mcp/fonts/` にキャッシュされます（以降はオフライン、または `fontPath` を渡せば即座にオフライン）。CJK フォント（Noto Sans SC）は **バンドル済みでオフライン** です。ただし、カードの **絵文字**（twemoji）と `generate_icon`（Iconify）はネットワークが必要です（キャッシュのみ、バンドルなし）。AI 生成ツールは常にオンラインです。
+> **全部ひと言言うだけ。** ツール名もパラメータも覚える必要はありません。
 
 ---
 
 ## 🚀 クイックスタート
 
-### ① 無料 key を取得（AI 生成のみ。構造化画像だけならスキップ）
+### ① 無料 Key を取得
 
-以下のいずれか（または両方）に登録して、無料の API key を取得します。
+以下のいずれか(または両方)に登録して、無料 API Key を取得:
 
-| Provider | 無料範囲 | 申請 |
+| プロバイダー | 無料 | 申請 |
 |---|---|---|
-| **Agnes AI**（デフォルト） | 画像 + 動画すべて無料 | https://platform.agnes-ai.com/ → 新規登録 → API Keys |
-| **Zhipu BigModel**（オプション、4K / 中国語対応） | cogview-3-flash 画像 + cogvideox-flash 動画が永久無料 | https://bigmodel.cn/usercenter/proj-mgmt/apikeys → 本人確認 → key 作成 |
+| **Agnes AI**(デフォルト) | テキストから画像 + テキストから動画 すべて無料 | https://platform.agnes-ai.com/ → 登録 → API Keys |
+| **智譜 BigModel**(オプション、4K / 中国語) | cogview-3-flash 画像 + cogvideox-flash 動画 永久無料 | https://bigmodel.cn/usercenter/proj-mgmt/apikeys → 実名認証 → Key 作成 |
 
-> 詳しい手順：[doc/Agnes 登録ガイド](doc/Agnes%20开通指引.md) · [doc/Zhipu 登録ガイド](doc/Zhipu%20开通指引.md)
+> 詳しい画面手順:[Agnes 登録ガイド](doc/Agnes%20开通指引.md) · [智譜登録ガイド](doc/Zhipu%20开通指引.md)
 
-### ② 設定（初回のみ）
+### ② 設定
 
-key を記述した `~/.media-gen-mcp/config.json` を作成します。
+新規に `~/.media-gen-mcp/config.json` を作成し、Key を記入:
 
 ```json
 {
   "providers": {
-    "agnes": { "apiKey": "sk-your-agnes-key" },
-    "zhipu": { "apiKey": "your-zhipu-key" }
+    "agnes": { "apiKey": "sk-あなたのagnes-key" },
+    "zhipu": { "apiKey": "あなたの智譜-key" }
   }
 }
 ```
 
-Agnes だけでも構いません（zhipu の行は削除してください）。`models` は省略すると組み込みのデフォルトが使われます。
+agnes だけの設定でも構いません(zhipu の行を削除)。`models` を記入しなければ内蔵のデフォルトモデルが使われます。
 
-### ③ Claude Code に追加
+### ③ Claude Code に接続
 
 ```bash
 claude mcp add media-gen-mcp npx media-gen-mcp-server
 ```
 
-インストールコマンドには **key を含めません**（上記 config に記述済みのため）。`/mcp` を実行し、`media-gen-mcp ✓ Connected` と表示されれば成功です。
+接続コマンドには **Key を含めない**(Key は上記 config に入っています)。`/mcp` で `media-gen-mcp ✓ Connected` と表示されれば成功です。
+
+### ④ ひと言言う
+
+Claude Code で直接「アーキテクチャ図を描いて」や「オレンジ猫のリアル画を生成」と言う——これだけ。
+
+> **構造図/チャート/カード/QRコードだけ描きたい?** Key は不要、インストール(③)するだけで使えます。
 
 ---
 
-## 💬 使い方
+## 📡 プロバイダー
 
-Claude Code に話しかけるだけ —— **自動でルーティング**されるので、ツール名を覚える必要はありません。
-
-**AI 生成：**
-
-| シナリオ | 話しかける例 |
-|---|---|
-| デフォルト | 「フォトリアルなオレンジ色の猫を生成して」/「5秒のビーチ動画を生成して」 |
-| provider 指定 | 「**Zhipu** で描いて」/「動画は **agnes** で」 |
-| model 指定 | 「**cogview-4** で描いて」/「**agnes-video-v2.0** を使って」 |
-| 画像 to 画像 / to 動画 | 「この画像を水彩画風にして」/「この画像を動画にして」 |
-| キーフレームアニメーション | 「この2枚の画像を滑らかにつないで」 |
-
-**構造化描画：**
-
-| シナリオ | 話しかける例 |
-|---|---|
-| ダイアグラム | 「アーキテクチャを描いて：client → API gateway → 2つのマイクロサービス」（D2）または「DOT で依存グラフを描いて」（Graphviz） |
-| チャート | 「この売上データで棒グラフを作って」 |
-| 数式 | 「この数式を描画して：`\sum_{i=1}^{n} i = \frac{n(n+1)}{2}`」 |
-| シェアカード | 「この記事の **紫から青へのグラデーション** OG カードに 🚀 絵文字を入れて」 |
-| アイコン | 「GitHub のロゴアイコンをちょうだい」 |
-| QR コード | 「https://... の QR コードを生成して」 |
-
-> provider/model を指定しても、その呼び出しにしか影響せず、**config は変更されません**。ダイアグラムは [D2 記法](https://d2lang.com)/[Graphviz DOT](https://graphviz.org/docs/dot/)、チャートは [Vega-Lite](https://vega.github.io/vega-lite)、数式は [LaTeX](https://www.latex-project.org)、アイコンは [icon-sets.iconify.design](https://icon-sets.iconify.design) —— Claude がソースを自動生成します。
-
-> **Mermaid について**：`generate_diagram` は **D2 と Graphviz** をサポートします。Mermaid のインプロセスレンダリングにはブラウザ/Chromium が必要で（確定的な MCP には不向き）、サポートしていません —— D2（フローチャート/シーケンス/クラス/ER/マインドマップをカバー）または Graphviz を使ってください。
-
----
-
-## 📡 Providers
-
-| | デフォルト | Image（無料） | Video（無料） | 特徴 |
+| | デフォルト | 画像(無料) | 動画(無料) | 特徴 |
 |---|:---:|---|---|---|
-| **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | すべて無料、フォトリアル、ネイティブ音声 |
-| **zhipu**（オプション） | | cogview-3-flash | cogvideox-flash | 4K/60fps、ネイティブ中国語、中国コンプライアンス対応 |
+| **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | 完全無料、リアル質感、ネイティブ音声・映像 |
+| **zhipu**(オプション) | | cogview-3-flash | cogvideox-flash | 4K/60fps、中国語ネイティブ、国内コンプライアンス |
 
-切り替え方法：`defaultProvider: "zhipu"`、または `defaultImageProvider`/`defaultVideoProvider` でモダリティ別に指定、もしくは呼び出しごとに `provider` を渡します。どちらを選ぶべきか迷ったら [benchmark](doc/Agnes_vs_Zhipu_横评.md) を参照してください。
+切替:`defaultProvider: "zhipu"`、またはモダリティ別に `defaultImageProvider`/`defaultVideoProvider`、または単発で `provider` を渡す。どちらを選ぶか迷う?[横並び比較](doc/Agnes_vs_Zhipu_横评.md) を参照。
 
 ---
 
-## ⚙️ Config（高度な設定、通常は不要）
+## 🛠️ 機能詳細
 
-**3段階の provider フォールバック**（呼び出し引数 > モダリティ別 > グローバル）：
+### 🤖 AI 生成(無料モデル · オンライン)
 
-| フィールド | デフォルト | 説明 |
+Agnes AI または智譜の無料モデルを使用:
+- **テキストから画像 / 画像から画像**——リアル、イラスト、コンセプトアート
+- **テキストから動画 / 画像から動画 / キーフレームアニメーション**——スマート非同期(長尺動画はバックグラウンド生成、完了通知)
+- ベンダー/モデルを指定:「**智譜 cogview-4** で描いて」/「**agnes** で動画を生成」
+
+### 📐 構造化描画(ローカル · 決定論的 · Key 不要)
+
+以下の機能は **AI を呼び出さず、決定論的に出力**(SVG ベクター高解像度):
+
+| 機能 | エンジン(すべて同梱) | 説明 |
 |---|---|---|
-| `defaultProvider` | `agnes` | グローバルデフォルト（最終フォールバック） |
-| `defaultImageProvider` | 同上 | 画像モダリティのデフォルト（`generate_image`） |
-| `defaultVideoProvider` | 同上 | 動画モダリティのデフォルト（`create_video`/`get_video`） |
+| **構造図** | D2 + Graphviz | アーキテクチャ/フロー/シーケンス/クラス図/ER/マインドマップ、自動レイアウト |
+| **データチャート** | Vega-Lite | 棒/折れ線/円/面/散布、Claude がデータから自動生成 |
+| **数学式** | MathJax | LaTeX → SVG、字形を内包 |
+| **共有カード** | Satori | OG/ポスター/引用カード(中国語+グラデーション+emoji+グロー自動) |
+| **QRコード** | qrcode | URL/テキスト → SVG/PNG |
+| **ベクターアイコン** | Iconify | 20万以上のアイコン(`icon: "mdi:home"`) |
+| **リッチ SVG** | Chrome / resvg | 手書き SVG(グロー/フィルター/被写界深度)→ Chrome 高忠実度レンダリング |
 
-例：`defaultProvider: "agnes"` + `defaultVideoProvider: "zhipu"` → 画像は agnes、動画は Zhipu 経由。
+<details>
+<summary>📖 カードで何ができる?</summary>
 
-provider 別の接続 config：`providers.<name>.apiKey`（必須）、`providers.<name>.models.{image,video}.default`、`outDir`（出力ディレクトリ、デフォルト `session-dir/output`）。
+- 5種のテンプレート:og(左寄せ階層)/ quote(引用、引用符で左右を挟める)/ minimal(ミニマル)/ hero(大文字展示+光斑)/ panel(ガラスパネル)
+- グラデーションタイトル文字 + グロー + ぼかし光斑の奥行き
+- ロゴ / 円形 avatar を埋め込み
+- 中国語を自動レンダリング(Noto Sans SC オフライン)+ カラー emoji 自動(ディスクキャッシュ、オフラインで使用可)
+- カスタムサイズ(デフォルト 1200×630 OG 標準)
+</details>
 
-> レートリミットの自己学習（`rateLimits`/`rateLimitTtlMs` —— 429 で実際のリミットを自動学習＋TTL 期限切れフォールバック）など、その他の高度なフィールドについては [doc/](doc/) を参照してください。
+<details>
+<summary>📖 リッチ SVG レンダリングとは?</summary>
+
+D2 エンジンは SVG フィルター(feGaussianBlur グロー)をサポートしていないため、「カッコいいダークでハイテク感、グロー、被写界深度」といった効果が欲しい場合は:
+1. Claude が手書きで SVG を作成(feGaussianBlur 等のフィルター付き)
+2. `render_svg` ツールを呼び出す
+3. ツールが自動でバックエンドを選択:`<filter>` が存在 + システム Chrome が利用可能 → Chrome(100% フィルター忠実度)、それ以外 → resvg(92%、軽量)
+</details>
+
+<details>
+<summary>📖 オフラインについて(どのツールがネット接続が必要?)</summary>
+
+- **完全オフライン**:generate_diagram / generate_chart / generate_formula / generate_qrcode
+- **初回オンライン後にキャッシュでオフライン**:generate_card(デフォルトの Latin フォント Inter を初回に CDN から取得し `~/.media-gen-mcp/fonts/` にキャッシュ、CJK フォント Noto Sans SC はすでにオフラインで内蔵、emoji twemoji はディスクキャッシュでオフライン使用可)
+- **ネット接続が必要**:generate_icon(Iconify API から取得)、フィルター付き render_svg(Chrome が必要)
+- **常にオンライン**:AI 生成ツール(generate_image / create_video)
+</details>
 
 ---
 
 ## ❓ FAQ
 
-**動画が遅い？** 3〜18秒の動画で約1〜3分かかります。`wait` を省略すると非同期になり（推定60秒超でハンドルを返し、完了時に通知）。
-**フレーム数？** `durationSeconds` を渡すと自動選択されます（5/10/18s）。Agnes は 81/121/161/241/441 のみ許可。
-**429 が出る？** 62秒のシリアライザを内蔵、実際のレートリミットを自動学習します。
-**構造化ツールに key は必要？** いいえ。6つのローカルツールはインストール後すぐ動きます。key が必要なのは AI 生成だけです。
-**カードの CJK/絵文字/グラデーションは？** 内蔵 CJK フォント（自動）、twemoji カラー絵文字（自動）。`bg` に CSS の `linear-gradient(...)` を渡せばグラデーションになります。
-**カードの派手なエフェクトは？** `titleGradient`（グラデーションタイトル）、`glow`（タイトルのグロー）、`hero` テンプレート（ぼかした奥行きブロブ）、`panel` テンプレート（ガラスパネル：border/radius/shadow）。すべて確定的、Satori によりインプロセスで動作 —— ブラウザ不要。
-**config が読み込まれない？** `~/.media-gen-mcp/config.json` に配置する必要があります（npx はキャッシュにインストールされるため、プロジェクト内の config は利用できません）。
+**動画が遅い?** 3–18秒で約1〜3分。`wait` を省略すると自動で非同期に(>60秒で handle を返し、完了時に通知)。
+**フレーム数?** `durationSeconds` を渡すと自動で選択(5/10/18秒)。Agnes は 81/121/161/241/441 のみ許可。
+**429 エラーが出る?** 内蔵の62秒シリアル実行 + 実レート制限を自動で学習。
+**構造化ツールに Key は必要?** 不要。インストールするだけで図/チャート/カード/QRコードを描けます。
+**カードの中国語/emoji/グラデーションは?** すべて自動:内蔵 CJK フォント + twemoji emoji(ディスクキャッシュ)+ CSS グラデーション背景。
+**リッチ SVG?** Claude が手書き SVG(feGaussianBlur グロー付き)→ `render_svg` → Chrome で100%フィルター忠実度。
+**Mermaid はサポート?** 非サポート(ブラウザが必要)。D2 で代替(フロー/シーケンス/クラス図/ER/マインドマップをカバー)。
+**config が読み込まれない?** `~/.media-gen-mcp/config.json` に配置する必要があります。
+**`npx` で接続できない?** フォールバックとしてグローバルインストール:
+```bash
+npm i -g media-gen-mcp-server
+claude mcp remove media-gen-mcp
+claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"
+```
 
 ---
 
 ## 🏗️ アーキテクチャ + ドキュメント
 
-- **provider プラグイン可能**（agnes + zhipu。provider 追加でツールレイヤーの変更は不要）；**エンジンプラグイン可能**（DiagramEngine は MediaProvider と並行稼働、相互汚染なし）。
-- 詳しくは [doc/](doc/) を参照：[Agnes 登録ガイド](doc/Agnes%20开通指引.md) · [Zhipu 登録ガイド](doc/Zhipu%20开通指引.md) · [Agnes vs Zhipu benchmark](doc/Agnes_vs_Zhipu_横评.md)
+- **プロバイダーはプラグイン可能**(agnes + 智譜、プロバイダー追加でもツール層はゼロ改修)、**エンジンもプラグイン可能**(DiagramEngine と MediaProvider は並行、互いに汚染しない)
+- [アーキテクチャ要件チェックリスト](doc/架构要求清单.md)——プロジェクトのアーキテクチャ規約(継続保守)
+- 詳細は [doc/](doc/) を参照:[Agnes 登録ガイド](doc/Agnes%20开通指引.md) · [智譜登録ガイド](doc/Zhipu%20开通指引.md) · [プロバイダー横並び比較](doc/Agnes_vs_Zhipu_横评.md)
 
 ---
 
-## 💝 サポート
+## 💝 作者を支援する
 
-media-gen-mcp がお役に立ちましたら、作者にコーヒーをおごっていただけると嬉しいです ☕
+media-gen-mcp がお役に立てば、作者にコーヒーをおごっていただけると嬉しいです ☕
 
 <div align="center">
 
 WeChat | Alipay
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="220" alt="WeChat"> | <img src="doc/support-alipay.jpg" height="220" alt="Alipay">
+<img src="doc/support-wechat.jpg" height="200" alt="WeChat"> | <img src="doc/support-alipay.jpg" height="200" alt="Alipay">
 
 </div>
 
-または ⭐ Star、Issue / PR の作成 —— どれでも大歓迎です。
+または ⭐ Star、Issue / PR の提出 —— どれも作者へのサポートです。
 
 ## License
 
