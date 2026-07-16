@@ -149,7 +149,7 @@ async function renderWithChrome(svg: string, scale: number): Promise<Buffer> {
   try {
     const html = `<!DOCTYPE html><html><head><style>*{margin:0;padding:0;box-sizing:border-box;}html,body{width:${svgW}px;height:${svgH}px;overflow:hidden;}</style></head><body>${svg}</body></html>`;
     await page.setViewport({ width: svgW, height: svgH, deviceScaleFactor: scale });
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.setContent(html, { waitUntil: "load" }); // networkidle0 在 setContent 下会超时,用 load 即可
     await page.evaluateHandle("document.fonts.ready"); // puppeteer#791 修复
     const buf = await page.screenshot({
       type: "png",

@@ -35,7 +35,7 @@ import { renderSvg } from "./render-svg.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.4.1" },
+  { name: "media-gen-mcp", version: "0.4.2" },
   { capabilities: { tools: {} } },
 );
 
