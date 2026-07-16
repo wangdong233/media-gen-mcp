@@ -6,3 +6,5 @@ config.json
 .devteam/
 *.log
 test_d2_tmp.mjs
+_*.mjs
+_*.cjs
