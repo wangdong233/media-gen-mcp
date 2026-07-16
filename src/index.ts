@@ -35,7 +35,7 @@ import { renderSvg } from "./render-svg.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.4.3" },
+  { name: "media-gen-mcp", version: "0.4.4" },
   { capabilities: { tools: {} } },
 );
 
@@ -198,7 +198,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          name: { type: "string", description: "Icon name as prefix:name, e.g. mdi:home, logos:github, lucide:check. Also used (sanitized) as the output filename." },
+          name: { type: "string", description: "Icon identifier in Iconify format: prefix:name (colon required, NOT hyphen/filename). Examples: mdi:home, logos:github, lucide:check-circle, fa-brands:twitter. Prefix = icon set (mdi=Material Design, logos=brand logos, lucide=Lucide, fa-solid/fa-brands=Font Awesome). Browse at https://icon-sets.iconify.design. WRONG: 'anthropic-logo'; RIGHT: 'logos:anthropic'." },
           size: { type: "number", description: "Pixel size (square), default 128" },
           color: { type: "string", description: "Foreground color (default currentColor; PNG defaults to black)" },
           format: { type: "string", enum: ["svg", "png"], default: "svg" },
@@ -225,7 +225,7 @@ function buildTools() {
           color: { type: "string", description: "Title text color (default #f8fafc). Note: only the title uses this; subtitle uses accent, body/footer use a muted gray." },
           accent: { type: "string", description: "Accent color (default #6366f1)" },
           titleGradient: { type: "string", description: "CSS gradient applied to the title text via background-clip:text, e.g. linear-gradient(90deg,#f59e0b,#ef4444). Note: does not combine with glow (Satori drops the shadow when text is clipped to a gradient — use one or the other)." },
-          glow: { type: "string", description: "Title glow (text-shadow). Pass true (as the string 'true') to derive from accent, or a full text-shadow value like '0 0 40px rgba(245,158,11,.6)'." },
+          glow: { type: "string", description: "Title glow (text-shadow). Pass 'true' to auto-derive from accent color, or a full text-shadow CSS value like '0 0 40px rgba(245,158,11,.6)'. Pass 'false' to disable. Does NOT combine with titleGradient (shadow is clipped when text is gradient-filled)." },
           blob: { type: "boolean", default: true, description: "hero template only: blurred accent blob behind the title for depth (default true)" },
           quoteStyle: { type: "string", enum: ["top", "flank"], default: "top", description: "quote template only: 'top' = big quote mark above the text (default); 'flank' = large quote marks flank the text left/right on the same line, wrapping it" },
           logo: { type: "string", description: "Embedded image (brand logo / avatar): a URL, data URI, or local file path (.png/.jpg/.webp/.svg). Placed at the top of the card content." },
