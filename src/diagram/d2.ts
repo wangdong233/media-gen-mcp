@@ -49,6 +49,21 @@ async function resolveD2Icons(svg: string): Promise<string> {
   return out;
 }
 
+/** 增强 D2 错误信息:解析 D2 技术性错误,追加可操作 HINT(让 Claude 首次纠对,不试错)。 */
+function enhanceD2Error(msg: string, _code: string): string {
+  let hint = "";
+  if (/number between/i.test(msg)) hint = " HINT: D2 numeric properties (stroke-width, font-size, border-radius, stroke-dash, width, height) accept INTEGERS ONLY — floats like 1.5 are invalid, use 1 or 2.";
+  else if (/valid named color|hex code/i.test(msg)) hint = " HINT: hex colors MUST be QUOTED in D2 (style.fill: \"#ff0000\") because # starts a comment — unquoted #ff0000 is eaten as comment. Named colors like red don't need quotes.";
+  else if (/one of/i.test(msg)) {
+    const m = msg.match(/one of[^:]*:\s*(.+)/i);
+    if (m) hint = ` HINT: valid values are: ${m[1].trim()}`;
+  } else if (/maps must be terminated/i.test(msg)) hint = " HINT: in D2 map blocks { }, each property goes on its OWN LINE. Check for missing closing } or properties on the same line.";
+  else if (/unexpected text after/i.test(msg)) hint = " HINT: D2 map properties must be one per line (newline-separated). Multiple properties on one line with spaces/semicolons can cause this.";
+  else if (/non-integer/i.test(msg)) hint = " HINT: D2 requires integers (not floats) for this property.";
+  else if (/missing value after/i.test(msg)) hint = " HINT: # starts a COMMENT in D2. If your value starts with # (like a hex color #ff0000), it MUST be quoted: style.fill: \"#ff0000\". Named colors like red don't need quotes.";
+  return msg + (hint || "");
+}
+
 export class D2Engine implements DiagramEngine {
   readonly name = "d2" as const;
   private d2?: D2;
@@ -68,7 +83,12 @@ export class D2Engine implements DiagramEngine {
       this.d2 ??= new D2();
       const d2 = this.d2;
 
-      const compiled = await d2.compile(req.code);
+      let compiled;
+      try {
+        compiled = await d2.compile(req.code);
+      } catch (e: any) {
+        throw new Error(enhanceD2Error(e?.message ?? String(e), req.code));
+      }
 
       // CQ-2:theme → themeID(D2 接受数字 ID)
       const themeNum = req.theme != null ? Number(req.theme) : NaN;

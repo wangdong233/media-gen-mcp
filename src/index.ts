@@ -34,7 +34,7 @@ import { renderCard } from "./card.js";
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.3.16" },
+  { name: "media-gen-mcp", version: "0.3.17" },
   { capabilities: { tools: {} } },
 );
 
