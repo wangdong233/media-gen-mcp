@@ -3,14 +3,14 @@
 # media-gen-mcp
 
 [![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-获取免费-key)
-[![Version](https://img.shields.io/badge/version-0.3.0-6f42c1?style=flat-square)](https://www.npmjs.com/package/media-gen-mcp-server)
+[![Version](https://img.shields.io/badge/version-0.4.6-6f42c1?style=flat-square)](https://www.npmjs.com/package/media-gen-mcp-server)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#license)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
 
 **Claude Code 的全能生图 MCP —— AI 出图 + 本地结构化绘图,一个 server 全包**
 
-文生图 / 图生图 / 文生视频 / 图生视频 / 关键帧动画 · 结构图 / 图表 / 公式 / 卡片 / 图标 / 二维码
+文生图 / 图生图 / 文生视频 / 图生视频 / 关键帧动画 · 结构图 / 图表 / 公式 / 卡片 / 图标 / 二维码 / **酷炫 SVG 渲染**
 
 [English](README.en.md) | **简体中文** | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
 
@@ -23,14 +23,14 @@
 - 🎨 **AI 出图全免费**:文生图、图生图、文生视频、图生视频、关键帧动画——借 **Agnes AI + 智谱** 的免费模型,零成本。
 - 📐 **结构化本地绘图,确定性**:结构图、数据图表、数学公式、分享卡片、矢量图标、二维码——**SVG 矢量高清**,不调用 AI、可无限放大、文字清晰、内容可控。
 - 🧠 **一个心智模型**:用户只说"生成一张图",Claude 自动判别走 AI 还是本地引擎、自动生成对应 DSL/JSON/LaTeX,**步骤零增多**。
-- 🌏 **开箱即用的细节**:卡片**自动支持中文**(内置 Noto Sans SC 离线)、**纯色/渐变背景**、**彩色 emoji**;结构图支持 **D2 + Graphviz** 双引擎。
+- 🌏 **开箱即用的细节**:卡片**自动支持中文**(内置 Noto Sans SC 离线)、**纯色/渐变背景**、**彩色 emoji**;结构图支持 **D2 + Graphviz** 双引擎;酷炫 SVG 图(feGaussianBlur 辉光/渐变/景深)自动走 **Chrome 高保真渲染**。
 - 🔌 **可插拔**:provider 与渲染引擎皆可扩展,新增零改工具层;按模态默认路由 + 限流自学习。
-- 🆓 **结构化工具免 Key**:`claude mcp add` 装上即可用 6 个本地工具,**不配 AI Key 也能画图/图表/卡片/二维码**。
+- 🆓 **结构化工具免 Key**:`claude mcp add` 装上即可用 7 个本地工具,**不配 AI Key 也能画图/图表/卡片/二维码**。
 - 🌐 8 语言 README · MIT · Node ≥18
 
 ---
 
-## 🛠️ 10 个工具一览
+## 🛠️ 11 个工具一览
 
 ### 🤖 AI 生成(在线 · 免费)
 
@@ -49,10 +49,11 @@
 | `generate_chart` | 柱 / 线 / 饼 / 面积 / 散点 | Vega-Lite |
 | `generate_formula` | LaTeX 数学公式(字形内嵌,无需字体) | MathJax |
 | `generate_card` | OG / 分享 / 引言卡片(默认 1200×630;模板 og/quote/minimal/**hero**/**panel**;**中文/渐变背景/彩色 emoji 自动**、**渐变标题+辉光**) | Satori + resvg |
-| `generate_icon` | 20 万+ 矢量图标(`prefix:name`) | Iconify |
+| `generate_icon` | 20 万+ 矢量图标(`icon: "mdi:home"` 格式) | Iconify |
 | `generate_qrcode` | 二维码 | qrcode |
+| `render_svg` | **酷炫 SVG → 高质量 PNG**(自动选 Chrome 100%/resvg 92%) | Chrome / resvg |
 
-> 6 个结构化工具:**4 个完全离线**(diagram / chart / formula / qrcode)。`generate_card` 的默认 Latin 字体(Inter)首次从 CDN 取并缓存到 `~/.media-gen-mcp/fonts/`(之后离线,或传 `fontPath` 立即离线),CJK 字体(Noto Sans SC)已**内置离线**;但卡片 **emoji**(twemoji)与 `generate_icon`(Iconify)**需联网**(仅缓存,未内置)。AI 生成工具始终在线。
+> 7 个结构化工具:**4 个完全离线**(diagram / chart / formula / qrcode)。`render_svg` 无滤镜时用 resvg(离线),有滤镜时自动走 Chrome(需系统 Chrome)。`generate_card` 的默认 Latin 字体(Inter)首次从 CDN 取并缓存到 `~/.media-gen-mcp/fonts/`(之后离线,或传 `fontPath` 立即离线),CJK 字体(Noto Sans SC)已**内置离线**;但卡片 **emoji**(twemoji)与 `generate_icon`(Iconify)**需联网**(仅缓存,未内置)。AI 生成工具始终在线。
 
 ---
 
@@ -118,6 +119,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | 分享卡片 | "给这篇文章生成一张**紫蓝渐变**、带 🚀 emoji 的 OG 卡片" |
 | 图标 | "给我一个 GitHub 的 logo 图标" |
 | 二维码 | "生成一个指向 https://... 的 QR 码" |
+| **酷炫 SVG** | "画个**酷炫暗黑科技感架构图**,要辉光、渐变、景深"(D2 做不到的 feGaussianBlur 滤镜效果→ Claude 手写 SVG → `render_svg` → Chrome 渲染) |
 
 > 指定厂商/模型只影响本次调用,**不改 config**。结构图用 [D2 语法](https://d2lang.com)/[Graphviz DOT](https://graphviz.org/docs/dot/)、图表用 [Vega-Lite](https://vega.github.io/vega-lite)、公式用 [LaTeX](https://www.latex-project.org)、图标浏览 [icon-sets.iconify.design](https://icon-sets.iconify.design)——Claude 自动生成源码。
 
@@ -159,8 +161,9 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 **视频慢?** 3–18s,生成约 1–3 分钟。省略 `wait` 自动异步(预估 >60s 返回 handle,完成通知)。
 **帧数?** 传 `durationSeconds` 自动选(5/10/18s)。Agnes 仅允许 81/121/161/241/441。
 **撞 429?** 内置 62s 串行 + 自动学习真实限流。
-**结构化工具要 Key 吗?** 不要。6 个本地工具装上即用;只 AI 生成需要 Key。
+**结构化工具要 Key 吗?** 不要。7 个本地工具装上即用;只 AI 生成需要 Key。
 **卡片中文/emoji/渐变?** 内置 CJK 字体(自动)、twemoji 彩色 emoji(自动,**落盘缓存,断网也能用**)、`bg` 传 CSS `linear-gradient(...)` 即渐变背景。
+**酷炫 SVG 图?** Claude 手写 SVG(带 feGaussianBlur 辉光/渐变/景深)→ 调 `render_svg` → 自动选 Chrome(100% 滤镜保真)或 resvg(92%,轻量)。D2 做不到的发光/景深效果用这条路径。
 **卡片酷炫特效?** `titleGradient`(标题渐变文字)、`glow`(标题辉光)、`hero` 模板(模糊光斑纵深)、`panel` 模板(玻璃面板:边框/圆角/阴影)、`quoteStyle:"flank"`(左右大引号夹文字)、`logo`/`logoRound`(内嵌 logo / 圆形 avatar)。均 Satori 进程内确定性渲染,无需浏览器。
 **没读到 config?** 必须在 `~/.media-gen-mcp/config.json`(npx 装包到缓存,项目内不可用)。
 **`npx` 连不上 / 启动慢?** 多半是 npx 缓存损坏或网络受限。兜底:全局安装后直接用本地二进制(启动零联网、最稳):
