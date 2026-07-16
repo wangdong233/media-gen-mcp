@@ -160,15 +160,42 @@ D2 引擎不支持 SVG 滤镜(feGaussianBlur 辉光),所以当你想要"酷炫�
 
 ## ❓ FAQ
 
-**视频慢?** 3–18s,约 1–3 分钟。省略 `wait` 自动异步(>60s 返回 handle,完成通知)。
-**帧数?** 传 `durationSeconds` 自动选(5/10/18s)。Agnes 仅允许 81/121/161/241/441。
-**撞 429?** 内置 62s 串行 + 自动学习真实限流。
-**结构化工具要 Key?** 不要。装上就能画图/图表/卡片/二维码。
-**卡片中文/emoji/渐变?** 全自动:内置 CJK 字体 + twemoji emoji(落盘缓存)+ CSS 渐变背景。
-**酷炫 SVG?** Claude 手写 SVG(带 feGaussianBlur 辉光)→ `render_svg` → Chrome 100% 滤镜保真。
-**Mermaid 支持吗?** 不支持(需浏览器)。用 D2 替代(覆盖流程/时序/类图/ER/脑图)。
-**没读到 config?** 必须在 `~/.media-gen-mcp/config.json`。
-**`npx` 连不上?** 兜底全局安装:
+**视频慢?**
+
+3–18s,约 1–3 分钟。省略 `wait` 自动异步(>60s 返回 handle,完成通知)。
+
+**帧数?**
+
+传 `durationSeconds` 自动选(5/10/18s)。Agnes 仅允许 81/121/161/241/441。
+
+**撞 429?**
+
+内置 62s 串行 + 自动学习真实限流。
+
+**结构化工具要 Key?**
+
+不要。装上就能画图/图表/卡片/二维码。
+
+**卡片中文/emoji/渐变?**
+
+全自动:内置 CJK 字体 + twemoji emoji(落盘缓存)+ CSS 渐变背景。
+
+**酷炫 SVG?**
+
+Claude 手写 SVG(带 feGaussianBlur 辉光)→ `render_svg` → Chrome 100% 滤镜保真。
+
+**Mermaid 支持吗?**
+
+不支持(需浏览器)。用 D2 替代(覆盖流程/时序/类图/ER/脑图)。
+
+**没读到 config?**
+
+必须在 `~/.media-gen-mcp/config.json`。
+
+**`npx` 连不上?**
+
+兜底全局安装:
+
 ```bash
 npm i -g media-gen-mcp-server
 claude mcp remove media-gen-mcp
