@@ -31,6 +31,7 @@ import { renderFormula } from "./formula.js";
 import { renderIcon } from "./icon.js";
 import { renderCard } from "./card.js";
 import { renderSvg } from "./render-svg.js";
+import { renderVideo } from "./render-video.js";
 
 const ASYNC_THRESHOLD_SECONDS = 60;
 
@@ -257,6 +258,27 @@ function buildTools() {
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
         required: ["svg"],
+      },
+    },
+    {
+      name: "render_video",
+      description:
+        "Render HTML/CSS/GSAP animation to a deterministic MP4/GIF/WebM video. Input: HTML source (with CSS animations or GSAP timeline) + fps + duration. Engine: headless Chrome (seek-based frame capture, HyperFrames-style) + ffmpeg (frame stitching). No AI, deterministic (same input → same output). Use for: product intros, animated charts/text motion graphics, brand intros, slideshows, kinetic typography. NOT for: photorealistic video (use create_video/AI for that). Needs: system Chrome/Edge + ffmpeg (bundled via ffmpeg-static).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          html: { type: "string", description: "HTML source (with inline CSS/JS animations). Include a GSAP timeline on window.__tl/window.timeline, or expose window.__hf.seek(t), or use pure CSS @keyframes — all auto-detected." },
+          fps: { type: "number", description: "Frames per second (default 30, max 60)" },
+          duration: { type: "number", description: "Duration in seconds (required, max 120)" },
+          width: { type: "number", description: "Pixel width (default 1920)" },
+          height: { type: "number", description: "Pixel height (default 1080)" },
+          format: { type: "string", enum: ["mp4", "gif", "webm"], default: "mp4", description: "Output format (mp4 default, best compatibility)" },
+          scale: { type: "number", description: "Retina scale factor (default 1; 2 for 2× pixels)" },
+          quality: { type: "number", description: "Per-frame JPEG quality 1-100 (default 90; lower = smaller file)" },
+          name: { type: "string", description: "Output filename (without extension)" },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["html", "duration"],
       },
     },
   ];
@@ -532,6 +554,36 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         const fp = await writeLocalRender(outDir, "svg", optString(a.name), format, rendered);
         return ok({ format, backend: rendered.backendUsed, warning: rendered.warning, local_path: fp });
+      }
+
+      case "render_video": {
+        const html = requireString(a.html, "html");
+        const outDir = resolveOutDir(a.outDir);
+        const format: "mp4" | "gif" | "webm" =
+          a.format === "gif" ? "gif" : a.format === "webm" ? "webm" : "mp4";
+        const rendered = await renderVideo({
+          html,
+          duration: optNumber(a.duration) ?? 0,
+          fps: optNumber(a.fps),
+          width: optNumber(a.width),
+          height: optNumber(a.height),
+          format,
+          scale: optNumber(a.scale),
+          quality: optNumber(a.quality),
+          onProgress: (pct) => emitProgress(pct, `rendering frames… (${pct}%)`),
+        });
+        // 视频落盘(Buffer → 文件,sanitize name 同 writeLocalRender)
+        await fs.mkdir(outDir, { recursive: true });
+        const safeName = path.basename(optString(a.name) ?? `video_${Date.now().toString(36)}`);
+        const fp = path.join(outDir, `${safeName}.${rendered.ext}`);
+        await fs.writeFile(fp, rendered.video);
+        return ok({
+          format,
+          mime_type: rendered.mimeType,
+          frame_count: rendered.frameCount,
+          elapsed_ms: rendered.elapsedMs,
+          local_path: fp,
+        });
       }
 
       default:

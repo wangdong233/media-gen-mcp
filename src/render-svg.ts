@@ -33,22 +33,41 @@ export interface RenderSvgOutput {
 }
 
 // ── Chrome 检测与生命周期 ──
-interface BrowserLike {
+export interface BrowserLike {
   newPage(): Promise<PageLike>;
   close(): Promise<void>;
 }
-interface PageLike {
+export interface PageLike {
   setViewport(opts: any): Promise<void>;
   setContent(html: string, opts: any): Promise<void>;
   evaluateHandle(expr: string): Promise<unknown>;
+  evaluate<T>(fn: string | ((...args: any[]) => T), ...args: any[]): Promise<T>;
+  createCDPSession(): Promise<CDPSessionLike>;
   screenshot(opts: any): Promise<Uint8Array | string>;
   close(): Promise<void>;
+}
+export interface CDPSessionLike {
+  send(method: string, params?: any): Promise<any>;
 }
 
 let browser: BrowserLike | null = null;
 let browserIdleTimer: ReturnType<typeof setTimeout> | null = null;
 let launching: Promise<BrowserLike | null> | null = null;
 const BROWSER_IDLE_MS = 5 * 60 * 1000;
+
+// 确定性渲染 flags(SVG 截图 + 视频帧捕获共用;HyperFrames 同款):
+// --force-color-profile=srgb:颜色一致;--run-all-compositor-stages-before-draw:截图前合成器刷完;
+// --disable-background-timer-throttling:GSAP ticker 不被节流;--disable-backgrounding-occluded-windows:防后台化。
+const DETERMINISTIC_FLAGS = [
+  "--no-sandbox",
+  "--disable-gpu",
+  "--font-render-hinting=full",
+  "--force-color-profile=srgb",
+  "--run-all-compositor-stages-before-draw",
+  "--disable-background-timer-throttling",
+  "--disable-backgrounding-occluded-windows",
+  "--disable-renderer-backgrounding",
+];
 
 /** 探测系统 Edge 路径(跨平台,Chrome 不可用时的回退)。 */
 function findEdgePath(): string | undefined {
@@ -64,7 +83,7 @@ function findEdgePath(): string | undefined {
   });
 }
 
-async function getBrowser(): Promise<BrowserLike | null> {
+export async function getBrowser(): Promise<BrowserLike | null> {
   if (browser) { resetIdleTimer(); return browser; }
   if (launching) return launching; // 单飞锁:防并发 launch 泄漏 Chrome 进程
   launching = (async (): Promise<BrowserLike | null> => {
@@ -75,7 +94,7 @@ async function getBrowser(): Promise<BrowserLike | null> {
       const b = await puppeteer.default.launch({
         channel: "chrome",
         headless: true,
-        args: ["--no-sandbox", "--disable-gpu", "--font-render-hinting=full"],
+        args: DETERMINISTIC_FLAGS,
       });
       browser = b as BrowserLike;
       resetIdleTimer();
@@ -89,7 +108,7 @@ async function getBrowser(): Promise<BrowserLike | null> {
       try {
         const b = await puppeteer.default.launch({
           headless: true,
-          args: ["--no-sandbox", "--disable-gpu", "--font-render-hinting=full"],
+          args: DETERMINISTIC_FLAGS,
           executablePath: edgePath,
         });
         browser = b as BrowserLike;

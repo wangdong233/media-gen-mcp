@@ -1,6 +1,6 @@
 {
   "name": "media-gen-mcp-server",
-  "version": "0.4.7",
+  "version": "0.5.0",
   "description": "All-in-one image-generation MCP server for Claude Code: AI imagery/video (Agnes AI + Zhipu) + structured local rendering (diagrams, charts, formulas, cards, icons, QR codes). Provider- and engine-pluggable.",
   "type": "module",
   "main": "dist/index.js",
@@ -38,6 +38,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "@terrastruct/d2": "^0.1.33",
     "@viz-js/viz": "^3.28.0",
+    "ffmpeg-static": "^5.3.0",
     "mathjax-full": "^3.2.1",
     "puppeteer-core": "^25.3.0",
     "qrcode": "^1.5.4",

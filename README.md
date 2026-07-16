@@ -127,6 +127,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | **二维码** | qrcode | URL/文本 → SVG/PNG |
 | **矢量图标** | Iconify | 20 万+ 图标(`icon: "mdi:home"`) |
 | **酷炫 SVG** | Chrome / resvg | 手写 SVG(辉光/滤镜/景深)→ Chrome 高保真渲染 |
+| **确定性视频** | Chrome + ffmpeg | HTML/CSS/GSAP 动画 → MP4/GIF/WebM(同输入同输出,HyperFrames 式 seek 逐帧捕获) |
 
 <details>
 <summary>📖 卡片能做什么?</summary>
@@ -148,11 +149,21 @@ D2 引擎不支持 SVG 滤镜(feGaussianBlur 辉光),所以当你想要"酷炫�
 </details>
 
 <details>
+<summary>📖 确定性视频(render_video)是什么?和 AI 视频有啥区别?</summary>
+
+- **确定性视频**(`render_video`):你给 HTML+CSS/GSAP 动画 + 时长,工具逐帧 seek 到精确时间点截图,ffmpeg 拼成 MP4。**同输入 → 同输出**(逐字节一致),代码驱动,适合产品片头/动态图表/文字动效/轮播/品牌动画。
+- **AI 视频**(`create_video`):你给文字描述,AI 生成写实场景。语义驱动,适合"真实画面"。
+- Claude 会根据意图自动路由:要"动效/动画/字幕"→ `render_video`;要"真实画面/电影感"→ `create_video`。
+- 自动检测三种动画:GSAP timeline(`window.__tl`)/ HyperFrames 契约(`window.__hf.seek`)/ 纯 CSS `@keyframes`。
+- 需要系统 Chrome/Edge + ffmpeg(已随 npm 包捆绑 `ffmpeg-static`)。
+</details>
+
+<details>
 <summary>📖 离线说明(哪些工具需联网?)</summary>
 
 - **完全离线**:generate_diagram / generate_chart / generate_formula / generate_qrcode
 - **首次联网后缓存离线**:generate_card(默认 Latin 字体 Inter 首次从 CDN 取并缓存到 `~/.media-gen-mcp/fonts/`,CJK 字体 Noto Sans SC 已内置离线;emoji twemoji 落盘缓存断网可用)
-- **需联网**:generate_icon(Iconify API 取图)、render_svg 有滤镜时(需 Chrome)
+- **需联网**:generate_icon(Iconify API 取图)、render_svg 有滤镜时(需 Chrome)、render_video(需 Chrome + ffmpeg)
 - **始终在线**:AI 生成工具(generate_image / create_video)
 </details>
 
