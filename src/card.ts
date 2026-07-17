@@ -140,19 +140,37 @@ function isGradient(bg: string): boolean {
   return /gradient\s*\(/i.test(bg);
 }
 
-/** 把颜色转成 rgba(...,alpha)。支持 #RGB/#RRGGBB;其余(颜色名/rgb())兜底白色。避免拼 `${hex}99` 对 3 位 hex 产生非法值。 */
+/** 把颜色转成 rgba(...,alpha)。复用 parseHex(消除重复解析);无 hex 兜底白色。 */
 function withAlpha(color: string, alpha: number): string {
-  const c = color.trim();
-  let hex: string | null = null;
-  if (/^#[0-9a-f]{3}$/i.test(c)) hex = "#" + c[1] + c[1] + c[2] + c[2] + c[3] + c[3];
-  else if (/^#[0-9a-f]{6}$/i.test(c)) hex = c;
-  if (hex) {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-  return `rgba(255,255,255,${alpha})`; // 颜色名/rgb()/8位hex 等:白色辉光兜底(不崩)
+  const rgb = parseHex(color);
+  return rgb ? `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})` : `rgba(255,255,255,${alpha})`;
+}
+
+/** 解析颜色串首个 #hex(#RGB/#RRGGBB;渐变取首个 stop)→ [r,g,b];无 hex 返回 null。 */
+function parseHex(color: string): [number, number, number] | null {
+  const m = color.match(/#([0-9a-f]{3}|[0-9a-f]{6})/i);
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+/** WCAG 相对亮度(渐变取首个 hex stop)。无 hex 返回 null。用于 muted/blob/panel 随 bg 明暗自适应。 */
+function luminanceOf(color: string): number | null {
+  const rgb = parseHex(color);
+  if (!rgb) return null;
+  const f = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+}
+function isLightBg(bg: string): boolean {
+  const l = luminanceOf(bg);
+  return l != null && l > 0.5; // 0.5 = 自定义启发式阈值(非 WCAG AA 4.5),作 muted/blob/panel 明暗自适应
+}
+/** WCAG 对比度(1.0=无对比)。取两色首个 hex;任一无 hex 返回 null。 */
+function contrastRatio(c1: string, c2: string): number | null {
+  const l1 = luminanceOf(c1), l2 = luminanceOf(c2);
+  if (l1 == null || l2 == null) return null;
+  const [a, b] = l1 > l2 ? [l1, l2] : [l2, l1];
+  return (a + 0.05) / (b + 0.05);
 }
 
 // ── emoji(twemoji PNG via CDN,data URI 内联以便 resvg 渲染) ──
@@ -392,7 +410,7 @@ function layoutMinimal(opts: { title: any; sub: any; logo: any }): Node {
 }
 
 /** hero 模板:居中大字标题(+可选模糊光斑纵深感)+ 副标题 + 可选页脚(credit/署名)。展示型。 */
-function layoutHero(opts: { title: any; sub: any; footer: any; logo: any; accent: string; blob: boolean }): Node {
+function layoutHero(opts: { title: any; sub: any; footer: any; logo: any; accent: string; bg: string; blob: boolean }): Node {
   const contentChildren: Node[] = [];
   if (opts.logo) contentChildren.push(opts.logo);
   contentChildren.push(opts.title);
@@ -427,9 +445,9 @@ function layoutHero(opts: { title: any; sub: any; footer: any; logo: any; accent
           width: 520,
           height: 520,
           borderRadius: "50%",
-          background: opts.accent,
+          background: isLightBg(opts.bg) ? "rgba(15,23,42,0.10)" : "rgba(255,255,255,0.18)",
           filter: "blur(120px)",
-          opacity: 0.45,
+          opacity: 0.55,
           top: "50%",
           left: "50%",
           transform: "translate(-50%, -50%)",
@@ -456,7 +474,7 @@ function layoutHero(opts: { title: any; sub: any; footer: any; logo: any; accent
 }
 
 /** panel 模板:标题/副标题/正文置于玻璃面板(border+圆角+阴影+半透明)内,浮于背景。 */
-function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string }): Node {
+function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string; bg: string }): Node {
   const inner: Node[] = [];
   if (opts.logo) inner.push(opts.logo);
   inner.push(opts.title);
@@ -471,9 +489,9 @@ function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; logo:
         gap: 24,
         padding: "60px 64px",
         borderRadius: 28,
-        border: "2px solid rgba(255,255,255,0.12)",
-        boxShadow: "0 30px 80px rgba(0,0,0,0.45)",
-        background: "rgba(255,255,255,0.05)",
+        border: isLightBg(opts.bg) ? "2px solid rgba(15,23,42,0.10)" : "2px solid rgba(255,255,255,0.12)",
+        boxShadow: isLightBg(opts.bg) ? "0 30px 80px rgba(0,0,0,0.12)" : "0 30px 80px rgba(0,0,0,0.45)",
+        background: isLightBg(opts.bg) ? "rgba(15,23,42,0.04)" : "rgba(255,255,255,0.05)",
         maxWidth: 880,
       },
       children: inner,
@@ -532,8 +550,12 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   if (req.template && !KNOWN_TPL.has(req.template)) {
     warnings.push(`template "${req.template}" 未知,回退 og(支持:og/quote/minimal/hero/panel)。`);
   }
+  const accentBgContrast = contrastRatio(accent, bg);
+  if (accentBgContrast != null && accentBgContrast < 1.5) {
+    warnings.push(`accent "${accent}" 与 bg 对比度过低(${accentBgContrast.toFixed(2)}:1),竖条/副标题/引号可能不可见,建议换 accent。`);
+  }
 
-  const muted = "#94a3b8";
+  const muted = isLightBg(bg) ? "#475569" : "#94a3b8";
 
   // CJK 检测:任一字段含 CJK → 加载内置 Noto Sans SC 作为回退,逐字形回退
   const needsCJK =
@@ -560,8 +582,9 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   if (glowRaw === true) {
     glowValue = `0 0 40px ${withAlpha(accent, 0.6)}`;
   } else if (typeof glowRaw === "string") {
-    const t = glowRaw.trim();
-    if (t && t.toLowerCase() !== "false") glowValue = t; // "false" → 关闭辉光(不当 text-shadow 值)
+    const t = glowRaw.trim().toLowerCase();
+    if (t === "true" || t === "") glowValue = `0 0 40px ${withAlpha(accent, 0.6)}`; // "true" → 同 boolean true 自动派生
+    else if (t && t !== "false") glowValue = glowRaw.trim(); // 自定义 text-shadow 值
   }
   const titleSize = template === "hero" ? 104 : template === "panel" ? 72 : 76;
   const titleStyle: Record<string, unknown> = {
@@ -605,15 +628,25 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
     };
   }
 
+  // 模板丢字段 warning(让用户知道哪些字段被该模板忽略,避免"传了以为生效")
+  if (template === "minimal" && (req.body?.trim() || req.footer?.trim())) {
+    warnings.push("body/footer 在 minimal 模板不渲染,已忽略(用 og/panel 渲染正文)。");
+  }
+  if (template === "hero" && req.body?.trim()) {
+    warnings.push("body 在 hero 模板不渲染,已忽略(用 og/panel 渲染正文)。");
+  }
+  if (template === "quote" && req.subtitle?.trim()) {
+    warnings.push("subtitle 在 quote 模板不渲染,已忽略。");
+  }
   let layout: Node;
   if (template === "quote") {
     layout = layoutQuote(req, { title: titleNode, body: bodyNode, footer: footerNode, logo: logoNode, accent, fontStack });
   } else if (template === "minimal") {
     layout = layoutMinimal({ title: titleNode, sub: subNode, logo: logoNode });
   } else if (template === "hero") {
-    layout = layoutHero({ title: titleNode, sub: subNode, footer: footerNode, logo: logoNode, accent, blob: req.blob !== false });
+    layout = layoutHero({ title: titleNode, sub: subNode, footer: footerNode, logo: logoNode, accent, bg, blob: req.blob !== false });
   } else if (template === "panel") {
-    layout = layoutPanel({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent });
+    layout = layoutPanel({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent, bg });
   } else {
     layout = layoutOG({ title: titleNode, sub: subNode, body: bodyNode, footer: footerNode, logo: logoNode, accent });
   }

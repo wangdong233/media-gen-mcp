@@ -67,6 +67,8 @@ export interface VideoHandle {
 export interface VideoTask extends VideoHandle {
   status: string;
   raw?: unknown;
+  /** provider 侧告警(如 zhipu 丢弃 ratio/negativePrompt/seed),透传给调用方。 */
+  warnings?: string[];
 }
 
 export interface VideoResult {
@@ -92,6 +94,8 @@ export interface ImageProvider {
   /** 仅图像模型清单(供 model↔provider 路由校验)。 */
   listImageModels(): string[];
   generateImage(req: ImageRequest): Promise<ImageResult>;
+  /** 是否支持图生图(images 输入)。false 时工具层拒绝 images,免静默丢弃(zhipu cogview 纯文生图)。 */
+  supportsImageToImage?(): boolean;
   /** 声明该 provider 的图像 size 约束(若有);无硬约束返回 undefined(如 agnes)。 */
   imageConstraints?(): ImageConstraints | undefined;
 }

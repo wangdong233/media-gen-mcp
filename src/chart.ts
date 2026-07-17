@@ -30,7 +30,13 @@ export async function renderChart(req: ChartRequest): Promise<ChartRenderOutput>
   }
   let vegaSpec;
   try {
-    const compiled = compile(req.spec as any);
+    const spec: any = { ...req.spec };
+    // 工具层默认尺寸:未显式设 autosize 时,补全缺失维度(避免只设 width 或 height 时另一维仍极小 ~100×240)
+    if (spec.autosize == null) {
+      if (spec.width == null) spec.width = 640;
+      if (spec.height == null) spec.height = 400;
+    }
+    const compiled = compile(spec);
     vegaSpec = compiled.spec;
   } catch (e: any) {
     throw new Error(`Vega-Lite spec error: ${e?.message ?? String(e)}`);

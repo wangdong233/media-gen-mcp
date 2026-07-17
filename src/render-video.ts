@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -57,6 +57,8 @@ export interface RenderVideoOutput {
   frameCount: number;
   /** 用时(毫秒)。 */
   elapsedMs: number;
+  /** 截断/降级提示(如 fps×duration 超 MAX_FRAMES 被截断)。 */
+  warning?: string;
 }
 
 const MAX_FRAMES = 3600; // 防失控:60s@60fps 或 120s@30fps
@@ -77,8 +79,7 @@ async function getFFmpegPath(): Promise<string> {
   // 兜底:系统 ffmpeg(PATH 可见时)
   if (!ffmpegPath) {
     try {
-      const sys = await import("node:child_process");
-      const which = sys.spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+      const which = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
       if (which.status === 0) ffmpegPath = "ffmpeg";
     } catch { /* ignore */ }
   }
@@ -179,10 +180,12 @@ async function captureFrame(
 
 /** 写帧到 ffmpeg stdin,处理背压。 */
 function writeFrame(stdin: NodeJS.WritableStream, chunk: Buffer): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const onErr = (e: Error) => reject(e);
+    stdin.once("error", onErr);
     const ok = stdin.write(chunk);
-    if (ok) resolve();
-    else stdin.once("drain", () => resolve());
+    if (ok) { stdin.removeListener("error", onErr); resolve(); }
+    else stdin.once("drain", () => { stdin.removeListener("error", onErr); resolve(); });
   });
 }
 
@@ -191,14 +194,18 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
   if (!req.duration || req.duration <= 0) throw new Error("`duration` (seconds, > 0) is required");
   if (req.duration > MAX_DURATION) throw new Error(`\`duration\` must be ≤ ${MAX_DURATION}s (got ${req.duration}s)`);
 
-  const fps = req.fps && req.fps > 0 ? Math.min(60, Math.floor(req.fps)) : 30;
+  const fps = req.fps && req.fps > 0 ? Math.min(60, Math.max(1, Math.floor(req.fps))) : 30;
   const duration = req.duration;
   const width = req.width && req.width > 0 ? Math.floor(req.width) : 1920;
   const height = req.height && req.height > 0 ? Math.floor(req.height) : 1080;
-  const scale = req.scale && req.scale > 0 ? Math.floor(req.scale) : 1;
+  const scale = req.scale && req.scale > 0 ? Math.max(1, Math.floor(req.scale)) : 1;
   const quality = req.quality && req.quality > 0 && req.quality <= 100 ? Math.floor(req.quality) : 90;
   const format: "mp4" | "gif" | "webm" = req.format ?? "mp4";
-  const totalFrames = Math.min(MAX_FRAMES, Math.ceil(fps * duration));
+  const wantedFrames = Math.ceil(fps * duration);
+  const totalFrames = Math.min(MAX_FRAMES, wantedFrames);
+  const videoWarning = wantedFrames > MAX_FRAMES
+    ? `fps×duration=${wantedFrames} 帧超过上限 ${MAX_FRAMES},已截断为 ${MAX_FRAMES}(实际时长约 ${MAX_FRAMES / fps}s);请降 fps 或 duration。`
+    : undefined;
 
   // 输出路径(仍用 tmp 目录,产出单一视频文件;帧走 stdin 不落盘)
   const tmpDir = path.join(os.tmpdir(), `mcp-video-${process.pid}-${Date.now().toString(36)}`);
@@ -223,7 +230,7 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
       ? ["-pix_fmt", "yuv420p", "-crf", "18", "-preset", "veryfast", "-movflags", "+faststart"]
       : format === "webm"
         ? ["-b:v", "1M", "-crf", "32", "-row-mt", "1"]
-        : []; // gif:原生 gif 编码器,pares2 再加 palette 优化
+        : ["-filter_complex", "split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5", "-loop", "0"]; // gif:palette 两 pass 优化(大幅减体积/提质量)
 
   const proc: ChildProcessWithoutNullStreams = spawn(ffmpeg, [
     "-y",
@@ -299,5 +306,5 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
   // 清理 tmp
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
 
-  return { video, mimeType, ext, frameCount: totalFrames, elapsedMs };
+  return { video, mimeType, ext, frameCount: totalFrames, elapsedMs, ...(videoWarning ? { warning: videoWarning } : {}) };
 }

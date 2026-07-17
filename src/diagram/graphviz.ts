@@ -30,6 +30,12 @@ function graphvizFitTo(svg: string): { mode: "zoom"; value: number } | { mode: "
   return { mode: "zoom", value: Math.min(GV_MAX_W / wpx, GV_MAX_H / hpx) };
 }
 
+function enhanceGraphvizError(msg: string): string {
+  let hint = "";
+  if (/syntax|unexpected|parse|error/i.test(msg)) hint = " HINT: 检查 DOT 语法 —— 语句以 ; 或换行结束,大括号 {} 配对,边引用的节点须先声明,属性用 [] 或 = 赋值。";
+  return msg + (hint || "");
+}
+
 export class GraphvizEngine implements DiagramEngine {
   readonly name = "graphviz" as const;
   private viz?: Viz;
@@ -55,7 +61,7 @@ export class GraphvizEngine implements DiagramEngine {
       const result = viz.render(req.code, { format: "svg" });
       svg = result.output ?? "";
     } catch (e: any) {
-      throw new Error(`Graphviz (DOT) render failed: ${e?.message ?? String(e)}`);
+      throw new Error(enhanceGraphvizError(`Graphviz (DOT) render failed: ${e?.message ?? String(e)}`));
     }
     if (!svg || !/<(svg|html|g|path)/.test(svg)) {
       throw new Error("graphviz engine produced no SVG");
@@ -66,7 +72,7 @@ export class GraphvizEngine implements DiagramEngine {
       const resvg = new Resvg(svg, {
         fitTo: graphvizFitTo(svg),
         background: "#ffffff",
-        font: { loadSystemFonts: true, defaultFontFamily: "PingFang SC" },
+        font: { loadSystemFonts: true, defaultFontFamily: "PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" },
       });
       png = Buffer.from(resvg.render().asPng());
     }

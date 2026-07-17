@@ -19,7 +19,23 @@ export async function downloadAsset(
   nameHint?: string,
 ): Promise<string> {
   await fs.mkdir(outDir, { recursive: true });
-  const ext = kind === "vid" ? ".mp4" : ".png";
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+  if (!res.ok || !res.body) {
+    throw new Error(`download ${url} -> HTTP ${res.status}`);
+  }
+  // 按 content-type 选扩展(img 可能是 jpeg/webp;vid 固定 mp4),避免 jpg/webp 字节贴 .png 扩展名
+  const ct = res.headers.get("content-type") ?? "";
+  let ext: string;
+  if (kind === "vid") {
+    ext = ct.includes("webm") ? ".webm" : ".mp4";
+  } else {
+    ext = ".png";
+    if (ct.includes("jpeg") || ct.includes("jpg")) ext = ".jpg";
+    else if (ct.includes("webp")) ext = ".webp";
+    else if (ct.includes("gif")) ext = ".gif";
+    else if (ct.includes("svg")) ext = ".svg";
+  }
   // sanitize 自定义名:basename 去路径穿越 + 剥调用方自带扩展名(防双扩展) + 仅替文件系统危险字符;
   // 保留中文等 Unicode 字符(此前用 [^\w.\-] 会把中文全替成 _);空名/未传 → UUID 兜底(保持旧行为)。
   let base = "";
@@ -32,11 +48,6 @@ export async function downloadAsset(
   }
   if (!base) base = `${kind}_${crypto.randomUUID().slice(0, 12)}`;
   const fp = path.join(outDir, base + ext);
-
-  const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
-  if (!res.ok || !res.body) {
-    throw new Error(`download ${url} -> HTTP ${res.status}`);
-  }
 
   const ws = fsSync.createWriteStream(fp);
   const reader = res.body.getReader();

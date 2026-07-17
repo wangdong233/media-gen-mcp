@@ -96,8 +96,8 @@ function buildTools() {
           keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image URL array." },
           resolution: { type: "string", enum: ["480p", "720p", "1080p"], default: "720p", description: "Provider may snap to nearest preset (Agnes size_mapping)." },
           ratio: { type: "string", description: "16:9 / 9:16 / 1:1 / 4:3 / 3:4 (preferred over raw size)." },
-          numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Provider-specific allowed values (Agnes: 8n+1, ≤441)." },
-          frameRate: { type: "number", default: vc.defaultFrameRate },
+          numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Allowed: " + vc.allowedNumFrames.join("/") + " (provider-specific; cross-provider routing re-validates per actual provider — check list_models)." },
+          frameRate: { type: "number", enum: vc.allowedFrameRates, default: vc.defaultFrameRate, description: "允许值 " + vc.allowedFrameRates.join("/") + " (provider 专有;跨 provider 路由后按实际 provider 复算)" },
           durationSeconds: { type: "number", description: "If set, auto-pick the nearest valid numFrames (~3/5/10/18s)." },
           seed: { type: "number" },
           negativePrompt: { type: "string" },
@@ -123,7 +123,8 @@ function buildTools() {
           taskId: { type: "string", description: "legacy fallback endpoint" },
           download: { type: "boolean", default: true },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>." },
-          provider: { type: "string", default: config.defaultVideoProvider },
+          outDir: { type: "string", description: "下载落盘目录,省略用默认。与 create_video 一致以避免异步轮询落盘到别处。" },
+          provider: { type: "string", default: config.defaultVideoProvider, description: "Provider: 'agnes' or 'zhipu' — 用任务创建时的 provider 查询(默认 agnes)。" },
         },
       },
     },
@@ -145,8 +146,8 @@ function buildTools() {
           code: { type: "string", description: "D2 or DOT source code. D2 SYNTAX (full docs: https://d2lang.com):\nRULE 1: in { } blocks, each property on its OWN LINE (newline-separated). WRONG: `x: { fill: red; shape: oval }`. RIGHT:\nx: {\n  shape: oval\n  style.fill: red\n}\nRULE 2 (CRITICAL): `#` starts a COMMENT. Hex colors MUST be quoted: `style.fill: \"#f0ff3a\"` (WRONG: `style.fill: #f0ff3a`). Named colors don't need quotes: `style.fill: red`. Gradients: `style.fill: \"linear-gradient(#hex, #hex)\"` (quoted) or `style.fill: linear-gradient(red, blue)` (named).\nRULE 3 (CRITICAL): numeric properties accept INTEGERS ONLY (NOT floats). `style.stroke-width: 2` ✅, `style.stroke-width: 1.5` ❌ ERROR.\nSHAPES: rectangle(default), oval, circle, diamond, hexagon, cylinder, cloud, person, page, step, stored_data, package.\nLAYOUT: `direction: right` (or left/up/down) at top level only.\nCONNECTIONS: `a -> b: label`, `a <-> b`, chain `a -> b -> c`.\nSTYLE (value types matter!):\n  style.fill / style.stroke / style.font-color → color: named (red) or hex QUOTED (\"#ff0000\") or gradient QUOTED.\n  style.stroke-width → INTEGER 0-15 (NOT float!)\n  style.stroke-dash → INTEGER 0-10\n  style.font-size → INTEGER 8-100\n  style.border-radius → INTEGER 0-20\n  style.opacity → FLOAT 0-1\n  style.shadow / style.3d / style.double-border / style.bold / style.italic → true or false\n  style.text-transform → uppercase / lowercase / title / none\n  width / height → INTEGER (pixels)\nCONTAINERS: nested { }; cross-ref `parent.child`.\nICONS: `icon: lucide:server` (Iconify set:name, auto-resolved by this tool).\nEXAMPLE (styled):\ndirection: right\ndb: {\n  shape: cylinder\n  style.fill: \"#1a1a2e\"\n  style.stroke: \"#f0ff3a\"\n  style.stroke-width: 2\n  style.shadow: true\n}\napi: {\n  shape: hexagon\n  style.fill: \"#16213e\"\n  style.border-radius: 14\n}\napi -> db: query\nMISTAKES: (1) space-separating properties on one line = ERROR. (2) Unquoted hex (# starts comment) = ERROR. (3) Float for integer property (1.5 for stroke-width) = ERROR. (4) Referencing by label not key. (5) `direction:` is top-level only.\nGraphviz DOT (semicolons OK): digraph G { rankdir=LR; A -> B; C }" },
           engine: { type: "string", enum: ["d2", "graphviz", "mermaid"], default: "d2", description: "Render engine: d2 (D2 WASM, default) or graphviz (DOT). mermaid is listed for discoverability but unsupported in-process — use d2/graphviz." },
           format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector high-res)" },
-          diagramType: { type: "string", description: "Diagram type hint (flowchart/sequence/class/architecture...)" },
-          theme: { type: "string", description: "Theme (D2 theme name or ID; d2 only)" },
+          diagramType: { type: "string", description: "Currently ignored — diagram type is determined by DSL syntax (e.g. D2 shape: sequence_diagram). Reserved for future use." },
+          theme: { type: "string", description: "D2 only; named: 'default'(0)/'neutral'(1), or numeric themeID; unknown names error (see d2 --themes)" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
@@ -165,6 +166,7 @@ function buildTools() {
           errorCorrectionLevel: { type: "string", enum: ["L", "M", "Q", "H"], default: "M" },
           dark: { type: "string", description: "Foreground color, default #000000" },
           light: { type: "string", description: "Background color, default #ffffff" },
+          width: { type: "number", description: "PNG 目标像素宽(默认 ~scale×modules;打印海报建议 ≥300);仅 png 生效,SVG 矢量无固定像素宽" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
@@ -195,9 +197,10 @@ function buildTools() {
           tex: { type: "string", description: "LaTeX source, e.g. \\frac{a}{b} or \\sum_{i=1}^{n} i^2" },
           display: { type: "boolean", default: true, description: "true=block (display) style, false=inline" },
           format: { type: "string", enum: ["svg", "png"], default: "svg" },
-          fontSize: { type: "number", description: "Font size in em (default 18)" },
+          fontSize: { type: "number", description: "Font size in em (default 18). Affects glyph size + SVG/PNG output dimensions." },
           width: { type: "number", description: "Target pixel width for PNG (default 600); SVG ignores this" },
           color: { type: "string", description: "Foreground color (default black)" },
+          background: { type: "string", description: "PNG background (default #ffffff; set 'transparent' for transparent). Avoids low-contrast invisible output." },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
@@ -213,7 +216,8 @@ function buildTools() {
         properties: {
           icon: { type: "string", description: "Iconify icon ID, format: SET:NAME. Common sets: mdi (Material Design), lucide (Lucide), logos (brand logos), fa-solid / fa-brands (Font Awesome). Examples: mdi:home, lucide:gem, logos:github, fa-brands:twitter. Browse all at https://icon-sets.iconify.design" },
           size: { type: "number", description: "Pixel size (square), default 128" },
-          color: { type: "string", description: "Foreground color (default currentColor; PNG defaults to black)" },
+          color: { type: "string", description: "Foreground color. Default 'currentColor' (SVG inherits surrounding text color; for PNG or standalone file pass explicit color — else black-on-transparent may be invisible on dark bg)." },
+          background: { type: "string", description: "PNG background (default: white when color=currentColor, transparent otherwise; pass #ffffff/#000000 to override)." },
           format: { type: "string", enum: ["svg", "png"], default: "svg" },
           name: { type: "string", description: "Output filename (without extension); defaults to sanitized icon ID" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
@@ -263,7 +267,7 @@ function buildTools() {
         properties: {
           svg: { type: "string", description: "SVG source code (XML string starting with <svg). Can include feGaussianBlur, feMerge, gradients, patterns — all SVG filter primitives supported." },
           format: { type: "string", enum: ["svg", "png"], default: "png", description: "Output format (png = rasterized; svg = pass-through)" },
-          width: { type: "number", description: "Target pixel width for PNG (default: auto-detect from SVG viewBox/width)" },
+          width: { type: "number", description: "Target pixel width for PNG (resvg backend uses this; Chrome backend uses SVG intrinsic size × scale, ignoring width). Default: auto-detect." },
           backend: { type: "string", enum: ["auto", "resvg", "chrome"], default: "auto", description: "Rendering backend: 'auto' = detect filters + Chrome availability; 'resvg' = force lightweight (92%); 'chrome' = force Chrome (100%, needs Chrome installed)" },
           scale: { type: "number", description: "Retina scale factor for Chrome backend (default 2; only affects Chrome renders)" },
           name: { type: "string", description: "Output filename (without extension)" },
@@ -362,19 +366,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (imgs?.some((u) => !/^(https?:|data:)/i.test(u))) {
           return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
         }
+        // images 图生图:provider 不支持时拒绝(免静默丢弃 — zhipu cogview 纯文生图,传 images 会忽略)
+        if (imgs?.length && p.supportsImageToImage?.() === false) {
+          return err(`provider "${p.name}" 不支持图生图(images 会被忽略)。请改用 agnes,或去掉 images 走纯文生图。`);
+        }
         const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
         const makeOne = (): Promise<ImageResult> =>
-          p.generateImage({ prompt, model, size: optString(a.size), images: imgs, extra });
-        const results = (await runPool(Array.from({ length: n }, () => makeOne), 3)).filter(
-          (x): x is ImageResult => !!x,
-        );
+          p.generateImage({ prompt, model, size: optString(a.size) ?? "1024x1024", images: imgs, extra });
+        const { results: rawResults, firstError } = await runPool(Array.from({ length: n }, () => makeOne), 3);
+        const results = rawResults.filter((x): x is ImageResult => !!x);
         const outputs = results.flatMap((r) => r.outputs);
         const watermarked = results.some((r) => r.watermarked);
         results.forEach((r) => r.warnings?.forEach((w) => warnings.push(w)));
         if (outputs.length === 0) {
           throw new Error("图像生成失败(0 张产出,可能 provider 限流或鉴权问题)。");
         }
-        if (outputs.length < n) warnings.push(`请求 ${n} 张,实际得到 ${outputs.length} 张(部分调用失败)。`);
+        if (outputs.length < n) warnings.push(`请求 ${n} 张,实际得到 ${outputs.length} 张(部分调用失败${firstError ? `;首例:${(firstError as Error)?.message?.slice(0, 80) ?? "未知"}` : ""})。`);
         // 落盘:name 单张直用,多张加 -i 后缀防覆盖
         let localPaths: string[] = [];
         if (a.download !== false) {
@@ -459,6 +466,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           seed: optNumber(a.seed),
           negativePrompt: optString(a.negativePrompt),
         });
+        created.warnings?.forEach((w) => warnings.push(w));
+        // 异步 hint 用实际句柄键(videoId 优先,否则 taskId)+ provider,让用户照抄即可查(zhipu 仅 taskId)
+        const handleKey = created.videoId ? `videoId="${created.videoId}"` : `taskId="${created.taskId}"`;
+        const handleHint = `get_video(${handleKey}${p.name !== config.defaultVideoProvider ? `, provider="${p.name}"` : ""})`;
 
         if (!wait) {
           return ok({
@@ -468,23 +479,30 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             estimated_seconds: estimated,
             estimated_human: humanDuration(estimated),
             threshold_seconds: ASYNC_THRESHOLD_SECONDS,
-            hint: `预估生成 ${humanDuration(estimated)}(>${ASYNC_THRESHOLD_SECONDS}s 已转异步)。任务在后端生成,完成后调用方应通知用户;查询用 get_video(videoId="${created.videoId}")。`,
+            hint: `预估生成 ${humanDuration(estimated)}(>${ASYNC_THRESHOLD_SECONDS}s 已转异步)。任务在后端生成,完成后调用方应通知用户;查询用 ${handleHint}。`,
             ...(warnings.length ? { warnings } : {}),
           });
         }
 
-        const done = await waitVideo({
-          provider: p,
-          handle: { videoId: created.videoId, taskId: created.taskId },
-          timeoutMs: optNumber(a.timeoutMs),
-          pollIntervalMs: optNumber(a.pollIntervalMs),
-          onProgress: (pct, status) => emitProgress(pct, status),
-        });
+        let done: Awaited<ReturnType<typeof waitVideo>>;
+        try {
+          done = await waitVideo({
+            provider: p,
+            handle: { videoId: created.videoId, taskId: created.taskId },
+            timeoutMs: optNumber(a.timeoutMs),
+            pollIntervalMs: optNumber(a.pollIntervalMs),
+            onProgress: (pct, status) => emitProgress(pct, status),
+          });
+        } catch (e: any) {
+          // failed:返回 handle 供 get_video 复查(而非抛错丢掉句柄)
+          return ok({ status: "failed", error: e?.message ?? String(e), provider_used: p.name, videoId: created.videoId, taskId: created.taskId, ...(warnings.length ? { warnings } : {}) });
+        }
         let localPath: string | null = null;
         if (done.status === "completed" && done.url && a.download !== false) {
           localPath = await downloadAsset(done.url, "vid", outDir, optString(a.name));
         }
-        return ok({ ...done, provider_used: p.name, local_path: localPath, ...(warnings.length ? { warnings } : {}) });
+        const timeoutHint = done.status === "timeout" ? { hint: `等待超时但任务仍在后端生成;稍后用 ${handleHint} 拉取。` } : {};
+        return ok({ ...done, provider_used: p.name, local_path: localPath, ...timeoutHint, ...(warnings.length ? { warnings } : {}) });
       }
 
       case "get_video": {
@@ -495,9 +513,14 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const r = await p.getVideo({ videoId: optString(a.videoId), taskId: optString(a.taskId) });
         let localPath: string | null = null;
         if (r.status === "completed" && r.url && a.download !== false) {
-          localPath = await downloadAsset(r.url, "vid", config.outDir, optString(a.name));
+          localPath = await downloadAsset(r.url, "vid", resolveOutDir(a.outDir), optString(a.name));
         }
-        return ok({ ...r, local_path: localPath });
+        // 非终态给 retry 提示(免调用方盲目重试,不知何时再问)
+        const retryAfter = Math.max(5, Math.round(config.video.pollIntervalMs / 1000));
+        const retryHint = (r.status === "queued" || r.status === "in_progress")
+          ? { retry_after_seconds: retryAfter, hint: `生成中,约 ${retryAfter}s 后再次调用 get_video 拉取。` }
+          : {};
+        return ok({ ...r, local_path: localPath, ...retryHint });
       }
 
       case "list_models": {
@@ -536,6 +559,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           errorCorrectionLevel: optString(a.errorCorrectionLevel) as any,
           dark: optString(a.dark),
           light: optString(a.light),
+          width: optNumber(a.width),
         });
         const fp = await writeLocalRender(outDir, "qr", optString(a.name), format, rendered);
         return ok({ format, local_path: fp });
@@ -563,19 +587,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           fontSize: optNumber(a.fontSize),
           width: optNumber(a.width),
           color: optString(a.color),
+          background: optString(a.background),
         });
         const fp = await writeLocalRender(outDir, "formula", optString(a.name), format, rendered);
         return ok({ format, local_path: fp });
       }
 
       case "generate_icon": {
-        const iconId = requireString(a.icon ?? a.name, "icon");
+        const iconId = requireString(a.icon, "icon");
         const outDir = resolveOutDir(a.outDir);
         const format: "svg" | "png" = a.format === "png" ? "png" : "svg";
         const rendered = await renderIcon({
           name: iconId,
           size: optNumber(a.size),
           color: optString(a.color),
+          background: optString(a.background),
           format,
         });
         const outName = optString(a.name) ?? iconId.replace(/[^a-zA-Z0-9._-]+/g, "-");
@@ -655,6 +681,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           frame_count: rendered.frameCount,
           elapsed_ms: rendered.elapsedMs,
           local_path: fp,
+          ...(rendered.warning ? { warning: rendered.warning } : {}),
         });
       }
 
@@ -697,18 +724,19 @@ function nearestAllowed(target: number, allowed: number[]): number {
   return best;
 }
 
-/** 简单并发池:capacity 个 worker 拉取 tasks;单任务抛错隔离为 null,不影响其他。供 generate_image 的 n 批量 fan-out 用。 */
-async function runPool<T>(tasks: (() => Promise<T>)[], capacity: number): Promise<(T | null)[]> {
+/** 简单并发池:capacity 个 worker 拉取 tasks;单任务抛错隔离为 null,不影响其他;收集首错供调用方诊断。供 generate_image 的 n 批量 fan-out 用。 */
+async function runPool<T>(tasks: (() => Promise<T>)[], capacity: number): Promise<{ results: (T | null)[]; firstError: any }> {
   const results: (T | null)[] = new Array(tasks.length).fill(null);
+  let firstError: any = null;
   let i = 0;
   const workers = Array.from({ length: Math.min(capacity, tasks.length) }, async () => {
     while (i < tasks.length) {
       const idx = i++;
-      try { results[idx] = await tasks[idx](); } catch { results[idx] = null; }
+      try { results[idx] = await tasks[idx](); } catch (e) { results[idx] = null; if (!firstError) firstError = e; }
     }
   });
   await Promise.all(workers);
-  return results;
+  return { results, firstError };
 }
 function humanDuration(sec: number): string {
   if (sec < 60) return `约 ${sec} 秒`;

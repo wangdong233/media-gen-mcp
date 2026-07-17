@@ -156,6 +156,9 @@ export class ZhipuProvider implements MediaProvider {
   listImageModels(): string[] {
     return this.models?.image?.available ?? [];
   }
+  supportsImageToImage(): boolean {
+    return false; // zhipu cogview 系列纯文生图,不读 images(工具层会拒绝,免静默丢弃)
+  }
   listVideoModels(): string[] {
     return this.models?.video?.available ?? [];
   }
@@ -354,6 +357,15 @@ export class ZhipuProvider implements MediaProvider {
     // 其余私有字段(quality/with_audio/watermark_enabled/user_id/request_id)走 extra 透传。
     if (req.extra) Object.assign(body, req.extra);
 
+    // 收集被 zhipu 丢弃的参数 warning(免用户误以为生效)
+    const warnings: string[] = [];
+    if (req.ratio) warnings.push("zhipu 不支持 ratio,已忽略(用 extra.size 控制比例)。");
+    if (req.negativePrompt) warnings.push("zhipu 不支持 negativePrompt,已忽略。");
+    if (req.seed != null) warnings.push("zhipu 不支持 seed,已忽略。");
+    if (!MODELS_WITH_DURATION.has(model) && (req.durationSeconds != null || req.numFrames != null)) {
+      warnings.push(`duration 仅 cogvideox-3 支持,${model} 时长由模型固定,已忽略 durationSeconds/numFrames。`);
+    }
+
     await this.enqueueSubmit(model);
 
     try {
@@ -367,6 +379,7 @@ export class ZhipuProvider implements MediaProvider {
         taskId: r.id,
         status: STATUS_MAP[raw] ?? "queued",
         raw: r,
+        ...(warnings.length ? { warnings } : {}),
       };
     } catch (e: any) {
       // 1302=用户并发超限(智谱私有码,可能非 429);1305=平台过载。

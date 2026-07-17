@@ -136,17 +136,21 @@ function resetIdleTimer(): void {
   browserIdleTimer.unref(); // 定时器自身不 pin 事件循环(server 由 stdio 保活;独立脚本靠 idle 关 Chrome 后自然退出)
 }
 
-// 进程信号:关 Chrome 后立即 exit(防 browser.close 异步未完成导致 Ctrl+C / SIGTERM 后 hang)
-const exitHandler = () => {
-  if (browser) browser.close().catch(() => {}).finally(() => process.exit(0));
-  else process.exit(0);
-};
-process.on("SIGINT", exitHandler);
-process.on("SIGTERM", exitHandler);
+// 进程信号:关 Chrome 后立即 exit(防 Ctrl+C/SIGTERM 后 browser.close 异步未完成 hang)。
+// server 模式必需;独立脚本/测试可设 MEDIA_GEN_NO_SIGNAL_HANDLERS=1 禁用(避免全局 handler 干扰其他 shutdown 逻辑)。
+if (!process.env.MEDIA_GEN_NO_SIGNAL_HANDLERS) {
+  const exitHandler = () => {
+    if (browser) browser.close().catch(() => {}).finally(() => process.exit(0));
+    else process.exit(0);
+  };
+  process.on("SIGINT", exitHandler);
+  process.on("SIGTERM", exitHandler);
+}
 
 /** 检测 SVG 是否含滤镜块(需 Chrome 才能 100% 渲染)。 */
 function hasSvgFilters(svg: string): boolean {
-  return /<filter[\s>]/i.test(svg);
+  // SVG <filter> 元素 + CSS filter: 属性(如 style 滤镜模糊);后者 resvg 支持差,需 Chrome
+  return /<filter[\s>]/i.test(svg) || /\bfilter\s*:/i.test(svg);
 }
 
 /** 从 SVG 根标签提取宽高(viewBox 或 width/height)。 */
@@ -226,7 +230,7 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
       backendUsed = "resvg";
       warning = req.backend === "chrome"
         ? "Chrome/Edge not available; used resvg instead."
-        : undefined;
+        : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : undefined);
     }
   } else {
     png = renderWithResvg(req.svg, targetWidth);

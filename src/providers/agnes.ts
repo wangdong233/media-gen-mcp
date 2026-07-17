@@ -96,6 +96,9 @@ export class AgnesProvider implements MediaProvider {
   listImageModels(): string[] {
     return this.models?.image?.available ?? [];
   }
+  supportsImageToImage(): boolean {
+    return true; // agnes /images/generations 接收 body.image 做图生图
+  }
   listVideoModels(): string[] {
     return this.models?.video?.available ?? [];
   }

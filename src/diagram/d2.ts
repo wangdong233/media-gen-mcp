@@ -49,10 +49,34 @@ async function resolveD2Icons(svg: string): Promise<string> {
   return out;
 }
 
+// D2 主题名 → themeID(d2 WASM RenderOptions 仅接受 themeID: number;名映射免"传 dark 实际无效"的试错)
+const D2_THEME_NAME_TO_ID: Record<string, number> = { default: 0, neutral: 1 };
+function resolveD2Theme(theme?: string): number | null {
+  if (theme == null || theme.trim() === "") return null;
+  const t = theme.trim();
+  const num = Number(t);
+  if (Number.isFinite(num)) return num;
+  const id = D2_THEME_NAME_TO_ID[t.toLowerCase()];
+  if (id != null) return id;
+  throw new Error(`unknown D2 theme "${t}". 已知名: ${Object.keys(D2_THEME_NAME_TO_ID).join("/")}; 或传数字 themeID(见 d2 --themes)。`);
+}
+// D2 PNG box-bounded zoom(防大架构图产出超大 PNG),与 graphviz 配置对齐(白底 + 中文字体兜底)
+const D2_MAX_W = 2000, D2_MAX_H = 2000;
+function d2FitTo(svg: string): { mode: "zoom"; value: number } | { mode: "width"; value: number } {
+  const vb = svg.match(/viewBox="[\d.eE+-]+\s+[\d.eE+-]+\s+([\d.eE+-]+)\s+([\d.eE+-]+)"/);
+  if (vb) {
+    const w = parseFloat(vb[1]), h = parseFloat(vb[2]);
+    if (w > 0 && h > 0) return { mode: "zoom", value: Math.min(D2_MAX_W / w, D2_MAX_H / h) };
+  }
+  return { mode: "width", value: 1600 };
+}
+
 /** 增强 D2 错误信息:解析 D2 技术性错误,追加可操作 HINT(让 Claude 首次纠对,不试错)。 */
-function enhanceD2Error(msg: string, _code: string): string {
+function enhanceD2Error(msg: string, code: string): string {
   let hint = "";
-  if (/number between/i.test(msg)) hint = " HINT: D2 numeric properties (stroke-width, font-size, border-radius, stroke-dash, width, height) accept INTEGERS ONLY — floats like 1.5 are invalid, use 1 or 2.";
+  if (/^(strict\s+)?(di)?graph\b/mi.test(code.trim()) || /\brankdir\b/mi.test(code)) {
+    hint = " HINT: 这看起来像 Graphviz DOT 语法。D2 语法不同,请设 engine:\"graphviz\"。";
+  } else if (/number between/i.test(msg)) hint = " HINT: D2 numeric properties (stroke-width, font-size, border-radius, stroke-dash, width, height) accept INTEGERS ONLY — floats like 1.5 are invalid, use 1 or 2.";
   else if (/valid named color|hex code/i.test(msg)) hint = " HINT: hex colors MUST be QUOTED in D2 (style.fill: \"#ff0000\") because # starts a comment — unquoted #ff0000 is eaten as comment. Named colors like red don't need quotes.";
   else if (/one of/i.test(msg)) {
     const m = msg.match(/one of[^:]*:\s*(.+)/i);
@@ -108,9 +132,9 @@ export class D2Engine implements DiagramEngine {
       }
 
       // CQ-2:theme → themeID(D2 接受数字 ID)
-      const themeNum = req.theme != null ? Number(req.theme) : NaN;
-      const renderOpts = Number.isFinite(themeNum)
-        ? { ...compiled.renderOptions, themeID: themeNum }
+      const themeID = resolveD2Theme(req.theme);
+      const renderOpts = themeID != null
+        ? { ...compiled.renderOptions, themeID }
         : compiled.renderOptions;
 
       const svg = await d2.render(compiled.diagram, renderOpts);
@@ -118,7 +142,11 @@ export class D2Engine implements DiagramEngine {
 
       let png: Buffer | undefined;
       if (req.format === "png") {
-        const resvg = new Resvg(resolved);
+        const resvg = new Resvg(resolved, {
+          background: "#ffffff",
+          fitTo: d2FitTo(resolved),
+          font: { loadSystemFonts: true, defaultFontFamily: "PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" },
+        });
         png = Buffer.from(resvg.render().asPng());
       }
       return { svg: resolved, png };

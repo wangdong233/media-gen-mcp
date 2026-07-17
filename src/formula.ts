@@ -46,6 +46,8 @@ export interface FormulaRequest {
   width?: number;
   /** 前景色(默认黑色)。MathJax SVG 用 currentColor,设此值改色。 */
   color?: string;
+  /** PNG 背景色(默认 #ffffff,与历史行为兼容);设 "transparent" 透明。 */
+  background?: string;
 }
 
 export interface FormulaRenderOutput {
@@ -65,7 +67,7 @@ export async function renderFormula(req: FormulaRequest): Promise<FormulaRenderO
       display: req.display !== false,
       em,
       ex: em / 2,
-      containerWidth: 1024,
+      containerWidth: 1024, // MathJax render 容器宽(像素,影响 inline wrap;display 块级单行不 wrap)
     });
     svg = adaptor.innerHTML(node) as string;
   } catch (e: any) {
@@ -81,6 +83,9 @@ export async function renderFormula(req: FormulaRequest): Promise<FormulaRenderO
     const rootEnd = svg.indexOf(">");
     if (rootEnd > 0) svg = `${svg.slice(0, rootEnd)} color="${req.color.trim()}">${svg.slice(rootEnd + 1)}`;
   }
+  // fontSize 生效:MathJax 根 svg 的 width/height 用 ex 单位(依赖宿主字体,嵌入尺寸不可预期);
+  // 改写为 px(ex = em/2),使 SVG 有确定像素尺寸、fontSize 真正影响输出(而非被 PNG fitTo 抹平)
+  svg = svg.replace(/(width|height)="([\d.]+)ex"/g, (_m, dim, v) => `${dim}="${(parseFloat(v) * em / 2).toFixed(1)}px"`);
 
   let png: Buffer | undefined;
   if (req.format === "png") {
@@ -88,7 +93,7 @@ export async function renderFormula(req: FormulaRequest): Promise<FormulaRenderO
     const target = req.width && req.width > 0 ? req.width : 600;
     const resvg = new Resvg(svg, {
       fitTo: { mode: "width", value: target },
-      background: "#ffffff",
+      background: req.background?.toLowerCase() === "transparent" ? undefined : (req.background ?? "#ffffff"),
     });
     png = Buffer.from(resvg.render().asPng());
   }

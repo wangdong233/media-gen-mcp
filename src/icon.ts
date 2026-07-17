@@ -38,6 +38,8 @@ export interface IconRequest {
   size?: number;
   /** 前景色(默认 currentColor,即透明背景需调用方指定;渲染 PNG 默认 currentColor=黑)。 */
   color?: string;
+  /** PNG 背景色(默认:color=currentColor 时白底,自定义 color 时透明;显式传可统一)。 */
+  background?: string;
   format?: "svg" | "png";
 }
 
@@ -77,8 +79,17 @@ export async function renderIcon(req: IconRequest): Promise<IconRenderOutput> {
       );
     }
     if (res.status === 404) {
+      // 内联搜索候选(Did you mean),省一轮试错;搜索失败降级旧信息,不阻塞
+      let suggest = "";
+      try {
+        const sr = await fetch(`${ICONIFY_API}/search?query=${encodeURIComponent(name)}&limit=5`);
+        if (sr.ok) {
+          const sj = (await sr.json()) as { icons?: string[] };
+          if (sj.icons?.length) suggest = ` Did you mean: ${sj.icons.slice(0, 5).join(", ")}?`;
+        }
+      } catch { /* ignore */ }
       throw new Error(
-        `icon not found: "${name}". Browse valid names at https://icon-sets.iconify.design`,
+        `icon not found: "${name}".${suggest} Browse all at https://icon-sets.iconify.design`,
       );
     }
     if (!res.ok) {
@@ -95,7 +106,7 @@ export async function renderIcon(req: IconRequest): Promise<IconRenderOutput> {
   if (req.format === "png") {
     const resvg = new Resvg(svg, {
       fitTo: { mode: "width", value: size },
-      background: color === "currentColor" ? "#ffffff" : undefined,
+      background: req.background ?? (color === "currentColor" ? "#ffffff" : undefined),
     });
     png = Buffer.from(resvg.render().asPng());
   }
