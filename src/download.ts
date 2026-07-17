@@ -20,14 +20,15 @@ export async function downloadAsset(
 ): Promise<string> {
   await fs.mkdir(outDir, { recursive: true });
   const ext = kind === "vid" ? ".mp4" : ".png";
-  // sanitize 自定义名:basename 去路径穿越 + 剥调用方自带扩展名(防双扩展) + 去非法字符;
-  // 空名/未传 → UUID 兜底(保持旧行为)。
+  // sanitize 自定义名:basename 去路径穿越 + 剥调用方自带扩展名(防双扩展) + 仅替文件系统危险字符;
+  // 保留中文等 Unicode 字符(此前用 [^\w.\-] 会把中文全替成 _);空名/未传 → UUID 兜底(保持旧行为)。
   let base = "";
   if (nameHint && nameHint.trim()) {
     base = path
       .basename(nameHint.trim())
       .replace(/\.(png|jpe?g|gif|webm|mp4|mov|webp)$/i, "")
-      .replace(/[^\w.\-]+/g, "_");
+      .replace(/[/\\<>:"|?*\x00-\x1f]/g, "_")
+      .replace(/^\.+/, "");
   }
   if (!base) base = `${kind}_${crypto.randomUUID().slice(0, 12)}`;
   const fp = path.join(outDir, base + ext);
