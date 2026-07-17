@@ -32,11 +32,18 @@ import { renderIcon } from "./icon.js";
 import { renderCard } from "./card.js";
 import { renderSvg } from "./render-svg.js";
 import { renderVideo } from "./render-video.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// 版本从 package.json 读,杜绝发版时 serverInfo.version 漏改(dist/index.js → ../package.json)
+const PKG_VERSION = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf-8"),
+).version as string;
 
 const ASYNC_THRESHOLD_SECONDS = 60;
 
 const server = new Server(
-  { name: "media-gen-mcp", version: "0.4.7" },
+  { name: "media-gen-mcp", version: PKG_VERSION },
   { capabilities: { tools: {} } },
 );
 
