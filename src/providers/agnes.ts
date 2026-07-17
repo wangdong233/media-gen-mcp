@@ -8,6 +8,7 @@ import type {
   VideoResult,
 } from "./types.js";
 import { persistProviderField } from "../config.js";
+import { withRetry } from "./http.js";
 
 interface AgnesModelsConfig {
   image?: { default?: string; available?: string[] };
@@ -92,6 +93,12 @@ export class AgnesProvider implements MediaProvider {
     const vid = this.models?.video?.available ?? [];
     return [...img, ...vid];
   }
+  listImageModels(): string[] {
+    return this.models?.image?.available ?? [];
+  }
+  listVideoModels(): string[] {
+    return this.models?.video?.available ?? [];
+  }
 
   videoConstraints() {
     return {
@@ -144,29 +151,32 @@ export class AgnesProvider implements MediaProvider {
   private async request(path: string, init: RequestInit = {}): Promise<any> {
     if (!this.apiKey) throw new Error("AGNES_API_KEY is not set");
     const url = path.startsWith("http") ? path : `${this.baseUrl}${path}`;
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-      },
-    });
-    const text = await res.text();
-    let json: any;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = { raw: text };
-    }
-    if (!res.ok) {
-      const msg = json?.error?.message ?? json?.message ?? text;
-      const e = new Error(`Agnes ${res.status}: ${msg}`);
-      (e as any).status = res.status;
-      (e as any).body = json;
-      throw e;
-    }
-    return json;
+    // 5xx(503 Service busy 等)/网络抖动 → 指数退避重试;4xx(含 429)立即抛(429 由 createVideo 学习限速)。
+    return withRetry(async () => {
+      const res = await fetch(url, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+      const text = await res.text();
+      let json: any;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { raw: text };
+      }
+      if (!res.ok) {
+        const msg = json?.error?.message ?? json?.message ?? text;
+        const e = new Error(`Agnes ${res.status}: ${msg}`);
+        (e as any).status = res.status;
+        (e as any).body = json;
+        throw e;
+      }
+      return json;
+    }, { tag: "Agnes" });
   }
 
   async generateImage(req: ImageRequest): Promise<ImageResult> {
@@ -178,7 +188,7 @@ export class AgnesProvider implements MediaProvider {
     }
     const body: Record<string, unknown> = { model, prompt: req.prompt };
     if (req.size) body.size = req.size;
-    if (req.n) body.n = req.n;
+    // n 不透传上游(Agnes 网关忽略 n);批量由工具层 fan-out 兑现。
     if (req.images?.length) body.image = req.images;
     if (req.extra) Object.assign(body, req.extra);
 

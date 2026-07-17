@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import type { VideoProvider, VideoHandle, VideoResult } from "./providers/types.js";
+import { isTransient } from "./providers/http.js";
 
 export interface WaitOptions {
   provider: VideoProvider;
@@ -15,12 +16,6 @@ const MIN_POLL_INTERVAL = 1000;
 const MIN_TIMEOUT = 1000;
 /** 单次 getVideo 对瞬时错误(5xx/网络)的有界重试,指数退避。 */
 const MAX_TRANSIENT_RETRIES = 3;
-
-function isTransient(e: any): boolean {
-  const s = e?.status ?? 0;
-  // 5xx,或网络层错误(fetch 抛 TypeError / status=0)
-  return s >= 500 || s === 0 || e?.name === "TypeError";
-}
 
 async function getVideoWithRetry(
   provider: VideoProvider,

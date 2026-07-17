@@ -20,7 +20,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import path from "node:path";
 import { config } from "./config.js";
-import { getProvider, listProviders } from "./providers/registry.js";
+import { getProvider, listProviders, resolveProvider } from "./providers/registry.js";
+import type { ImageResult } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
 import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
@@ -65,14 +66,16 @@ function buildTools() {
             type: "string",
             description: "Optional; omit to use the provider default. Call list_models to see options.",
           },
-          size: { type: "string", description: "e.g. 1024x1024 (provider may snap to nearest preset)." },
-          n: { type: "number" },
+          size: { type: "string", description: "e.g. 1024x1024. Zhipu requires each side 512-2880, multiple of 16, pixels ≤ 2^21 — the tool auto-snaps to a valid size; Agnes accepts free size." },
+          n: { type: "number", description: "Number of images (1-8). Provider APIs ignore batch n, so the tool fans out N parallel single-image requests; partial success returns fewer + a `warnings` field." },
           images: {
             type: "array",
             items: { type: "string" },
             description: "Image-to-image inputs (public URL or data URI). Omit for text-to-image.",
           },
+          watermark: { type: "boolean", default: false, description: "true = keep provider watermark (Zhipu). Default false requests watermark off; some free-tier models may still embed one — see response `watermarked` flag." },
           download: { type: "boolean", default: true },
+          name: { type: "string", description: "Output filename (without extension); multi-image adds -1/-2/… suffix. Defaults to img_<uuid>." },
           outDir: { type: "string", description: "产物落盘目录,省略用默认(会话目录/output)。" },
           provider: { type: "string", default: config.defaultImageProvider },
         },
@@ -102,6 +105,7 @@ function buildTools() {
           timeoutMs: { type: "number", default: 900000 },
           pollIntervalMs: { type: "number", default: 10000 },
           download: { type: "boolean", default: true },
+          name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>." },
           outDir: { type: "string", description: "产物落盘目录,省略用默认(会话目录/output)。" },
           provider: { type: "string", default: config.defaultVideoProvider },
         },
@@ -118,6 +122,7 @@ function buildTools() {
           videoId: { type: "string" },
           taskId: { type: "string", description: "legacy fallback endpoint" },
           download: { type: "boolean", default: true },
+          name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>." },
           provider: { type: "string", default: config.defaultVideoProvider },
         },
       },
@@ -339,29 +344,71 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     switch (req.params.name) {
       case "generate_image": {
         const prompt = requireString(a.prompt, "prompt");
-        const p = getProvider(optString(a.provider) ?? config.defaultImageProvider);
         const outDir = resolveOutDir(a.outDir);
-        const r = await p.generateImage({
-          prompt,
-          model: optString(a.model),
-          size: optString(a.size),
-          n: optNumber(a.n),
-          images: toStringArray(a.images),
-        });
+        const model = optString(a.model);
+        // model↔provider 校验 + 自动路由(消除 "cogview-4 配 agnes → 503 No available channel" 这类不透明错误)
+        const resolved = resolveProvider(optString(a.provider), model, "image");
+        const p = resolved.provider;
+        const warnings: string[] = [];
+        if (resolved.autoRouted) {
+          warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
+        }
+        // n 批量:钳制 1-8;provider 忽略 n,工具层并发 fan-out(N 次单图调用 + 聚合)
+        const reqN = optNumber(a.n);
+        const n = reqN && reqN > 1 ? Math.min(Math.max(1, Math.floor(reqN)), 8) : 1;
+        if (reqN && reqN > 8) warnings.push(`n=${reqN} 超上限,已钳制为 8。`);
+        const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
+        const makeOne = (): Promise<ImageResult> =>
+          p.generateImage({ prompt, model, size: optString(a.size), images: toStringArray(a.images), extra });
+        const results = (await runPool(Array.from({ length: n }, () => makeOne), 3)).filter(
+          (x): x is ImageResult => !!x,
+        );
+        const outputs = results.flatMap((r) => r.outputs);
+        const watermarked = results.some((r) => r.watermarked);
+        results.forEach((r) => r.warnings?.forEach((w) => warnings.push(w)));
+        if (outputs.length === 0) {
+          throw new Error("图像生成失败(0 张产出,可能 provider 限流或鉴权问题)。");
+        }
+        if (outputs.length < n) warnings.push(`请求 ${n} 张,实际得到 ${outputs.length} 张(部分调用失败)。`);
+        // 落盘:name 单张直用,多张加 -i 后缀防覆盖
         let localPaths: string[] = [];
         if (a.download !== false) {
+          const outs = outputs.filter((o) => o.url);
+          const base = optString(a.name);
           localPaths = await Promise.all(
-            r.outputs.filter((o) => o.url).map((o) => downloadAsset(o.url!, "img", outDir)),
+            outs.map((o, idx) =>
+              downloadAsset(o.url!, "img", outDir, base ? (outs.length > 1 ? `${base}-${idx + 1}` : base) : undefined),
+            ),
           );
         }
-        return ok({ outputs: r.outputs, local_paths: localPaths });
+        return ok({
+          outputs,
+          local_paths: localPaths,
+          provider_used: p.name,
+          ...(watermarked ? { watermarked: true } : {}),
+          ...(warnings.length ? { warnings } : {}),
+        });
       }
 
       case "create_video": {
         const prompt = requireString(a.prompt, "prompt");
-        const p = getProvider(optString(a.provider) ?? config.defaultVideoProvider);
-        const vc = p.videoConstraints();
         const outDir = resolveOutDir(a.outDir);
+        // 前置校验:ratio 格式 + image/keyframes 须为 URI(不让无效值走到 API)
+        const ratio = optString(a.ratio);
+        if (ratio && !/^\d+:\d+$/.test(ratio)) {
+          return err('ratio 须形如 "16:9" / "9:16" / "1:1" 等(数字:数字)。');
+        }
+        const isUri = (u: string) => /^(https?:|data:)/i.test(u);
+        const image = optString(a.image);
+        if (image && !isUri(image)) return err("`image` 须为 http(s): 或 data: URI。");
+        const keyframes = toStringArray(a.keyframes);
+        if (keyframes?.some((u) => !isUri(u))) return err("`keyframes` 每项须为 http(s): 或 data: URI。");
+
+        // model↔provider 校验 + 自动路由
+        const model = optString(a.model);
+        const resolved = resolveProvider(optString(a.provider), model, "video");
+        const p = resolved.provider;
+        const vc = p.videoConstraints();
         const frameRate = optNumber(a.frameRate) ?? vc.defaultFrameRate;
         const effFrames =
           optNumber(a.numFrames) ??
@@ -373,12 +420,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
         const created = await p.createVideo({
           prompt,
-          model: optString(a.model),
+          model,
           mode: optString(a.mode) as any,
-          image: optString(a.image),
-          keyframes: toStringArray(a.keyframes),
+          image,
+          keyframes,
           resolution: optString(a.resolution) as any,
-          ratio: optString(a.ratio),
+          ratio,
           numFrames: optNumber(a.numFrames),
           frameRate: optNumber(a.frameRate),
           durationSeconds: optNumber(a.durationSeconds),
@@ -386,14 +433,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           negativePrompt: optString(a.negativePrompt),
         });
 
+        const warnings: string[] = [];
+        if (resolved.autoRouted) {
+          warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
+        }
+
         if (!wait) {
           return ok({
             ...created,
             async: true,
+            provider_used: p.name,
             estimated_seconds: estimated,
             estimated_human: humanDuration(estimated),
             threshold_seconds: ASYNC_THRESHOLD_SECONDS,
             hint: `预估生成 ${humanDuration(estimated)}(>${ASYNC_THRESHOLD_SECONDS}s 已转异步)。任务在后端生成,完成后调用方应通知用户;查询用 get_video(videoId="${created.videoId}")。`,
+            ...(warnings.length ? { warnings } : {}),
           });
         }
 
@@ -406,9 +460,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         let localPath: string | null = null;
         if (done.status === "completed" && done.url && a.download !== false) {
-          localPath = await downloadAsset(done.url, "vid", outDir);
+          localPath = await downloadAsset(done.url, "vid", outDir, optString(a.name));
         }
-        return ok({ ...done, local_path: localPath });
+        return ok({ ...done, provider_used: p.name, local_path: localPath, ...(warnings.length ? { warnings } : {}) });
       }
 
       case "get_video": {
@@ -419,20 +473,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const r = await p.getVideo({ videoId: optString(a.videoId), taskId: optString(a.taskId) });
         let localPath: string | null = null;
         if (r.status === "completed" && r.url && a.download !== false) {
-          localPath = await downloadAsset(r.url, "vid", config.outDir);
+          localPath = await downloadAsset(r.url, "vid", config.outDir, optString(a.name));
         }
         return ok({ ...r, local_path: localPath });
       }
 
       case "list_models": {
         const names = a.provider ? [String(a.provider)] : listProviders();
-        const out: Record<string, { models: string[]; videoConstraints: unknown; estimate_example: string }> = {};
+        const out: Record<string, { models: string[]; videoConstraints: unknown; imageConstraints?: unknown; estimate_example: string }> = {};
         for (const n of names) {
           const prov = getProvider(n);
           const dv = prov.videoConstraints().defaultNumFrames;
           out[n] = {
             models: prov.listModels(),
             videoConstraints: prov.videoConstraints(),
+            imageConstraints: prov.imageConstraints?.(),
             estimate_example: `${dv} 帧 → ~${prov.estimateGenerationSeconds(dv)}s 生成`,
           };
         }
@@ -630,6 +685,20 @@ function nearestAllowed(target: number, allowed: number[]): number {
     if (d < bestDelta) { bestDelta = d; best = f; }
   }
   return best;
+}
+
+/** 简单并发池:capacity 个 worker 拉取 tasks;单任务抛错隔离为 null,不影响其他。供 generate_image 的 n 批量 fan-out 用。 */
+async function runPool<T>(tasks: (() => Promise<T>)[], capacity: number): Promise<(T | null)[]> {
+  const results: (T | null)[] = new Array(tasks.length).fill(null);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(capacity, tasks.length) }, async () => {
+    while (i < tasks.length) {
+      const idx = i++;
+      try { results[idx] = await tasks[idx](); } catch { results[idx] = null; }
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 function humanDuration(sec: number): string {
   if (sec < 60) return `约 ${sec} 秒`;

@@ -8,6 +8,7 @@ import type {
   VideoResult,
 } from "./types.js";
 import { persistProviderField } from "../config.js";
+import { withRetry } from "./http.js";
 
 interface ZhipuModelsConfig {
   image?: { default?: string; available?: string[] };
@@ -51,6 +52,42 @@ const RESOLUTION_TO_SIZE: Record<string, string> = {
   "720p": "1280x720",
   "1080p": "1920x1080",
 };
+
+/** 智谱 cogview 图像 size 硬约束(实测 400 报文):每边 512-2880、16 整数倍、像素 ≤ 2^21。 */
+const ZHIPU_IMG_MIN_SIDE = 512;
+const ZHIPU_IMG_MAX_SIDE = 2880;
+const ZHIPU_IMG_SIDE_MULTIPLE = 16;
+const ZHIPU_IMG_MAX_PIXELS = 1 << 21; // 2097152
+
+/** 把任意 WxH 吸附到智谱合法 size(16 倍数 + clamp 512-2880 + 像素 ≤ 2^21)。调用方免试错碰 400。 */
+export function snapZhipuImageSize(size: string): string {
+  const m = size.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+  if (!m) {
+    throw new Error(
+      `zhipu size "${size}" 格式无效(应为 WxH,如 1024x1024)。约束:每边 512-2880、16 整数倍、像素 ≤ 2^21。`,
+    );
+  }
+  let w = Math.round(+m[1] / ZHIPU_IMG_SIDE_MULTIPLE) * ZHIPU_IMG_SIDE_MULTIPLE;
+  let h = Math.round(+m[2] / ZHIPU_IMG_SIDE_MULTIPLE) * ZHIPU_IMG_SIDE_MULTIPLE;
+  w = Math.max(ZHIPU_IMG_MIN_SIDE, Math.min(ZHIPU_IMG_MAX_SIDE, w));
+  h = Math.max(ZHIPU_IMG_MIN_SIDE, Math.min(ZHIPU_IMG_MAX_SIDE, h));
+  // 像素超限:按比例缩减较长边(16 步长),直到 ≤ 2^21
+  while (w * h > ZHIPU_IMG_MAX_PIXELS) {
+    if (w >= h) {
+      w -= ZHIPU_IMG_SIDE_MULTIPLE;
+      if (w < ZHIPU_IMG_MIN_SIDE) break;
+    } else {
+      h -= ZHIPU_IMG_SIDE_MULTIPLE;
+      if (h < ZHIPU_IMG_MIN_SIDE) break;
+    }
+  }
+  if (w < ZHIPU_IMG_MIN_SIDE || h < ZHIPU_IMG_MIN_SIDE || w * h > ZHIPU_IMG_MAX_PIXELS) {
+    throw new Error(
+      `zhipu size "${size}" 吸附后(${w}x${h})仍不满足约束(每边 512-2880、16 整数倍、像素 ≤ 2^21)。`,
+    );
+  }
+  return `${w}x${h}`;
+}
 
 /** 智谱 task_status(大写)小写化后 → 统一态。PROCESSING/SUCCESS/FAIL + 兼容别名。 */
 const STATUS_MAP: Record<string, VideoResult["status"]> = {
@@ -116,6 +153,20 @@ export class ZhipuProvider implements MediaProvider {
     const vid = this.models?.video?.available ?? [];
     return [...img, ...vid];
   }
+  listImageModels(): string[] {
+    return this.models?.image?.available ?? [];
+  }
+  listVideoModels(): string[] {
+    return this.models?.video?.available ?? [];
+  }
+  imageConstraints() {
+    return {
+      minSide: ZHIPU_IMG_MIN_SIDE,
+      maxSide: ZHIPU_IMG_MAX_SIDE,
+      multipleOf: ZHIPU_IMG_SIDE_MULTIPLE,
+      maxPixels: ZHIPU_IMG_MAX_PIXELS,
+    };
+  }
 
   videoConstraints() {
     return {
@@ -171,29 +222,32 @@ export class ZhipuProvider implements MediaProvider {
   private async request(path: string, init: RequestInit = {}): Promise<any> {
     if (!this.apiKey) throw new Error("ZHIPU_API_KEY is not set");
     const url = path.startsWith("http") ? path : `${this.baseUrl}${path}`;
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-      },
-    });
-    const text = await res.text();
-    let json: any;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = { raw: text };
-    }
-    if (!res.ok) {
-      const msg = json?.error?.message ?? json?.message ?? text;
-      const e = new Error(`Zhipu ${res.status}: ${msg}`);
-      (e as any).status = res.status;
-      (e as any).body = json;
-      throw e;
-    }
-    return json;
+    // 5xx(503/1305 平台过载等)/网络抖动 → 指数退避重试;4xx(含 429/1302 并发超限)立即抛(由 learnRateLimit 学习)。
+    return withRetry(async () => {
+      const res = await fetch(url, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+      const text = await res.text();
+      let json: any;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { raw: text };
+      }
+      if (!res.ok) {
+        const msg = json?.error?.message ?? json?.message ?? text;
+        const e = new Error(`Zhipu ${res.status}: ${msg}`);
+        (e as any).status = res.status;
+        (e as any).body = json;
+        throw e;
+      }
+      return json;
+    }, { tag: "Zhipu" });
   }
 
   async generateImage(req: ImageRequest): Promise<ImageResult> {
@@ -204,11 +258,12 @@ export class ZhipuProvider implements MediaProvider {
       );
     }
     // 智谱原生 /paas/v4/images/generations:必填 model+prompt;size/quality/watermark_enabled/user_id 可选。
-    // 无 n 参数:固定返回 1 张图(第三方网关若支持 n,走 extra 透传)。
+    // n 不透传(智谱固定 1 张,网关也忽略);批量由工具层 fan-out 兑现。
+    // size 前置吸附到合法值(16 倍数 + clamp + 像素限),调用方免试错碰 400。
     const body: Record<string, unknown> = { model, prompt: req.prompt };
-    if (req.size) body.size = req.size;
-    if (req.n) body.n = req.n; // 透传 n(智谱原生固定 1 张,第三方网关可能支持)
-    if (req.extra) Object.assign(body, req.extra);
+    if (req.size) body.size = snapZhipuImageSize(req.size);
+    if (body.watermark_enabled === undefined) body.watermark_enabled = false; // 默认关水印
+    if (req.extra) Object.assign(body, req.extra); // 用户 extra 可覆盖
 
     const r = await this.request("/paas/v4/images/generations", {
       method: "POST",
@@ -218,7 +273,12 @@ export class ZhipuProvider implements MediaProvider {
       url: d.url as string | undefined,
       b64: d.b64_json as string | undefined,
     }));
-    return { outputs, raw: r };
+    // watermarked 标"是否请求了水印";即便请求关闭,免费档(如 cogview-3-flash)可能强制带 → warning 提醒以实际产物为准。
+    const wantedWatermark = body.watermark_enabled === true;
+    const warnings = wantedWatermark
+      ? []
+      : ["已请求关闭水印(watermark_enabled=false);部分免费模型(如 cogview-3-flash)可能强制带水印,以实际产物为准。"];
+    return { outputs, raw: r, watermarked: wantedWatermark, warnings };
   }
 
   /** per-model 限速串行化:submitChain 全局串行(避免并发),但按各 model 自己的时钟等待。 */

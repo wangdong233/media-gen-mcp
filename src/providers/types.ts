@@ -32,6 +32,10 @@ export interface ImageOutput {
 export interface ImageResult {
   outputs: ImageOutput[];
   raw?: unknown;
+  /** provider 是否在产出上打了水印(zhipu 免费档可能强制)。 */
+  watermarked?: boolean;
+  /** provider 侧产生的告警(如 n 被忽略),透传给调用方。 */
+  warnings?: string[];
 }
 
 /** 通用视频请求(文生 / 图生 / 关键帧)。 */
@@ -74,15 +78,29 @@ export interface VideoResult {
   raw?: unknown;
 }
 
+/** 图像模态的数学约束(对称于 videoConstraints),供工具层前置校验/吸附 + schema 展示。 */
+export interface ImageConstraints {
+  minSide: number;
+  maxSide: number;
+  multipleOf: number;
+  maxPixels: number;
+}
+
 export interface ImageProvider {
   readonly name: string;
   listModels(): string[];
+  /** 仅图像模型清单(供 model↔provider 路由校验)。 */
+  listImageModels(): string[];
   generateImage(req: ImageRequest): Promise<ImageResult>;
+  /** 声明该 provider 的图像 size 约束(若有);无硬约束返回 undefined(如 agnes)。 */
+  imageConstraints?(): ImageConstraints | undefined;
 }
 
 export interface VideoProvider {
   readonly name: string;
   listModels(): string[];
+  /** 仅视频模型清单(供 model↔provider 路由校验)。 */
+  listVideoModels(): string[];
   /** 声明该 provider 的视频约束,供工具层构建 schema(避免在通用层硬编码厂商专有值)。 */
   videoConstraints(): {
     allowedNumFrames: number[];

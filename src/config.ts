@@ -77,6 +77,13 @@ export const config = {
     pollIntervalMs: num("VIDEO_POLL_INTERVAL_MS", 10_000, userCfg?.video?.pollIntervalMs),
   },
 
+  /** HTTP 瞬时错误(5xx/网络)重试:provider 提交/查询路径共享。可经 config.http 调优。 */
+  http: {
+    maxRetries: num("HTTP_MAX_RETRIES", 3, userCfg?.http?.maxRetries),
+    retryBaseMs: num("HTTP_RETRY_BASE_MS", 1000, userCfg?.http?.retryBaseMs),
+    retryMaxMs: num("HTTP_RETRY_MAX_MS", 8000, userCfg?.http?.retryMaxMs),
+  },
+
   /** 学习限流 TTL(ms),过期降级基线;默认 7 天 */
   rateLimitTtlMs: num("RATE_LIMIT_TTL_MS", 7 * 24 * 60 * 60 * 1000, userCfg.rateLimitTtlMs),
 
