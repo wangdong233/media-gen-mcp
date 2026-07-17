@@ -154,13 +154,22 @@ async function waitForReady(page: PageLike): Promise<void> {
 
 /**
  * CDP 截图(HyperFrames 偏好,比 page.screenshot 包装更确定)。
- * 不传 clip → 捕获整个视口(deviceScaleFactor 已由 setViewport 设定 → 输出 = width×scale × height×scale)。
- * fromSurface:true → 从合成器 surface 取像素,跳过包装层调度。
+ * 必须显式传 clip.scale —— 实测无 clip 时 CDP captureScreenshot 在 headless 下忽略
+ * viewport 的 deviceScaleFactor(输出退回 CSS 像素)。clip.scale 才是真正的光栅倍率。
+ * 输出维度 = width×scale × height×scale。
  */
-async function captureFrame(client: CDPSessionLike, format: "jpeg" | "png", quality: number): Promise<Buffer> {
+async function captureFrame(
+  client: CDPSessionLike,
+  width: number,
+  height: number,
+  scale: number,
+  format: "jpeg" | "png",
+  quality: number,
+): Promise<Buffer> {
   const res = await client.send("Page.captureScreenshot", {
     format,
     ...(format === "jpeg" ? { quality } : {}),
+    clip: { x: 0, y: 0, width, height, scale },
     captureBeyondViewport: false,
     fromSurface: true,
     optimizeForSpeed: false,
@@ -260,7 +269,7 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
       const timeSec = i / fps; // 有理化时间,杜绝浮点漂移
       await seekToTime(page, timeSec);
       await waitForDraw(page);
-      const frame = await captureFrame(client, "jpeg", quality);
+      const frame = await captureFrame(client, width, height, scale, "jpeg", quality);
       await writeFrame(proc.stdin, frame);
       if (req.onProgress && (i % 3 === 0 || i === totalFrames - 1)) {
         req.onProgress(Math.round(((i + 1) / totalFrames) * 100));
