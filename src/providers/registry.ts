@@ -80,3 +80,28 @@ export function resolveProvider(
     `model "${model}" 不属于 provider "${targetName}",且同时属于多个 provider:${owners.map((o) => o.name).join(", ")}。请显式指定 provider。`,
   );
 }
+
+/**
+ * 构造 list_models 的 detail(模型清单 + 视频/图像约束 + 生成预估)。
+ * 抽成导出函数:handler 与任何诊断/测试脚本调用同一函数 → 从结构上保证复现与工具输出逐字段一致,
+ * 根除"脚本绕过 handler 漏字段/手搓文案"类问题(T14 根因)。
+ */
+export function buildListModelsDetail(provider?: string): Record<string, any> {
+  const names = provider ? [provider] : listProviders();
+  const out: Record<string, any> = {};
+  for (const n of names) {
+    const prov = getProvider(n);
+    const dv = prov.videoConstraints().defaultNumFrames;
+    const ic = prov.imageConstraints?.() ?? null;
+    out[n] = {
+      models: prov.listModels(),
+      imageModels: prov.listImageModels(),
+      videoModels: prov.listVideoModels(),
+      videoConstraints: prov.videoConstraints(),
+      imageConstraints: ic,
+      imageConstraintsNote: ic ? undefined : "no hard size constraints (provider accepts free size)",
+      estimate_example: `${dv} 帧 → ~${prov.estimateGenerationSeconds(dv)}s 生成`,
+    };
+  }
+  return out;
+}

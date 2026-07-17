@@ -53,7 +53,7 @@ export interface CDPSessionLike {
 let browser: BrowserLike | null = null;
 let browserIdleTimer: ReturnType<typeof setTimeout> | null = null;
 let launching: Promise<BrowserLike | null> | null = null;
-const BROWSER_IDLE_MS = 5 * 60 * 1000;
+const BROWSER_IDLE_MS = 30 * 1000; // 独立脚本渲染后最长 30s 释放 Chrome → 进程退出;server 持续渲染会重置定时器保持热(30s 空闲才冷启,tradeoff 换取独立调用不 hang)
 
 // 确定性渲染 flags(SVG 截图 + 视频帧捕获共用;HyperFrames 同款):
 // --force-color-profile=srgb:颜色一致;--run-all-compositor-stages-before-draw:截图前合成器刷完;
@@ -133,11 +133,16 @@ function resetIdleTimer(): void {
     }
     browserIdleTimer = null;
   }, BROWSER_IDLE_MS);
+  browserIdleTimer.unref(); // 定时器自身不 pin 事件循环(server 由 stdio 保活;独立脚本靠 idle 关 Chrome 后自然退出)
 }
 
-// 进程退出时关闭 Chrome(防孤儿进程)
-process.on("SIGINT", () => { if (browser) browser.close().catch(() => {}); });
-process.on("SIGTERM", () => { if (browser) browser.close().catch(() => {}); });
+// 进程信号:关 Chrome 后立即 exit(防 browser.close 异步未完成导致 Ctrl+C / SIGTERM 后 hang)
+const exitHandler = () => {
+  if (browser) browser.close().catch(() => {}).finally(() => process.exit(0));
+  else process.exit(0);
+};
+process.on("SIGINT", exitHandler);
+process.on("SIGTERM", exitHandler);
 
 /** 检测 SVG 是否含滤镜块(需 Chrome 才能 100% 渲染)。 */
 function hasSvgFilters(svg: string): boolean {

@@ -106,9 +106,12 @@ export interface VideoProvider {
     allowedNumFrames: number[];
     defaultNumFrames: number;
     defaultFrameRate: number;
+    allowedFrameRates: number[];
   };
   /** 估算生成耗时(秒),供工具层决定同步/异步 + 给用户预估。粗估、偏保守即可。 */
   estimateGenerationSeconds(numFrames: number, frameRate?: number): number;
+  /** 给定 resolution×ratio 下 numFrames 上限(无约束返回 undefined)。工具层前置钳制,免 CC 试错碰 API 400。 */
+  maxFramesFor?(resolution?: string, ratio?: string): number | undefined;
   createVideo(req: VideoRequest): Promise<VideoTask>;
   getVideo(handle: VideoHandle): Promise<VideoResult>;
 }

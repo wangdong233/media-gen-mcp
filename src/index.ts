@@ -20,7 +20,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import path from "node:path";
 import { config } from "./config.js";
-import { getProvider, listProviders, resolveProvider } from "./providers/registry.js";
+import { getProvider, listProviders, resolveProvider, buildListModelsDetail } from "./providers/registry.js";
 import type { ImageResult } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
 import { downloadAsset } from "./download.js";
@@ -357,9 +357,14 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const reqN = optNumber(a.n);
         const n = reqN && reqN > 1 ? Math.min(Math.max(1, Math.floor(reqN)), 8) : 1;
         if (reqN && reqN > 8) warnings.push(`n=${reqN} 超上限,已钳制为 8。`);
+        // H3:images[] 须为 URI(与 create_video 对称,防本地路径/相对路径 silent 进 body)
+        const imgs = toStringArray(a.images);
+        if (imgs?.some((u) => !/^(https?:|data:)/i.test(u))) {
+          return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
+        }
         const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
         const makeOne = (): Promise<ImageResult> =>
-          p.generateImage({ prompt, model, size: optString(a.size), images: toStringArray(a.images), extra });
+          p.generateImage({ prompt, model, size: optString(a.size), images: imgs, extra });
         const results = (await runPool(Array.from({ length: n }, () => makeOne), 3)).filter(
           (x): x is ImageResult => !!x,
         );
@@ -393,28 +398,50 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case "create_video": {
         const prompt = requireString(a.prompt, "prompt");
         const outDir = resolveOutDir(a.outDir);
-        // 前置校验:ratio 格式 + image/keyframes 须为 URI(不让无效值走到 API)
+        // M5:ratio 白名单(不只检格式,防 999:999 走到 API 行为未定义)
+        const RATIO_OK = new Set(["16:9", "9:16", "1:1", "4:3", "3:4"]);
         const ratio = optString(a.ratio);
-        if (ratio && !/^\d+:\d+$/.test(ratio)) {
-          return err('ratio 须形如 "16:9" / "9:16" / "1:1" 等(数字:数字)。');
+        if (ratio && !RATIO_OK.has(ratio)) {
+          return err('ratio 须为 "16:9" / "9:16" / "1:1" / "4:3" / "3:4" 之一。');
         }
         const isUri = (u: string) => /^(https?:|data:)/i.test(u);
         const image = optString(a.image);
         if (image && !isUri(image)) return err("`image` 须为 http(s): 或 data: URI。");
         const keyframes = toStringArray(a.keyframes);
         if (keyframes?.some((u) => !isUri(u))) return err("`keyframes` 每项须为 http(s): 或 data: URI。");
+        // M4:numFrames 与 durationSeconds 互斥(防 silent 覆盖 + estimate 错位导致长时间阻塞)
+        if (optNumber(a.numFrames) != null && optNumber(a.durationSeconds) != null) {
+          return err("`numFrames` 与 `durationSeconds` 互斥,二选一(numFrames 精确;durationSeconds 自动吸附最近合法帧数)。");
+        }
 
         // model↔provider 校验 + 自动路由
         const model = optString(a.model);
         const resolved = resolveProvider(optString(a.provider), model, "video");
         const p = resolved.provider;
         const vc = p.videoConstraints();
-        const frameRate = optNumber(a.frameRate) ?? vc.defaultFrameRate;
-        const effFrames =
+        const warnings: string[] = [];
+        if (resolved.autoRouted) {
+          warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
+        }
+        // H2:frameRate 须在 provider 允许集(跨 provider 路由后按实际 provider 校验,如 cogvideox 要求 30/60)
+        let frameRate = optNumber(a.frameRate) ?? vc.defaultFrameRate;
+        if (!vc.allowedFrameRates.includes(frameRate)) {
+          warnings.push(`frameRate ${frameRate} 不被 ${p.name} 支持(允许 ${vc.allowedFrameRates.join("/")}),已吸附为 ${vc.defaultFrameRate}。`);
+          frameRate = vc.defaultFrameRate;
+        }
+        // effFrames:numFrames > durationSeconds 吸附 > 默认
+        let effFrames =
           optNumber(a.numFrames) ??
           (optNumber(a.durationSeconds) !== undefined
             ? nearestAllowed(optNumber(a.durationSeconds)! * frameRate, vc.allowedNumFrames)
             : vc.defaultNumFrames);
+        // H1:resolution×ratio 组合上限(agnes 实测 1080p≤241/720p≤441),防超限碰 API 400
+        const maxF = p.maxFramesFor?.(optString(a.resolution), ratio);
+        if (maxF != null && effFrames > maxF) {
+          warnings.push(`numFrames ${effFrames} 超过 ${optString(a.resolution) ?? "当前分辨率"}上限 ${maxF}(provider 实测约束),已降为 ${maxF}。`);
+          effFrames = maxF;
+        }
+
         const estimated = p.estimateGenerationSeconds(effFrames, frameRate);
         const wait = a.wait === true || (a.wait === undefined && estimated <= ASYNC_THRESHOLD_SECONDS);
 
@@ -426,17 +453,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           keyframes,
           resolution: optString(a.resolution) as any,
           ratio,
-          numFrames: optNumber(a.numFrames),
-          frameRate: optNumber(a.frameRate),
+          numFrames: effFrames,
+          frameRate,
           durationSeconds: optNumber(a.durationSeconds),
           seed: optNumber(a.seed),
           negativePrompt: optString(a.negativePrompt),
         });
-
-        const warnings: string[] = [];
-        if (resolved.autoRouted) {
-          warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
-        }
 
         if (!wait) {
           return ok({
@@ -479,19 +501,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
 
       case "list_models": {
-        const names = a.provider ? [String(a.provider)] : listProviders();
-        const out: Record<string, { models: string[]; videoConstraints: unknown; imageConstraints?: unknown; estimate_example: string }> = {};
-        for (const n of names) {
-          const prov = getProvider(n);
-          const dv = prov.videoConstraints().defaultNumFrames;
-          out[n] = {
-            models: prov.listModels(),
-            videoConstraints: prov.videoConstraints(),
-            imageConstraints: prov.imageConstraints?.(),
-            estimate_example: `${dv} 帧 → ~${prov.estimateGenerationSeconds(dv)}s 生成`,
-          };
-        }
-        return ok({ providers: listProviders(), detail: out });
+        return ok({ providers: listProviders(), detail: buildListModelsDetail(optString(a.provider)) });
       }
 
       case "generate_diagram": {
@@ -600,7 +610,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           format,
         });
         const fp = await writeLocalRender(outDir, "card", optString(a.name), format, rendered);
-        return ok({ format, local_path: fp });
+        return ok({ format, local_path: fp, ...(rendered.warnings?.length ? { warnings: rendered.warnings } : {}) });
       }
 
       case "render_svg": {

@@ -64,10 +64,17 @@ function enhanceD2Error(msg: string, _code: string): string {
   return msg + (hint || "");
 }
 
+// keep-alive 句柄:有在飞渲染时 ref() 保活让 await 落地;空闲 unref() → 独立进程(测试/脚本/嵌入式)
+// 可自然退出。MCP server 由 StdioServerTransport 保活,不受影响。修复 d2 worker 永不释放导致的 hang。
+const d2KeepAlive = setInterval(() => {}, 1e9);
+d2KeepAlive.unref();
+let d2Active = 0;
+
 export class D2Engine implements DiagramEngine {
   readonly name = "d2" as const;
   private d2?: D2;
   private chain: Promise<unknown> = Promise.resolve();
+  private unrefApplied = false;
 
   isAvailable(): boolean {
     return true;
@@ -82,6 +89,16 @@ export class D2Engine implements DiagramEngine {
       // CQ-1:lazy singleton,复用 D2(worker + 22MB WASM),不每次 new
       this.d2 ??= new D2();
       const d2 = this.d2;
+      // worker 首次 ready 后 unref —— 保留 compile/render 功能 + server 复用,只是不再 pin 事件循环
+      if (!this.unrefApplied) {
+        this.unrefApplied = true;
+        Promise.resolve((d2 as any).ready).then(
+          () => {
+            try { (d2 as any).worker?.unref?.(); } catch { /* ignore */ }
+          },
+          () => {},
+        );
+      }
 
       let compiled;
       try {
@@ -107,11 +124,17 @@ export class D2Engine implements DiagramEngine {
       return { svg: resolved, png };
     };
 
-    // 串行化:防 D2.sendMessage 并发竞态。catch 防止 run() rejection 成 unhandled → 杀进程
-    const result = run();
-    this.chain = this.chain
-      .then(() => result, () => result)
-      .catch(() => undefined);
-    return result as Promise<DiagramRenderOutput>;
+    // active refcount:渲染中 ref 保活(防 worker unref 导致在飞 render 被判 unsettled 提前退出),空闲 unref
+    d2Active++;
+    if (d2Active === 1) d2KeepAlive.ref();
+    // 串行化修正:run() 在链里惰性启动(真正串行 sendMessage),防并发 currentResolve 竞态 → 孤儿 promise hang
+    const result = this.chain.catch(() => undefined).then(() => run());
+    this.chain = result.catch(() => undefined); // catch 防 rejection 成 unhandled 杀进程
+    try {
+      return await result;
+    } finally {
+      d2Active--;
+      if (d2Active === 0) d2KeepAlive.unref();
+    }
   }
 }

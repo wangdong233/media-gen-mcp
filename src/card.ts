@@ -43,7 +43,15 @@ async function loadFont(
   fontPath?: string,
 ): Promise<LoadedFont> {
   if (fontPath) {
-    const buf = await fs.readFile(fontPath);
+    let buf: Buffer;
+    try {
+      buf = await fs.readFile(fontPath);
+    } catch (e: any) {
+      const code = (e as NodeJS.ErrnoException)?.code;
+      throw new Error(
+        `fontPath "${fontPath}" 读取失败:${code === "ENOENT" ? "文件不存在" : code || "IO/权限错误"}。可去掉 fontPath 用默认字体,或指向 .ttf/.otf/.woff 字体文件。`,
+      );
+    }
     return { name: family, data: toArrayBuffer(buf), weight, style: "normal" };
   }
   const key = `${family.toLowerCase()}@${weight}`;
@@ -245,6 +253,7 @@ export interface CardRequest {
 export interface CardRenderOutput {
   svg: string;
   png?: Buffer;
+  warnings?: string[];
 }
 
 // Satori VNode(无 React 依赖的对象形式)
@@ -518,6 +527,11 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   const accent = req.accent && req.accent.trim() ? req.accent.trim() : "#6366f1";
   const family = req.fontFamily && req.fontFamily.trim() ? req.fontFamily.trim() : "Inter";
   const template = req.template ?? "og";
+  const warnings: string[] = [];
+  const KNOWN_TPL = new Set(["og", "quote", "minimal", "hero", "panel"]);
+  if (req.template && !KNOWN_TPL.has(req.template)) {
+    warnings.push(`template "${req.template}" 未知,回退 og(支持:og/quote/minimal/hero/panel)。`);
+  }
 
   const muted = "#94a3b8";
 
@@ -566,7 +580,12 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   } else {
     titleStyle.color = color;
   }
-  if (glowValue) titleStyle.textShadow = glowValue;
+  if (glowValue && titleGradient) {
+    // 互斥:渐变文字(text 裁到渐变)会丢 text-shadow → glow 静默失效,schema 已声明不兼容,显式 warn
+    warnings.push("titleGradient 与 glow 不兼容(渐变文字会裁掉阴影),已忽略 glow。");
+  } else if (glowValue) {
+    titleStyle.textShadow = glowValue;
+  }
 
   const titleNode = txt(req.title, titleStyle);
   const subNode = req.subtitle
@@ -634,5 +653,5 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
     const resvg = new Resvg(svg, resvgOpts);
     png = Buffer.from(resvg.render().asPng());
   }
-  return { svg, png };
+  return { svg, png, warnings };
 }

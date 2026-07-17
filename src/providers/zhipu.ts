@@ -173,6 +173,7 @@ export class ZhipuProvider implements MediaProvider {
       allowedNumFrames: [...ALLOWED_NUM_FRAMES],
       defaultNumFrames: DEFAULT_NUM_FRAMES,
       defaultFrameRate: DEFAULT_FRAME_RATE,
+      allowedFrameRates: [...ALLOWED_FRAME_RATES],
     };
   }
 

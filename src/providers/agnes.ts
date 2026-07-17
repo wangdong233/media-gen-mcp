@@ -105,7 +105,14 @@ export class AgnesProvider implements MediaProvider {
       allowedNumFrames: [...ALLOWED_NUM_FRAMES],
       defaultNumFrames: DEFAULT_NUM_FRAMES,
       defaultFrameRate: DEFAULT_FRAME_RATE,
+      allowedFrameRates: [DEFAULT_FRAME_RATE],
     };
+  }
+  /** 实测:1080p 宽屏 ≤ 241 帧,720p 可达 441(防 CC 传 1080p+441 碰 API 400)。缺省不前置约束。 */
+  maxFramesFor(resolution?: string, _ratio?: string): number | undefined {
+    if (resolution === "1080p") return 241;
+    if (resolution === "720p") return 441;
+    return undefined;
   }
 
   estimateGenerationSeconds(numFrames: number): number {
