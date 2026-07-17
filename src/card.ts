@@ -275,14 +275,15 @@ export interface CardRenderOutput {
 }
 
 // Satori VNode(无 React 依赖的对象形式)
-type Node = { type: string; props: { style?: any; children?: any; src?: string } };
+type CardStyle = Record<string, unknown>;
+type Node = { type: string; props: { style?: CardStyle; children?: string | Node | (string | Node)[]; src?: string } };
 
-function txt(text: string, style: any): Node {
+function txt(text: string, style: CardStyle): Node {
   return { type: "div", props: { style, children: text } };
 }
 
 /** og 模板:列布局 [内容行(flex:1) + 页脚],内容行 = 竖强调条 + 文本列。纯 flex,无 absolute。 */
-function layoutOG(opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string }): Node {
+function layoutOG(opts: { title: Node; sub: Node | null; body: Node | null; footer: Node | null; logo: Node | null; accent: string }): Node {
   const textChildren: Node[] = [];
   if (opts.logo) textChildren.push(opts.logo);
   textChildren.push(opts.title);
@@ -339,7 +340,7 @@ function layoutOG(opts: { title: any; sub: any; body: any; footer: any; logo: an
 }
 
 /** quote 模板:居中引言。quoteStyle:"top"(默认,大引号在文字上方)或 "flank"(左右大引号夹住文字、同行 baseline 对齐)。title(必填)作引言,body 可选副行,footer 作署名。 */
-function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: any; logo: any; accent: string; fontStack: string }): Node {
+function layoutQuote(req: CardRequest, opts: { title: Node; body: Node | null; footer: Node | null; logo: Node | null; accent: string; fontStack: string }): Node {
   const inner: Node[] = [];
   if (opts.logo) inner.push(opts.logo);
   if (req.quoteStyle === "flank") {
@@ -386,7 +387,7 @@ function layoutQuote(req: CardRequest, opts: { title: any; body: any; footer: an
 }
 
 /** minimal 模板:仅居中标题 + 副标题。 */
-function layoutMinimal(opts: { title: any; sub: any; logo: any }): Node {
+function layoutMinimal(opts: { title: Node; sub: Node | null; logo: Node | null }): Node {
   const inner: Node[] = [];
   if (opts.logo) inner.push(opts.logo);
   inner.push(opts.title);
@@ -410,7 +411,7 @@ function layoutMinimal(opts: { title: any; sub: any; logo: any }): Node {
 }
 
 /** hero 模板:居中大字标题(+可选模糊光斑纵深感)+ 副标题 + 可选页脚(credit/署名)。展示型。 */
-function layoutHero(opts: { title: any; sub: any; footer: any; logo: any; accent: string; bg: string; blob: boolean }): Node {
+function layoutHero(opts: { title: Node; sub: Node | null; footer: Node | null; logo: Node | null; accent: string; bg: string; blob: boolean }): Node {
   const contentChildren: Node[] = [];
   if (opts.logo) contentChildren.push(opts.logo);
   contentChildren.push(opts.title);
@@ -474,7 +475,7 @@ function layoutHero(opts: { title: any; sub: any; footer: any; logo: any; accent
 }
 
 /** panel 模板:标题/副标题/正文置于玻璃面板(border+圆角+阴影+半透明)内,浮于背景。 */
-function layoutPanel(opts: { title: any; sub: any; body: any; footer: any; logo: any; accent: string; bg: string }): Node {
+function layoutPanel(opts: { title: Node; sub: Node | null; body: Node | null; footer: Node | null; logo: Node | null; accent: string; bg: string }): Node {
   const inner: Node[] = [];
   if (opts.logo) inner.push(opts.logo);
   inner.push(opts.title);

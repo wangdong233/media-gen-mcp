@@ -21,7 +21,7 @@ import {
 import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail } from "./providers/registry.js";
-import type { ImageResult } from "./providers/types.js";
+import type { ImageResult, VideoMode, Resolution } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
 import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
@@ -42,6 +42,9 @@ const PKG_VERSION = JSON.parse(
 ).version as string;
 
 const ASYNC_THRESHOLD_SECONDS = 60;
+// mode/resolution 共享常量:schema enum + handler 白名单同源,消除多处字面量漂移(审查 medium)
+const VIDEO_MODES = ["text-to-video", "image-to-video", "keyframes"] as const;
+const RESOLUTIONS = ["480p", "720p", "1080p"] as const;
 
 const server = new Server(
   { name: "media-gen-mcp", version: PKG_VERSION },
@@ -91,10 +94,10 @@ function buildTools() {
         properties: {
           prompt: { type: "string", description: "Video content description." },
           model: { type: "string", description: "Optional; omit to use the provider default video model." },
-          mode: { type: "string", enum: ["text-to-video", "image-to-video", "keyframes"] },
+          mode: { type: "string", enum: [...VIDEO_MODES] },
           image: { type: "string", description: "image-to-video: single image URL." },
           keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image URL array." },
-          resolution: { type: "string", enum: ["480p", "720p", "1080p"], default: "720p", description: "Provider may snap to nearest preset (Agnes size_mapping)." },
+          resolution: { type: "string", enum: [...RESOLUTIONS], default: "720p", description: "Provider may snap to nearest preset (Agnes size_mapping)." },
           ratio: { type: "string", description: "16:9 / 9:16 / 1:1 / 4:3 / 3:4 (preferred over raw size)." },
           numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Allowed: " + vc.allowedNumFrames.join("/") + " (provider-specific; cross-provider routing re-validates per actual provider — check list_models)." },
           frameRate: { type: "number", enum: vc.allowedFrameRates, default: vc.defaultFrameRate, description: "允许值 " + vc.allowedFrameRates.join("/") + " (provider 专有;跨 provider 路由后按实际 provider 复算)" },
@@ -420,6 +423,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (optNumber(a.numFrames) != null && optNumber(a.durationSeconds) != null) {
           return err("`numFrames` 与 `durationSeconds` 互斥,二选一(numFrames 精确;durationSeconds 自动吸附最近合法帧数)。");
         }
+        // mode/resolution 白名单(防非法 enum 穿透到 provider API,前置清晰报错)
+        const VALID_MODE = new Set<string>(VIDEO_MODES);
+        const VALID_RESOLUTION = new Set<string>(RESOLUTIONS);
+        const mode = optString(a.mode);
+        if (mode && !VALID_MODE.has(mode)) return err("mode 须为 text-to-video / image-to-video / keyframes。");
+        const resolution = optString(a.resolution);
+        if (resolution && !VALID_RESOLUTION.has(resolution)) return err("resolution 须为 480p / 720p / 1080p。");
 
         // model↔provider 校验 + 自动路由
         const model = optString(a.model);
@@ -455,10 +465,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const created = await p.createVideo({
           prompt,
           model,
-          mode: optString(a.mode) as any,
+          mode: mode as VideoMode | undefined,
           image,
           keyframes,
-          resolution: optString(a.resolution) as any,
+          resolution: resolution as Resolution | undefined,
           ratio,
           numFrames: effFrames,
           frameRate,
@@ -493,9 +503,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             pollIntervalMs: optNumber(a.pollIntervalMs),
             onProgress: (pct, status) => emitProgress(pct, status),
           });
-        } catch (e: any) {
+        } catch (e: unknown) {
           // failed:返回 handle 供 get_video 复查(而非抛错丢掉句柄)
-          return ok({ status: "failed", error: e?.message ?? String(e), provider_used: p.name, videoId: created.videoId, taskId: created.taskId, ...(warnings.length ? { warnings } : {}) });
+          return ok({ status: "failed", error: e instanceof Error ? e.message : String(e), provider_used: p.name, videoId: created.videoId, taskId: created.taskId, ...(warnings.length ? { warnings } : {}) });
         }
         let localPath: string | null = null;
         if (done.status === "completed" && done.url && a.download !== false) {
@@ -688,8 +698,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       default:
         return err(`unknown tool: ${req.params.name}`);
     }
-  } catch (e: any) {
-    return err(e?.message ?? String(e));
+  } catch (e: unknown) {
+    return err(e instanceof Error ? e.message : String(e));
   }
 });
 
