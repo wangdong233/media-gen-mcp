@@ -76,6 +76,7 @@ function enhanceD2Error(msg: string, code: string): string {
   let hint = "";
   if (/^(strict\s+)?(di)?graph\b/mi.test(code.trim()) || /\brankdir\b/mi.test(code)) {
     hint = " HINT: 这看起来像 Graphviz DOT 语法。D2 语法不同,请设 engine:\"graphviz\"。";
+  } else if (/reserved|keyword|cannot be (used|redefined)|redefinition/i.test(msg)) hint = " HINT: 可能是 D2 保留样式关键字(fill/stroke/shadow/font-size/bold/3d/opacity 等对应 style.X)被直接用作节点/属性名 —— 改名(如 shadow→elevation)。";
   } else if (/number between/i.test(msg)) hint = " HINT: D2 numeric properties (stroke-width, font-size, border-radius, stroke-dash, width, height) accept INTEGERS ONLY — floats like 1.5 are invalid, use 1 or 2.";
   else if (/valid named color|hex code/i.test(msg)) hint = " HINT: hex colors MUST be QUOTED in D2 (style.fill: \"#ff0000\") because # starts a comment — unquoted #ff0000 is eaten as comment. Named colors like red don't need quotes.";
   else if (/one of/i.test(msg)) {

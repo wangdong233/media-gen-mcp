@@ -39,7 +39,11 @@ export async function renderChart(req: ChartRequest): Promise<ChartRenderOutput>
     const compiled = compile(spec);
     vegaSpec = compiled.spec;
   } catch (e: any) {
-    throw new Error(`Vega-Lite spec error: ${e?.message ?? String(e)}`);
+    const m = String(e?.message ?? e);
+    let vh = "";
+    if (/gradient|length/i.test(m)) vh = " HINT: gradient 写法 — 用 mark 的 fill.gradient(如 \"gradient(#a,#b)\") 或 encoding color scale,勿在 style 放 gradient 对象。";
+    else if (/signal|Unrecognized/i.test(m)) vh = " HINT: condition.test 用 \"datum.<field> === <val>\" 语法;signal 名须先定义再用。";
+    throw new Error(`Vega-Lite spec error: ${m}${vh}`);
   }
   const view = new View(parse(vegaSpec), { renderer: "none" });
   try {
@@ -51,7 +55,10 @@ export async function renderChart(req: ChartRequest): Promise<ChartRenderOutput>
     }
     return { svg, png };
   } catch (e: any) {
-    throw new Error(`Vega-Lite render error: ${e?.message ?? String(e)}`);
+    const m = String(e?.message ?? e);
+    let vh = "";
+    if (/signal|Unrecognized/i.test(m)) vh = " HINT: condition.test 用 \"datum.<field> === <val>\" 语法;signal 名须先定义再用。";
+    throw new Error(`Vega-Lite render error: ${m}${vh}`);
   } finally {
     view.finalize(); // CQ-3:释放 vega dataflow + scenegraph
   }
