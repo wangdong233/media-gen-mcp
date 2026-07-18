@@ -563,10 +563,14 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
     hasCJK(req.title) || hasCJK(req.subtitle) || hasCJK(req.body) || hasCJK(req.footer);
 
   // fontPath(单文件):只注册 400,Satori 对 700 回退到它(单文件无真粗体,诚实);
-  // 默认(CDN)分别取 Inter 400 与 700 两份(支持粗体)。
+  // 默认(CDN)分别取 400 与 700 两份(支持粗体)。
+  // 显式 CJK family(Noto Sans SC/微软雅黑/苹方等)→ 用内置 CJK 字体(免 CDN latin-700 404;S03/S15 场景 bug 修复)
+  const isCjkFamily = /noto.?sans.?(sc|cjk)|microsoft.?yahei|pingfang|simhei|simsun|source.?han/i.test(family);
   const baseFonts: LoadedFont[] = req.fontPath
     ? [await loadFont(family, 400, req.fontPath)]
-    : await Promise.all([loadFont(family, 400), loadFont(family, 700)]);
+    : isCjkFamily
+      ? (await Promise.all([loadCJKFont(400), loadCJKFont(700)])).filter((f): f is LoadedFont => f !== null)
+      : await Promise.all([loadFont(family, 400), loadFont(family, 700)]);
   let fonts: LoadedFont[] = [...baseFonts];
   if (needsCJK) {
     const cjk = await Promise.all([loadCJKFont(400), loadCJKFont(700)]);
