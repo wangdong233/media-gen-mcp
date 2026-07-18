@@ -98,6 +98,12 @@ export interface ImageProvider {
   supportsImageToImage?(): boolean;
   /** 声明该 provider 的图像 size 约束(若有);无硬约束返回 undefined(如 agnes)。 */
   imageConstraints?(): ImageConstraints | undefined;
+  /**
+   * 把任意 size 吸附到该 provider 的合法值(由 provider 自实现其厂商规则)。
+   * 有 imageConstraints 的 provider 应同时实现此方法,让 fallback 路径按目标 provider 规则重吸附,
+   * 而非工具层硬编码某一家厂商的吸附函数。无约束的 provider 不实现(工具层直用原值)。
+   */
+  snapImageSize?(size: string): string;
 }
 
 export interface VideoProvider {
@@ -120,5 +126,27 @@ export interface VideoProvider {
   getVideo(handle: VideoHandle): Promise<VideoResult>;
 }
 
+/** Provider 能力矩阵(pares3:fallback 能力谈判基础)。 */
+export interface ProviderCapabilities {
+  image: { textToImage: boolean; imageToImage: boolean };
+  video: { textToVideo: boolean; imageToVideo: boolean; keyframes: boolean };
+}
+
+/** Provider 健康状态(纯本地,无网络调用)。 */
+export interface ProviderHealth {
+  configured: boolean;
+  cooldown: boolean;
+  lastErrorAt?: string;
+}
+
 /** 一个同时具备图像与视频能力的 provider(Agnes 即如此)。 */
-export interface MediaProvider extends ImageProvider, VideoProvider {}
+export interface MediaProvider extends ImageProvider, VideoProvider {
+  /** 能力矩阵,供 fallback 路由判断能否承接。未实现 → 保守默认(不承接 fallback)。 */
+  capabilities?(): ProviderCapabilities;
+  /** 健康状态。未实现 → { configured: true, cooldown: false }。 */
+  health?(): ProviderHealth;
+  /** 优先级(数字大优先)。未实现 → 0。 */
+  tier?(): number;
+  /** fallback 失败时回调,让 provider 自更新 cooldown。 */
+  notifyUnavailable?(e: any): void;
+}

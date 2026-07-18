@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import { AgnesProvider } from "./agnes.js";
 import { ZhipuProvider } from "./zhipu.js";
-import type { MediaProvider } from "./types.js";
+import type { MediaProvider, ProviderCapabilities } from "./types.js";
 
 /**
  * Provider 注册表。新增 provider 时:
@@ -104,4 +104,50 @@ export function buildListModelsDetail(provider?: string): Record<string, any> {
     };
   }
   return out;
+}
+
+/**
+ * 能力判断:provider 是否能承接指定模态+模式的请求(pares3 fallback 能力谈判)。
+ * 未实现 capabilities() 的 provider 保守返回 false(不承接 fallback)。
+ *
+ * mode 推断须与 provider createVideo 内部一致(agnes/zhipu 都按 keyframes → image → text 优先级),
+ * 否则用户传 image 但不传 mode 时,此处按 text-to-video 误判能力,future t2v-only provider 会咬 i2v。
+ */
+function capableOf(
+  p: MediaProvider,
+  modality: "image" | "video",
+  req?: { images?: string[]; image?: string; mode?: string; keyframes?: string[] },
+): boolean {
+  const cap = p.capabilities?.();
+  if (!cap) return false;
+  if (modality === "image") {
+    return req?.images?.length ? cap.image.imageToImage : cap.image.textToImage;
+  }
+  const mode = req?.mode ??
+    (req?.keyframes?.length ? "keyframes" : req?.image ? "image-to-video" : "text-to-video");
+  if (mode === "text-to-video") return cap.video.textToVideo;
+  if (mode === "image-to-video") return cap.video.imageToVideo;
+  if (mode === "keyframes") return cap.video.keyframes;
+  return false;
+}
+
+/**
+ * 免费 Provider 自动 Fallback(pares3):当前 provider 不可用时,找另一个免费 provider 承接。
+ * 排除 currentName → 按 health(configured & !cooldown) + capableOf 能力矩阵过滤 → 按 tier 降序。
+ * 返回 undefined 表示无可用 fallback(两家都挂/无能力承接)。
+ */
+export function getFallbackProvider(
+  currentName: string,
+  modality: "image" | "video",
+  req?: { images?: string[]; image?: string; mode?: string; keyframes?: string[] },
+): MediaProvider | undefined {
+  const candidates = listProviders()
+    .filter((n) => n.toLowerCase() !== currentName.toLowerCase())
+    .map((n) => getProvider(n))
+    .filter((p) => p.health?.().configured !== false)
+    .filter((p) => p.health?.().cooldown !== true)
+    .filter((p) => capableOf(p, modality, req));
+  if (!candidates.length) return undefined;
+  candidates.sort((a, b) => (b.tier?.() ?? 0) - (a.tier?.() ?? 0));
+  return candidates[0];
 }

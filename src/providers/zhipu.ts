@@ -6,6 +6,8 @@ import type {
   VideoTask,
   VideoHandle,
   VideoResult,
+  ProviderCapabilities,
+  ProviderHealth,
 } from "./types.js";
 import { persistProviderField } from "../config.js";
 import { withRetry } from "./http.js";
@@ -138,6 +140,8 @@ export class ZhipuProvider implements MediaProvider {
   private rateLimits: Record<string, RateLimitEntry>;
   private lastSubmitAt: Record<string, number> = {}; // per-model 提交时刻
   private submitChain: Promise<void> = Promise.resolve();
+  private cooldownUntil = 0; // pares3: fallback 熔断窗口
+  private lastErrorAt: string | undefined; // pares3: 最后一次不可用时刻(诊断)
 
   constructor(c: ZhipuProviderConfig) {
     this.apiKey = c.apiKey;
@@ -169,6 +173,26 @@ export class ZhipuProvider implements MediaProvider {
       multipleOf: ZHIPU_IMG_SIDE_MULTIPLE,
       maxPixels: ZHIPU_IMG_MAX_PIXELS,
     };
+  }
+  /** 把任意 size 吸附到智谱合法值(16 倍数 + clamp 512-2880 + 像素 ≤ 2^21)。暴露为接口方法供 fallback 路径调用。 */
+  snapImageSize(size: string): string {
+    return snapZhipuImageSize(size);
+  }
+  // ── pares3: fallback 能力谈判 + 健康状态 ──
+  capabilities(): ProviderCapabilities {
+    return {
+      image: { textToImage: true, imageToImage: false }, // cogview 纯文生图
+      video: { textToVideo: true, imageToVideo: true, keyframes: false }, // keyframes 仅 cogvideox-3(但 fallback 保守 false)
+    };
+  }
+  health(): ProviderHealth {
+    return { configured: !!this.apiKey, cooldown: this.cooldownUntil > Date.now(), ...(this.lastErrorAt ? { lastErrorAt: this.lastErrorAt } : {}) };
+  }
+  tier(): number { return 5; } // zhipu 非默认 provider,tier 低
+  notifyUnavailable(e: any): void {
+    this.cooldownUntil = Date.now() + 60_000;
+    this.lastErrorAt = new Date().toISOString();
+    console.error(`[media-gen-mcp] zhipu 不可用(${(e as Error)?.message?.slice(0, 60)}),60s 内 fallback 跳过`);
   }
 
   videoConstraints() {

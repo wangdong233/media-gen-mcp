@@ -10,6 +10,26 @@
  */
 import { config } from "../config.js";
 
+/**
+ * 判断错误是否值得 fallback 到另一家 provider(5xx/网络/鉴权/限流 → YES;业务 4xx / 配置错 / 校验错 → NO)。
+ *
+ * 与 isTransient 的关系:isTransient = 同一 provider 内是否重试(瞬时错误);
+ * isFallbackWorthy = 是否换 provider 重试。语义更宽(多认 401/403/429,因为鉴权挂一家时换一家有意义)。
+ *
+ * 判定规则:
+ * - 有 .status(provider request() 抛出的 HTTP 错):0(网络层无码)/ ≥500 / 401 / 403 / 429 → YES
+ * - 无 .status:仅 fetch 网络层 TypeError → YES;其余(provider 内部校验/配置错,如
+ *   "image model 未配置" / "image-to-video requires image")→ NO,保留原始错误给用户,免误导排查方向
+ *   且避免对 fb 发无谓调用 + 把 primary 错误打入 60s 熔断(配置错不会自愈)。
+ */
+export function isFallbackWorthy(e: any): boolean {
+  const s = e?.status;
+  if (typeof s === "number") {
+    return s === 0 || s >= 500 || s === 401 || s === 403 || s === 429;
+  }
+  return e?.name === "TypeError";
+}
+
 /** 判断错误是否为"瞬时"(值得重试):5xx、网络层错误(fetch TypeError / status=0)。 */
 export function isTransient(e: any): boolean {
   const s = e?.status ?? 0;

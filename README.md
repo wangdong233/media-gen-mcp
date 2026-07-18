@@ -103,6 +103,17 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 切换:`defaultProvider: "zhipu"`,或按模态 `defaultImageProvider`/`defaultVideoProvider`,或单次传 `provider`。不知道选谁?见 [横评](doc/Agnes_vs_Zhipu_横评.md)。
 
+### 🔁 自动 Fallback(0.10.0+,纯免费)
+
+配了两个 provider 时,**主 provider 临时不可用(5xx/网络/鉴权/限流)会自动切换到另一家免费层**,用户零感知、零成本:
+
+- **能力谈判**:按能力矩阵路由——图生图 fallback 不会被不支持 i2i 的 zhipu 接(免静默丢图);关键帧 fallback 同理。
+- **spec 重吸附**:切换后按目标 provider 自有约束重算 size/numFrames/frameRate(如 zhipu 需 16 倍数 + ≤2²¹ 像素),免碰 400。
+- **60s 软熔断**:失败的 provider 进 60s 冷却,期间不再被选为 fallback 候选,免反复试错。
+- **不 fallback 的场景**:业务 4xx(参数错)、配置错(key 未设置)、轮询路径(`get_video` 锁定 submit 时的 provider,因为任务 ID 是 provider 私有的)。详见 [pares3 交付分析](doc/parse/pares3/功能分析.md)。
+
+> 只配一个 provider?fallback 自动 no-op,无副作用。
+
 ---
 
 ## 🛠️ 能力详解
@@ -218,8 +229,9 @@ claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"
 ## 🏗️ 架构 + 文档
 
 - **Provider 可插拔**(agnes + 智谱,新增 provider 零改工具层);**引擎可插拔**(DiagramEngine 与 MediaProvider 并行,互不污染)
+- **免费 Provider 自动 Fallback**(handler 层 `isFallbackWorthy` → `getFallbackProvider` → 能力谈判 + spec 重吸附 + `activeProvider` 防错位)
 - [架构要求清单](doc/架构要求清单.md)——项目架构规范(持续维护)
-- 更多见 [doc/](doc/):[Agnes 开通指引](doc/Agnes%20开通指引.md) · [智谱开通指引](doc/Zhipu%20开通指引.md) · [Provider 横评](doc/Agnes_vs_Zhipu_横评.md)
+- 更多见 [doc/](doc/):[Agnes 开通指引](doc/Agnes%20开通指引.md) · [智谱开通指引](doc/Zhipu%20开通指引.md) · [Provider 横评](doc/Agnes_vs_Zhipu_横评.md) · [pares3 Fallback 交付分析](doc/parse/pares3/功能分析.md)
 
 ---
 

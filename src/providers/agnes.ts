@@ -6,6 +6,8 @@ import type {
   VideoTask,
   VideoHandle,
   VideoResult,
+  ProviderCapabilities,
+  ProviderHealth,
 } from "./types.js";
 import { persistProviderField } from "../config.js";
 import { withRetry } from "./http.js";
@@ -77,6 +79,8 @@ export class AgnesProvider implements MediaProvider {
   private rateLimits: Record<string, RateLimitEntry>;
   private lastSubmitAt: Record<string, number> = {}; // per-model 提交时刻
   private submitChain: Promise<void> = Promise.resolve();
+  private cooldownUntil = 0; // pares3: fallback 熔断窗口
+  private lastErrorAt: string | undefined; // pares3: 最后一次不可用时刻(诊断)
 
   constructor(c: AgnesProviderConfig) {
     this.apiKey = c.apiKey;
@@ -116,6 +120,22 @@ export class AgnesProvider implements MediaProvider {
     if (resolution === "1080p") return 241;
     if (resolution === "720p") return 441;
     return undefined;
+  }
+  // ── pares3: fallback 能力谈判 + 健康状态 ──
+  capabilities(): ProviderCapabilities {
+    return {
+      image: { textToImage: true, imageToImage: true },
+      video: { textToVideo: true, imageToVideo: true, keyframes: true },
+    };
+  }
+  health(): ProviderHealth {
+    return { configured: !!this.apiKey, cooldown: this.cooldownUntil > Date.now(), ...(this.lastErrorAt ? { lastErrorAt: this.lastErrorAt } : {}) };
+  }
+  tier(): number { return 10; } // agnes 默认 provider,tier 高
+  notifyUnavailable(e: any): void {
+    this.cooldownUntil = Date.now() + 60_000; // 60s 软熔断
+    this.lastErrorAt = new Date().toISOString();
+    console.error(`[media-gen-mcp] agnes 不可用(${(e as Error)?.message?.slice(0, 60)}),60s 内 fallback 跳过`);
   }
 
   estimateGenerationSeconds(numFrames: number): number {

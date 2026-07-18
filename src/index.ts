@@ -20,8 +20,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import path from "node:path";
 import { config } from "./config.js";
-import { getProvider, listProviders, resolveProvider, buildListModelsDetail } from "./providers/registry.js";
-import type { ImageResult, VideoMode, Resolution } from "./providers/types.js";
+import { getProvider, listProviders, resolveProvider, buildListModelsDetail, getFallbackProvider } from "./providers/registry.js";
+import { isFallbackWorthy } from "./providers/http.js";
+import type { ImageResult, VideoMode, Resolution, VideoTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
 import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
@@ -374,15 +375,48 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           return err(`provider "${p.name}" 不支持图生图(images 会被忽略)。请改用 agnes,或去掉 images 走纯文生图。`);
         }
         const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
-        const makeOne = (): Promise<ImageResult> =>
-          p.generateImage({ prompt, model, size: optString(a.size) ?? "1024x1024", images: imgs, extra });
+        const makeOne = async (): Promise<{ result: ImageResult; providerName: string }> => {
+          try {
+            const result = await p.generateImage({ prompt, model, size: optString(a.size) ?? "1024x1024", images: imgs, extra });
+            return { result, providerName: p.name };
+          } catch (e: any) {
+            // pares3: 免费 Provider 自动 Fallback(Agnes 挂 → Zhipu 免费层)
+            if (!isFallbackWorthy(e)) throw e;
+            const fb = getFallbackProvider(p.name, "image", { images: imgs });
+            if (!fb) throw e;
+            if (imgs?.length && fb.supportsImageToImage?.() === false) throw e; // 双保险
+            // size 按目标 provider 自有规则重吸附(走接口方法,非硬编码厂商函数;agnes 无 snapImageSize → 原值)
+            const baseSize = optString(a.size) ?? "1024x1024";
+            const fbSize = fb.snapImageSize?.(baseSize) ?? baseSize;
+            warnings.push(`provider "${p.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"(免费)。`);
+            p.notifyUnavailable?.(e);
+            try {
+              const result = await fb.generateImage({ prompt, model: undefined, size: fbSize, images: imgs, extra });
+              return { result, providerName: fb.name };
+            } catch (fbErr: any) {
+              // fb 也失败:同样打 cooldown(仅 fallback-worthy 错,免 4xx 业务错也熔断),让后续请求跳过它
+              if (isFallbackWorthy(fbErr)) fb.notifyUnavailable?.(fbErr);
+              throw fbErr;
+            }
+          }
+        };
         const { results: rawResults, firstError } = await runPool(Array.from({ length: n }, () => makeOne), 3);
-        const results = rawResults.filter((x): x is ImageResult => !!x);
+        const pairs = rawResults.filter((x): x is { result: ImageResult; providerName: string } => !!x);
+        const results = pairs.map((x) => x.result);
         const outputs = results.flatMap((r) => r.outputs);
         const watermarked = results.some((r) => r.watermarked);
-        results.forEach((r) => r.warnings?.forEach((w) => warnings.push(w)));
+        results.forEach((r) => r.warnings?.forEach((w: string) => warnings.push(w)));
+        // 去重:n>1 fan-out 命中同一 fallback 时,makeOne 会推 n 条相同 warning(仅保留首条)
+        for (let i = warnings.length - 1; i >= 0; i--) {
+          if (warnings.indexOf(warnings[i]) !== i) warnings.splice(i, 1);
+        }
+        // 实际产出 provider(可能多张来自不同 provider,如部分命中 fallback;聚合去重)
+        const providerUsed = Array.from(new Set(pairs.map((x) => x.providerName))).join(",");
         if (outputs.length === 0) {
-          throw new Error("图像生成失败(0 张产出,可能 provider 限流或鉴权问题)。");
+          // 保留 fallback 路径 + 首例错误诊断(免外层 catch 只看到通用错误,无法判断是 401 还是 fb 也挂了)
+          const firstMsg = firstError ? ` 首例:${(firstError as Error)?.message?.slice(0, 100) ?? "未知"}。` : "";
+          const detail = warnings.length ? ` 诊断:${warnings.slice(0, 3).join(" / ")}` : "";
+          throw new Error(`图像生成失败(0 张产出,可能 provider 限流或鉴权问题)。${firstMsg}${detail}`);
         }
         if (outputs.length < n) warnings.push(`请求 ${n} 张,实际得到 ${outputs.length} 张(部分调用失败${firstError ? `;首例:${(firstError as Error)?.message?.slice(0, 80) ?? "未知"}` : ""})。`);
         // 落盘:name 单张直用,多张加 -i 后缀防覆盖
@@ -399,7 +433,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return ok({
           outputs,
           local_paths: localPaths,
-          provider_used: p.name,
+          provider_used: providerUsed,
           ...(watermarked ? { watermarked: true } : {}),
           ...(warnings.length ? { warnings } : {}),
         });
@@ -462,34 +496,57 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const estimated = p.estimateGenerationSeconds(effFrames, frameRate);
         const wait = a.wait === true || (a.wait === undefined && estimated <= ASYNC_THRESHOLD_SECONDS);
 
-        const created = await p.createVideo({
-          prompt,
-          model,
-          mode: mode as VideoMode | undefined,
-          image,
-          keyframes,
-          resolution: resolution as Resolution | undefined,
-          ratio,
-          numFrames: effFrames,
-          frameRate,
-          durationSeconds: optNumber(a.durationSeconds),
-          seed: optNumber(a.seed),
-          negativePrompt: optString(a.negativePrompt),
-        });
-        created.warnings?.forEach((w) => warnings.push(w));
-        // 异步 hint 用实际句柄键(videoId 优先,否则 taskId)+ provider,让用户照抄即可查(zhipu 仅 taskId)
+        // pares3: create_video fallback(铁律:仅 submit 可 fallback,poll 路径绝不 fallback)
+        let activeProvider = p;
+        let created: VideoTask;
+        try {
+          created = await p.createVideo({
+            prompt, model, mode: mode as VideoMode | undefined, image, keyframes,
+            resolution: resolution as Resolution | undefined, ratio, numFrames: effFrames, frameRate,
+            durationSeconds: optNumber(a.durationSeconds), seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
+          });
+        } catch (e: any) {
+          if (!isFallbackWorthy(e)) throw e;
+          const fb = getFallbackProvider(p.name, "video", { mode, keyframes, image });
+          if (!fb) throw e;
+          // numFrames/frameRate 按目标 provider 约束重吸附
+          const fbVc = fb.videoConstraints();
+          let fbFrames = nearestAllowed(effFrames, fbVc.allowedNumFrames);
+          let fbFps = frameRate;
+          if (!fbVc.allowedFrameRates.includes(fbFps)) fbFps = fbVc.defaultFrameRate;
+          // 复钳 fb 的 resolution×ratio numFrames 上限(如 agnes 1080p≤241;防 fallback 反而制造 API 400)
+          const fbMaxF = fb.maxFramesFor?.(optString(a.resolution), ratio);
+          if (fbMaxF != null && fbFrames > fbMaxF) {
+            warnings.push(`fallback numFrames ${fbFrames} 超过 ${fb.name} 的 ${optString(a.resolution) ?? "当前分辨率"}上限 ${fbMaxF},已降为 ${fbMaxF}。`);
+            fbFrames = fbMaxF;
+          }
+          warnings.push(`provider "${p.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"(免费),numFrames ${effFrames}→${fbFrames}。`);
+          p.notifyUnavailable?.(e);
+          activeProvider = fb;
+          // 关键:不透传 durationSeconds —— Agnes.createVideo 会优先用 framesForDuration(durationSeconds) 重推导 numFrames,
+          // 完全忽略传入的 fbFrames(1080p + durationSeconds∈[13,18]s 会推出 441>241 上限碰 API 400,正是 maxFramesFor 要防的场景)。
+          // 强制走 numFrames 路径,让上面的 fbFrames clamp 真正生效。
+          try {
+            created = await fb.createVideo({
+              prompt, model: undefined, mode: mode as VideoMode | undefined, image, keyframes,
+              resolution: resolution as Resolution | undefined, ratio, numFrames: fbFrames, frameRate: fbFps,
+              seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
+            });
+          } catch (fbErr: any) {
+            if (isFallbackWorthy(fbErr)) fb.notifyUnavailable?.(fbErr);
+            throw fbErr;
+          }
+        }
+        created.warnings?.forEach((w: string) => warnings.push(w));
+        // 异步 hint 用实际句柄键(videoId 优先,否则 taskId)+ 实际 provider(activeProvider 防 fallback 后错位)
         const handleKey = created.videoId ? `videoId="${created.videoId}"` : `taskId="${created.taskId}"`;
-        const handleHint = `get_video(${handleKey}${p.name !== config.defaultVideoProvider ? `, provider="${p.name}"` : ""})`;
+        const handleHint = `get_video(${handleKey}${activeProvider.name !== config.defaultVideoProvider ? `, provider="${activeProvider.name}"` : ""})`;
 
         if (!wait) {
           return ok({
             ...created,
             async: true,
-            provider_used: p.name,
-            estimated_seconds: estimated,
-            estimated_human: humanDuration(estimated),
-            threshold_seconds: ASYNC_THRESHOLD_SECONDS,
-            hint: `预估生成 ${humanDuration(estimated)}(>${ASYNC_THRESHOLD_SECONDS}s 已转异步)。任务在后端生成,完成后调用方应通知用户;查询用 ${handleHint}。`,
+            provider_used: activeProvider.name,
             ...(warnings.length ? { warnings } : {}),
           });
         }
@@ -497,22 +554,33 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         let done: Awaited<ReturnType<typeof waitVideo>>;
         try {
           done = await waitVideo({
-            provider: p,
+            provider: activeProvider,
             handle: { videoId: created.videoId, taskId: created.taskId },
             timeoutMs: optNumber(a.timeoutMs),
             pollIntervalMs: optNumber(a.pollIntervalMs),
             onProgress: (pct, status) => emitProgress(pct, status),
           });
         } catch (e: unknown) {
-          // failed:返回 handle 供 get_video 复查(而非抛错丢掉句柄)
-          return ok({ status: "failed", error: e instanceof Error ? e.message : String(e), provider_used: p.name, videoId: created.videoId, taskId: created.taskId, ...(warnings.length ? { warnings } : {}) });
+          // failed:返回 handle 供 get_video 复查(而非抛错丢掉句柄)。
+          // provider_used 必须是 activeProvider —— fallback 后任务实际在 fb 上,poll 路径不再 fallback,
+          // 用户按此字段调 get_video 必须打到正确的 provider(否则 agnes 查 zhipu 的 task → not found)。
+          // 同步补 handleHint(已用 activeProvider 构造),给一条可直接复制的 get_video 复查命令。
+          return ok({
+            status: "failed",
+            error: e instanceof Error ? e.message : String(e),
+            provider_used: activeProvider.name,
+            videoId: created.videoId,
+            taskId: created.taskId,
+            hint: `任务失败,可用 ${handleHint} 复查最终状态/错误详情。`,
+            ...(warnings.length ? { warnings } : {}),
+          });
         }
         let localPath: string | null = null;
         if (done.status === "completed" && done.url && a.download !== false) {
           localPath = await downloadAsset(done.url, "vid", outDir, optString(a.name));
         }
         const timeoutHint = done.status === "timeout" ? { hint: `等待超时但任务仍在后端生成;稍后用 ${handleHint} 拉取。` } : {};
-        return ok({ ...done, provider_used: p.name, local_path: localPath, ...timeoutHint, ...(warnings.length ? { warnings } : {}) });
+        return ok({ ...done, provider_used: activeProvider.name, local_path: localPath, ...timeoutHint, ...(warnings.length ? { warnings } : {}) });
       }
 
       case "get_video": {
