@@ -572,7 +572,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           width: optNumber(a.width),
         });
         const fp = await writeLocalRender(outDir, "qr", optString(a.name), format, rendered);
-        return ok({ format, local_path: fp });
+        return ok({ format, local_path: fp, ...(rendered.warnings?.length ? { warnings: rendered.warnings } : {}) });
       }
 
       case "generate_chart": {
@@ -583,7 +583,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const format: "svg" | "png" = a.format === "png" ? "png" : "svg";
         const rendered = await renderChart({ spec: a.spec, format });
         const fp = await writeLocalRender(outDir, "chart", optString(a.name), format, rendered);
-        return ok({ format, local_path: fp });
+        return ok({ format, local_path: fp, ...(rendered.warnings?.length ? { warnings: rendered.warnings } : {}) });
       }
 
       case "generate_formula": {

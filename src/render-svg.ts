@@ -149,8 +149,14 @@ if (!process.env.MEDIA_GEN_NO_SIGNAL_HANDLERS) {
 
 /** 检测 SVG 是否含滤镜块(需 Chrome 才能 100% 渲染)。 */
 function hasSvgFilters(svg: string): boolean {
-  // SVG <filter> 元素 + CSS filter: 属性(如 style 滤镜模糊);后者 resvg 支持差,需 Chrome
+  // SVG <filter> 元素 + CSS filter: 属性(如 style 滤镜模糊)+ 外部资源/foreignObject(需 Chrome)
   return /<filter[\s>]/i.test(svg) || /\bfilter\s*:/i.test(svg);
+}
+function hasExternalResources(svg: string): boolean {
+  return /<image[^>]+(xlink:)?href=["']https?:/i.test(svg) || /@import\s+url\(["']?https?:/i.test(svg) || /@font-face[^}]+url\(["']?https?:/i.test(svg);
+}
+function hasForeignObject(svg: string): boolean {
+  return /<foreignObject[\s>]/i.test(svg);
 }
 
 /** 从 SVG 根标签提取宽高(viewBox 或 width/height)。 */
@@ -208,7 +214,7 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
   }
 
   // 后端选择:auto → 含滤镜且 Chrome 可用 → Chrome;否则 resvg
-  const wantsChrome = req.backend === "chrome" || (req.backend !== "resvg" && hasSvgFilters(req.svg));
+  const wantsChrome = req.backend === "chrome" || (req.backend !== "resvg" && (hasSvgFilters(req.svg) || hasExternalResources(req.svg) || hasForeignObject(req.svg)));
   let png: Buffer | undefined;
   let backendUsed: BackendUsed = "resvg";
   let warning: string | undefined;
@@ -230,7 +236,7 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
       backendUsed = "resvg";
       warning = req.backend === "chrome"
         ? "Chrome/Edge not available; used resvg instead."
-        : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : undefined);
+        : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : (hasExternalResources(req.svg) || hasForeignObject(req.svg) ? "SVG contains external resources/foreignObject but Chrome unavailable; resvg cannot fetch/render them (will be blank). Use backend=chrome or inline as data URI." : undefined));
     }
   } else {
     png = renderWithResvg(req.svg, targetWidth);

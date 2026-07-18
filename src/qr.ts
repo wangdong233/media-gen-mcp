@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { contrastRatio } from "./color-utils.js";
 
 /**
  * QR 码生成(qrcode npm,纯 JS,零二进制依赖)。
@@ -23,12 +24,22 @@ export interface QRRequest {
 export interface QRRenderOutput {
   svg?: string;
   png?: Buffer;
+  warnings?: string[];
 }
 
 export async function renderQR(req: QRRequest): Promise<QRRenderOutput> {
+  const warnings: string[] = [];
   const colorRe = /^(#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|[a-z]+)$/i;
+  const darkColor = req.dark ?? "#000000";
+  const lightColor = req.light ?? "#ffffff";
   if (req.dark && !colorRe.test(req.dark)) throw new Error(`dark must be hex (#000000) or CSS color name; got ${JSON.stringify(req.dark)}`);
   if (req.light && !colorRe.test(req.light)) throw new Error(`light must be hex (#ffffff) or CSS color name; got ${JSON.stringify(req.light)}`);
+  // dark/light 对比度防御:对比太低扫码器无法识别
+  const cr = contrastRatio(darkColor, lightColor);
+  if (cr != null && cr < 2.0) warnings.push(`前景/背景对比度 ${cr.toFixed(1)}:1 过低,扫码器可能无法识别,建议加深 dark 或换浅 light。`);
+  // margin < 4 低于 ISO 18004 推荐静默区
+  const margin = req.margin ?? 2;
+  if (margin < 4) warnings.push(`静默区 ${margin} 模块低于 ISO 18004 推荐的 4,边角定位图样可能被遮挡;打印/嵌入版面时建议 margin≥4。`);
   const opts: QRCode.QRCodeRenderersOptions = {
     margin: req.margin ?? 2,
     errorCorrectionLevel: req.errorCorrectionLevel ?? "M",
@@ -42,8 +53,8 @@ export async function renderQR(req: QRRequest): Promise<QRRenderOutput> {
     const pngOpts = { ...opts, type: "png" as const };
     if (req.width && req.width > 0) (pngOpts as any).width = Math.floor(req.width);
     const png = await QRCode.toBuffer(req.text, pngOpts);
-    return { png };
+    return { png, warnings };
   }
   const svg = await QRCode.toString(req.text, { ...opts, type: "svg" });
-  return { svg };
+  return { svg, warnings };
 }

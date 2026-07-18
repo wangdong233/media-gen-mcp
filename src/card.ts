@@ -3,6 +3,7 @@ import { Resvg } from "@resvg/resvg-js";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
+import { contrastRatio as _cr, parseAllHex as _pah } from "./color-utils.js";
 import os from "node:os";
 import { createRequire } from "node:module";
 
@@ -552,9 +553,28 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
     warnings.push(`template "${req.template}" 未知,回退 og(支持:og/quote/minimal/hero/panel)。`);
   }
   const accentBgContrast = contrastRatio(accent, bg);
-  if (accentBgContrast != null && accentBgContrast < 1.5) {
-    warnings.push(`accent "${accent}" 与 bg 对比度过低(${accentBgContrast.toFixed(2)}:1),竖条/副标题/引号可能不可见,建议换 accent。`);
+  if (accentBgContrast != null && accentBgContrast < 3.0) {
+    warnings.push(`accent "${accent}" 与 bg 对比度过低(${accentBgContrast.toFixed(2)}:1),副标题/装饰条可能不可读(WCAG 大字 AA 需 ≥3:1),建议换 accent。`);
   }
+  // 标题 color vs bg 对比(审查发现:默认浅色 color 在浅 bg 上标题消失)
+  const colorBgContrast = contrastRatio(color, bg);
+  if (colorBgContrast != null && colorBgContrast < 3.0) {
+    warnings.push(`title color "${color}" 与 bg 对比度过低(${colorBgContrast.toFixed(2)}:1),标题可能不可见,建议改 color 或 bg。`);
+  }
+  // titleGradient 停止色 vs bg(渐变标题在浅 bg 上可能不可见)
+  if (req.titleGradient) {
+    const stops = _pah(req.titleGradient);
+    if (stops.length > 0) {
+      const allLowContrast = stops.every((s) => {
+        const cr = contrastRatio(`#${s[0].toString(16).padStart(2,"0")}${s[1].toString(16).padStart(2,"0")}${s[2].toString(16).padStart(2,"0")}`, bg);
+        return cr != null && cr < 3.0;
+      });
+      if (allLowContrast) warnings.push(`titleGradient 停止色在 bg 上对比度均 <3:1,渐变标题可能不可见,建议停止色与 bg 拉开亮度差。`);
+    }
+  }
+  // 画布过小/过大(内容裁切/体积过大)
+  if (width < 320 || height < 200) warnings.push(`画布 ${width}×${height} 过小,内容可能被裁;建议 ≥320×200。`);
+  if (width > 4000 || height > 4000) warnings.push(`画布 ${width}×${height} 过大,PNG 体积大且字偏小;建议 ≤4000。`);
 
   const muted = isLightBg(bg) ? "#475569" : "#94a3b8";
 
