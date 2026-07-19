@@ -1,67 +1,86 @@
 # media-gen-mcp
 
-> Claude Code 的「图像全家桶」MCP —— 造图 · 画想法 · 看懂图,16 个能力一个装好,纯免费。
+> Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
-![Version](https://img.shields.io/badge/version-0.11.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Free](https://img.shields.io/badge/pricing-free-success) ![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen) ![MCP](https://img.shields.io/badge/MCP-compatible-purple)
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/license-MIT-green">
+  <img src="https://img.shields.io/badge/MCP-compatible-purple">
+</p>
 
-**给 Claude Code 装一次,以后所有图像活儿都是一句话。** 设计师出图、程序员画架构图、运营做分享卡、分析师抠发票表格 —— 16 个工具塞进 1 个 MCP,**生图/视频 + 识别 + 画图/卡片/二维码**全覆盖,**全免费**(Agnes/智谱免费层 + 本地确定性引擎双驱动)。别再为每件事装一个 MCP、写一段 Python、调一家付费 API 了。
+**给 Claude Code 装一次,以后所有图像活儿都是一句话。** 设计师出图、程序员画架构图、运营做分享卡、财务抠发票表格 —— 生图 / 视频 + 识别 + 画图 / 卡片 / 二维码全覆盖,**全免费**(免费服务方 + 本地引擎,装上即用)。
+
+每周做几次图、装 N 个工具记 N 套参数很烦?这里只装一次,所有图像场景都丢给 Claude。
 
 🌐 Languages: **简体中文** · English · 日本語 · Español · Français · Deutsch · Русский · Português
 
+## 目录
+
+- [你说一句话,得到什么](#你说一句话得到什么)
+- [60 秒上手](#60-秒上手)
+- [能力全家桶](#能力全家桶)
+- [配置详解](#配置详解)
+- [常见问题](#常见问题)
+- [这是给谁的](#这是给谁的)
+- [支持作者](#支持作者)
+- [License](#license)
+
 ---
 
-## 🎯 你说一句话,得到什么
+## 你说一句话,得到什么
 
 | 你说 …… | 你得到 |
 |---|---|
 | "画只赛博朋克猫,霓虹辉光" | AI 写实图,落盘到 `output/` |
-| "生成 5 秒海边日落视频" | AI 视频 MP4(异步,完成后通知) |
-| "画个架构图:客户端 → API 网关 → 订单服务 + 支付服务" | 矢量 SVG 架构图 |
-| "把这组销售数据画成柱状图" | Vega-Lite 高清图表 |
-| "做个指向 github.com 的二维码" | 矢量二维码 SVG/PNG |
-| "把 E=mc² 渲染成高清公式" | MathJax 矢量公式 |
-| "做张深色渐变分享卡,标题 7 月新品 🚀" | Satori OG 卡(中文 + emoji 自动) |
-| "识别这张发票截图里的表格" | HTML/Markdown 表格(0.11.0 新) |
-| "把这张柱状图读成数据点" | 结构化数据(0.11.0 新) |
-| "描述一下这张图里有什么" | VLM 自然语言描述(0.11.0 新) |
+| "生成 5 秒海边日落视频" | AI 视频 MP4(后台生成,完成通知你) |
+| "画个架构图:客户端 → API 网关 → 订单服务 + 支付服务" | 矢量架构图 |
+| "把这组销售数据画成柱状图" | 高清数据图表 |
+| "做个指向 github.com 的二维码" | 矢量二维码 |
+| "把 E=mc² 渲染成高清公式" | 矢量公式 |
+| "做张深色渐变分享卡,标题 7 月新品 🚀" | 排版好的分享卡(中文 + emoji 自动) |
+| "识别这张发票截图里的表格" | 可粘贴的 HTML/Markdown 表格(0.11.0 新) |
+| "把这张柱状图读成数据点" | 结构化 CSV/JSON 数据(0.11.0 新) |
+| "描述一下这张图里有什么" | 自然语言回答(0.11.0 新) |
 
-> 不用学工具名,不用装系统依赖,**Claude 自动选**。
+> 不用学工具名,不用装系统依赖,**Claude 自动挑最合适的方式完成**。
 
 ---
 
-## 🚀 60 秒上手(零 Key 也能跑)
+## 60 秒上手
 
-核心思路:**结构化工具(画图 / 图表 / 卡片 / 二维码 / 公式)全是本地引擎,不调 AI,装上即用**。AI 生图/视频才需要免费 Key —— 这是把"第一张图"提前到注册之前的转化杀手锏。
+核心思路:**画图 / 卡片 / 二维码 / 公式是本地引擎,识图(OCR 文字识别)也默认进程内兜底——全部不调 AI、不连网,装上即用**。只有 AI 写实图 / 视频才需要免费 API Key —— 把"第一张图"和"第一次读图"都提前到注册之前。
 
-### 0–20 秒｜一行接入
+### 30 秒｜一行接入(零 Key)
 
 ```bash
-# ① 一行装上(不带 Key,30 秒)
+# 一行装上(不带 Key,30 秒)
 claude mcp add media-gen-mcp npx media-gen-mcp-server
 
-# ② 重启 Claude Code → 输入 /mcp → 看到 media-gen-mcp ✓ Connected 即成功
+# 重启 Claude Code → 输入 /mcp → 看到 media-gen-mcp ✓ Connected 即成功
 ```
 
-### 20–40 秒｜免 Key 立刻出第一张图(关键爽点)
+### 30 秒｜免 Key 立刻出第一张图
 
 直接对 Claude 说一句:
 
 ```
-> 画个架构图:客户端 → API 网关 → 订单服务 + 支付服务 → 数据库,深色科技风
+做张深色科技风的分享卡,标题:Claude Code 图像全家桶
 ```
 
-→ 矢量 SVG 自动落盘到 `output/`,打开就能用。**你还没注册任何 Key,已经拿到结果。**
+→ 矢量图自动落盘到 `output/`,打开就能用。**你还没注册任何 API Key,已经拿到结果。**
 
 下面这些也都是零 Key 零联网即时出:
 
 - 「做个指向 github.com 的二维码」
-- 「把 E=mc² 渲染成高清公式图」
-- 「做张深色科技风的分享卡,标题:Claude Code 图像全家桶」
+- 「把 E=mc² 渲染成高清公式」
+- 「画个架构图:客户端 → 网关 → 订单服务 + 支付服务 → 数据库,深色科技风」
+- 「识别这张验证码图片里的数字」(OCR,默认进程内,不装任何东西)
+- 「把这张截图里的英文文字提取出来」
 
-### 40–60 秒｜想要 AI 写实图 / 视频,再加免费 Key(可选)
+### 想要 AI 写实图 / 视频?再加免费 API Key(可选)
 
 ```bash
-# ① 拿免费 Key(推荐 Agnes,默认 provider)
+# ① 拿免费 API Key(推荐 Agnes,默认服务方)
 #    https://platform.agnes-ai.com/ → 注册 → API Keys → 复制 sk-xxx
 #    (智谱 cogview-3-flash / cogvideox-flash 也永久免费,可二选一或都配)
 
@@ -76,93 +95,104 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 #    → AI 写实图落盘。视频同理:"生成 5 秒海边日落视频"
 ```
 
-> 💡 不想用 npx?兜底全局装:`npm i -g media-gen-mcp-server` → `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`
+> 不想用 npx?全局装也行:先 `npm i -g media-gen-mcp-server`,再 `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`。
 
 ---
 
-## 🧰 能力全家桶(按你「想干什么」分,不按技术分)
+## 能力全家桶
 
-> Claude 会根据你的意图自动路由,**你不用记哪个工具**。下面工具名只是给老用户的索引。
+> 直接对 Claude 说你想干嘛,它自动挑最合适的方式完成。下面按「你想做的事」分组 —— 你不用知道背后叫什么。
 
-### 🎨 我要「造张图」(从无到有)
+### 造一张图(从无到有)
 
-- **AI 写实图 / 插画 / 概念图 / Logo 草图** → `generate_image`(文生图 + 图生图)
-- **AI 视频**(文生 / 图生 / 关键帧动画,3-18s) → `create_video`(智能异步,长视频后台生成)+ `get_video`(取片)
-- **查可用模型 / 约束** → `list_models`
-- **矢量图标**(20 万+ Iconify,mdi/lucide/fa/logos) → `generate_icon`
+**画一张写实照片或插画**
+> 你:"画只赛博朋克橙猫,霓虹辉光,写实风"
+> 得到:写实图落盘到 `output/`(也支持插画 / 产品概念图 / Logo 草稿 / 科幻场景)
 
-### 📖 我要「读懂一张图」(把图变数据 · 0.11.0 新增)
+**把一句话或一张图变成短视频**
+> 你:"生成 5 秒海边日落视频"
+> 得到:MP4 视频(3–18 秒;长视频后台生成,完成后通知你取片)
 
-- **OCR 文字**(验证码 / 数字 / 中文文档) → `extract_text`(默认 tesseract 进程内,零配置)
-- **表格 → HTML/Markdown**(发票 / 报表 / 扫描件) → `extract_table`(清晰报错,不静默降级)
-- **图表 → 数据点**(截图里的柱/线/饼图) → `analyze_chart`
-- **图像描述 / VQA / 手写 / 公式识别** → `describe_image`
+**抓一个图标或品牌 Logo**
+> 你:"抓一个 GitHub 的 Logo,128 像素"
+> 得到:20 万+ 图标库里的矢量 Logo,即下即用(GitHub / Twitter / Material / Lucide / Font Awesome 等)
 
-### 📐 我要「画结构图」(把想法变清晰,确定性矢量,免 Key)
+### 看懂一张图(把图变数据 · 0.11.0 新增)
 
-- **架构 / 流程 / 时序 / 类图 / ER / 思维导图** → `generate_diagram`(D2 + Graphviz 内置,免装 d2/dot)
-- **数据图表**(柱/线/饼/面积/散点) → `generate_chart`(Vega-Lite 内置,Claude 从数据/CSV 自动生成 spec)
+**从截图里抠出文字**
+> 你:"把这张验证码里的数字读出来"
+> 得到:纯文本(验证码 / 发票号 / 扫描文档 / 聊天记录都能抠)
 
-### 🎴 我要「做卡片 / 海报」(发出去好看)
+**把表格图变成 HTML / Markdown**
+> 你:"识别这张发票截图里的表格"
+> 得到:可直接粘贴的 Markdown 表格(发票 / 报表 / 扫描件不用再手动重打)
 
-- **OG 图 / 分享卡 / 引言卡 / 封面 / 海报** → `generate_card`(Satori;中文+渐变标题+辉光+emoji+logo 内嵌全自动,5 模板:`og`/`quote`/`minimal`/`hero`/`panel`)
-- **二维码**(URL / 文本) → `generate_qrcode`
-- **数学公式**(LaTeX → SVG) → `generate_formula`(MathJax 内置)
+**从图表反推原始数据点**
+> 你:"把这张柱状图读成数据"
+> 得到:CSV / JSON 结构化数据(柱状 / 折线 / 饼图都行)
 
-### ✨ 我要「酷炫 SVG / 动画视频」(确定性,代码驱动)
+**让它用大白话讲讲这张图**
+> 你:"这张图里一共有几个人?在做什么?"
+> 得到:自然语言回答(看图问答 / 手写 / 公式 / 复杂场景理解)
 
-- **手写 SVG**(辉光 / 景深 / 科技感) → `render_svg`(有 `<filter>` 自动走 Chrome 100% 保真,否则 resvg 92% 轻量)
-- **HTML/CSS/GSAP 动画 → MP4/GIF/WebM** → `render_video`(逐帧 seek,同输入同输出,适合产品片头 / 动效 / 品牌动画)
+### 把想法画清楚(免 Key,装上就能用)
 
-> **关键差异**:前 2 类(造图 / 读图)走联网或 AI;后 4 类是本地确定性引擎,**免 Key、矢量、可版本控制、可批量**。
+**画结构图**
+> 你:"画个架构图:客户端 → API 网关 → 订单服务 + 支付服务 → 数据库"
+> 得到:矢量架构图(也支持流程图 / 时序图 / 类图 / ER 图 / 思维导图)
+
+**把数据画成图表**
+> 你:"把这组销售数据画成柱状图"
+> 得到:高清数据图表(柱状 / 折线 / 饼图 / 面积 / 散点,丢一串数字或一份 CSV 都行)
+
+### 做卡片 / 海报 / 二维码(发出去好看)
+
+**做分享卡 / OG 图 / 引言卡 / 封面 / 海报**
+> 你:"做张深色渐变分享卡,标题 7 月新品 🚀"
+> 得到:排版精美的卡片(标题、副标题、渐变色、辉光、彩色 emoji、Logo 内嵌全自动,中文与日文汉字不乱码)
+
+**生成二维码**
+> 你:"做个指向 github.com 的二维码"
+> 得到:矢量二维码(URL / 文本都行,海报印刷也清晰)
+
+**把数学公式渲染成高清图**
+> 你:"把 E=mc² 渲染成高清公式"
+> 得到:矢量公式(LaTeX、复杂分式、化学方程式都支持)
+
+### 做酷炫动效 / 科技感图形(同输入永远同输出)
+
+**把 SVG 渲染成高清 PNG**
+> 你:"画一个带辉光、星场、景深的科技感背景"
+> 得到:酷炫 PNG,自动选最佳渲染方式保真不失真
+
+**把 HTML / CSS 动画变成视频**
+> 你:"做一个 3 秒的产品片头动画,渐变色 + 粒子"
+> 得到:MP4 / GIF / WebM 视频(产品片头 / 品牌动画 / 动效演示,逐帧渲染,同输入永远同输出)
+
+> **小提示**:造图 / 读图走联网 AI;画图 / 卡片 / 二维码 / 动画是本地引擎 —— **装上就能用、矢量高清、同样的输入永远出同样的图**。
 
 ---
 
-## ⚔️ 为什么不用别的方案
+## 配置详解
 
-| 维度 | 装 N 个 MCP | 各自调 API | Pillow + matplotlib | 手动用网站 | **media-gen-mcp** |
-|---|---|---|---|---|---|
-| 安装成本 | 5-10 个 server × N 次配 | SDK × N + 胶水代码 | Python + 浏览器 + 字体 + 图表库 | 切应用 | **1 行 npx,1 份 config** |
-| 用法 | 各家参数各异 | 自己拼 SDK | 写脚本 | 手动点 | **说自然语言,Claude 自动选** |
-| 免费程度 | 各家不一 | 部分免费 | 全免费但手动 | 多数免费 | **全免费**(Agnes+智谱免费层 + 本地 WASM + Apache 自托管) |
-| 失败兜底 | 单点挂 = 任务挂 | ❌ | ❌ | ❌ | **provider 自动 fallback**(agnes↔zhipu↔tesseract↔paddle↔vlm + 60s 熔断) |
-| 输出确定性 | 看各家 | API 抽奖 | ✅ | ❌ | **结构化工具同输入同输出** |
-| 可版本控制 | 部分 | ❌ | ✅ | ❌ | **SVG 矢量直接 git** |
-| 适合谁 | 只要单一能力 | 工程化深度定制 | 离线批处理脚本 | 一次性需求 | **Claude Code 图像全场景** |
+> 一句话:**结构化能力(画图 / 图表 / 卡片 / 二维码 / 公式)零配置开箱即用;AI 生成配一行 API Key;识图默认零配置,要中文 SOTA / 表格 / 图表才自托管。** 你想用的能力决定要配什么 —— 不用全配。
 
-一句话差异化:**别人给你一个工具,这个给你一整套图像工作流 —— 而且免费、本地优先、Claude 自动选**。
+### 按「我想干什么」查配置
 
----
-
-## 👥 这是给谁的
-
-- **Claude Code 重度用户** —— 每周都要做几次图像任务,受够为每件事装一个 MCP、记一套参数。
-- **写技术文档 / 博客的开发者** —— 反复需要架构图、时序图、ER、数据图、公式,不想学 graphviz/matplotlib/PS,也不想离开工作流。
-- **个人开发者 / 独立产品** —— 关注成本(全免费)、关注可控(同输入同输出)、不想为图像任务单独搭后端或买 SaaS。
-- **数据分析师 / 财务 / 法务** —— 双向场景:把数据快速画成图表,以及从截图/发票里反向抽数据点(OCR + 表格 + 图表识别)。
-- **运营 / 内容创作者 / 公众号作者** —— 分享卡 / OG 图 / 海报 / 二维码 / 社交物料,中文+彩色 emoji+渐变开箱即用,想要写实配图再 `generate_image`。
-- **OCR / 文档数字化工作流** —— 发票表格转 HTML、验证码识别、中文文档数字化。
-
-> **不太适合**:不用 Claude Code 的用户;只要单一能力且已搭好 pipeline 的工程化团队;需要付费商用模型 / 训练微调 / 实时视频 OCR 的场景(本项目刻意不做,维持纯免费)。
+| 你想干什么 | 要配什么 | 配了立刻能用 |
+|---|---|---|
+| 画架构图 / 数据图表 / 卡片 / 二维码 / 公式 | **什么都不用配** | 本地引擎,装完即用 |
+| AI 写实图 / AI 视频(文生图、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
+| OCR 文字识别(英文 / 验证码 / 数字 / 简单文档) | **什么都不用配** | 默认走进程内轻量引擎,装完即用 |
+| 中文 OCR / 发票表格 / 图表读数 / 看图问答 / 手写 / 公式 | 自托管理解引擎(PaddleX 或 vLLM,见下文资源需求) | 自托管服务跑起来后填一行 baseUrl |
 
 ---
 
-## 🔌 Provider 与配置详解(进阶)
+### 一、生成类配置(AI 生图 / 视频)
 
-### AI 生成 Provider
+**默认服务方:Agnes**(免费层永久有效,文生图 + 文生视频全开放)。智谱为备选(中文场景原生优化)。
 
-| Provider | 生图 | 生视频 | 免费层 | 推荐场景 |
-|---|---|---|---|---|
-| **Agnes**(默认)| ✅ | ✅ | ✅ 永久免费 | 文生图 + 视频,默认首选 |
-| **智谱 Zhipu** | ✅ cogview-3-flash / cogview-4 | ✅ cogvideox-flash | ✅ 永久免费 | 4K / 中文原生优化 |
-
-**开通**:
-- Agnes → https://platform.agnes-ai.com/ → 注册 → API Keys
-- 智谱 → https://open.bigmodel.cn/ → 注册 → API Keys
-
-### config.json 完整 schema
-
-路径:`~/.media-gen-mcp/config.json`(缺这个文件**不会崩** —— 结构化工具与 tesseract 兜底照常工作)
+**配一家就够**(以下是完整 `config.json`,只填一家也行):
 
 ```json
 {
@@ -171,136 +201,189 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
     "zhipu": { "apiKey": "你的智谱-key" }
   },
   "defaultProvider": "agnes",
-  "defaultVisionProvider": "tesseract",
   "outDir": "/absolute/path/to/output"
 }
 ```
 
-### 自动 Fallback 机制
+**免费 API Key 怎么拿**:
 
-任一 provider 失败时,handler 层按能力矩阵自动切换:
+- **Agnes**(推荐,默认):https://platform.agnes-ai.com/ → 注册 → API Keys → 复制 `sk-xxx`
+- **智谱**:https://open.bigmodel.cn/ → 注册 → API Keys(免费模型:`cogview-3-flash` / `cogvideox-flash`,永久免费)
 
-- **生成侧**:agnes ↔ zhipu
-- **识别侧**:tesseract(进程内兜底)→ paddle → vlm
-- **铁律**:`poll`(轮询取视频)不 fallback,避免 provider 错位
-- **软熔断**:主家 60s 内连续失败 → 自动切备用家,你零感知、零账单
-- **能力谈判 + spec 重吸附**:fallback 时按备用 provider 的能力重新对齐请求规格
+**配两家更稳**:任一家临时挂掉(限流 / 服务波动),另一家自动顶上,你零感知、零重复扣费。
 
----
+**配置文件位置**:`~/.media-gen-mcp/config.json`(macOS / Linux)或 `%USERPROFILE%\.media-gen-mcp\config.json`(Windows)。
 
-## 🔍 图像识别部署(进阶 · 可选)
-
-> 默认 `extract_text` 走进程内 **tesseract WASM,零配置直接用**。要中文 SOTA / 表格 / 图表再自托管以下任一。
-
-### tesseract(默认,零配置)
-
-无需任何操作,装上 MCP 即可用。适合英文 / 验证码 / 数字 / 简单文档。
-
-### PaddleOCR / PaddleX(中文 SOTA,Apache 2.0)
-
-```bash
-pip install paddlex paddlepaddle
-paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
-```
-
-然后在 `config.json` 的 `providers.paddle.baseUrl` 填 `http://127.0.0.1:8080`。
-
-### vLLM + Qwen2.5-VL(VLM 通用,Apache 2.0)
-
-适合 VQA / 手写 / 公式 / 复杂场景理解。自行部署 vLLM 后填 `providers.vlm.baseUrl`。
-
-> 🛡️ **License 干净**:识别侧刻意避开 AGPL / GPL / 阈值 / 署名 / 商用申请陷阱 —— tesseract.js + PaddleOCR + Qwen2.5-VL 全 Apache,企业能直接商用。
+> 这个文件**没有也不会崩** —— 结构化能力和默认 OCR 照常工作,只是不能调 AI 生成。
 
 ---
 
-## 📦 16 工具速查表
+### 二、识别类配置(识图 / OCR / 表格 / 图表 / 视觉理解)
 
-| 工具 | 类别 | 引擎 | 需 Key? |
-|---|---|---|---|
-| `generate_image` | AI 生成 | Agnes / 智谱 cogview | ✅ |
-| `create_video` | AI 生成 | Agnes / 智谱 cogvideox | ✅ |
-| `get_video` | AI 生成 | (异步轮询) | ✅ |
-| `list_models` | AI 生成 | (查询约束) | ✅ |
-| `extract_text` | 识别 | tesseract / paddle / vlm | ❌(默认零配置) |
-| `extract_table` | 识别 | paddle PP-StructureV3 | ❌ |
-| `analyze_chart` | 识别 | paddle PP-Chart2Table / vlm ChartQA | ❌ |
-| `describe_image` | 识别 | paddle PaddleOCR-VL / vlm Qwen2.5-VL | ❌ |
-| `generate_diagram` | 结构化 | D2 + Graphviz(内置 WASM) | ❌ |
-| `generate_chart` | 结构化 | Vega-Lite(内置) | ❌ |
-| `generate_formula` | 结构化 | MathJax(内置) | ❌ |
-| `generate_card` | 结构化 | Satori(内置) | ❌ |
-| `generate_icon` | 结构化 | Iconify(CDN 缓存) | ❌ |
-| `generate_qrcode` | 结构化 | 内置 | ❌ |
-| `render_svg` | 结构化 | resvg / Chrome(自动选) | ❌ |
-| `render_video` | 结构化 | headless Chrome + ffmpeg | ❌ |
+识别能力**分三档**,按需选装,默认就能用第一档。
+
+#### 档位 1:默认轻量引擎(零配置,装上即用)
+
+- **能干什么**:英文 / 数字 / 验证码 / 简单文档 OCR
+- **要不要装服务**:**不用**,以 WASM 形式打包进 MCP 进程,首次调用时自动加载语言模型
+- **最小资源需求**:
+  - CPU:任意(纯 CPU 运行,无 GPU 依赖)
+  - GPU:不需要
+  - 内存:约 200–500MB(随图片大小波动)
+  - 磁盘:约 30–50MB(WASM 引擎 + 语言包)
+  - 模型大小:含在上面磁盘占用里(英文语言包,几 MB 级)
+- **速度**:单张约 3–5 秒
+- **适合谁**:90% 的轻量 OCR 场景、海外文档、验证码识别
+
+> 大多数用户到这一档就够,下面两档是可选加强。
+
+#### 档位 2:PaddleX / PP-StructureV3(中文 SOTA + 表格识别)
+
+- **能干什么**:中文 OCR(效果显著强于默认引擎)、版面分析、**发票 / 报表 / 扫描件 → HTML/Markdown 表格**、图表读数
+- **要不要装服务**:**要**,自托管 PaddleX REST 服务,MCP 通过 `baseUrl` 调用
+- **最小资源需求**(实测):
+
+  | 模式 | 最低门槛 | 推荐 | 说明 |
+  |---|---|---|---|
+  | GPU 模式 | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | 模型加载约 2.4GB,处理复杂 PDF 峰值约 6GB |
+  | CPU 模式 | 4 核 CPU + 8GB 内存 | 8 核 + 16GB 内存 | 能跑(轻量文档可用),批量 / 复杂 PDF 明显慢 3–5 倍 |
+  | 磁盘 | 约 3GB | 约 5GB | paddlepaddle + paddlex + 模型权重 |
+  | 模型大小 | 约 100–300MB(单pipeline) | — | 多 pipeline 累加 |
+
+- **CUDA 要求**:Compute Capability ≥ 7.0(V100 / T4 / RTX 20/30/40 系;50 系暂未完全适配),需 CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 才有 GPU 加速
+- **怎么装**:
+
+  ```bash
+  pip install paddlex paddlepaddle          # GPU 版:paddlepaddle-gpu
+  paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
+  ```
+
+  然后在 `config.json` 加一行:
+
+  ```json
+  {
+    "providers": {
+      "paddle": { "baseUrl": "http://127.0.0.1:8080" }
+    }
+  }
+  ```
+
+#### 档位 3:vLLM + Qwen2.5-VL(通用视觉理解 VLM)
+
+- **能干什么**:看图问答、手写识别、公式识别、复杂场景自然语言描述 —— PaddleX 搞不定的"理解类"任务
+- **要不要装服务**:**要**,自建 vLLM 推理服务
+- **最小资源需求**(实测):
+
+  | 模式 | 最低门槛 | 推荐 | 说明 |
+  |---|---|---|---|
+  | GPU 满精度 7B(FP16) | 16GB VRAM | **24GB VRAM**(RTX 3090 / 4090 / A5000) | 模型权重约 15–16GB + KV cache,vLLM 默认占用 90% 显存 |
+  | GPU 量化 7B(INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | 量化版可塞进 RTX 4080 / 4060 Ti 16GB |
+  | GPU 轻量版 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 约 6–8GB,INT4 约 3–4GB,个人开发者甜点 |
+  | CPU 模式 | 不推荐 | — | 能跑但慢 5–10 倍,生产场景请上 GPU |
+  | 内存 | 16GB | 16–32GB | — |
+  | 磁盘 | 约 14GB(7B 权重) | — | 3B 约 6GB |
+  | CUDA 要求 | Compute Capability ≥ 7.0 | — | Tesla T4(7.5)起步,V100 / A100 / RTX 30/40 系均可 |
+
+- **怎么装**:参考 [vLLM 官方文档](https://docs.vllm.ai) 部署 `Qwen/Qwen2.5-VL-7B-Instruct`,然后在 `config.json` 加:
+
+  ```json
+  {
+    "providers": {
+      "vlm": { "baseUrl": "http://127.0.0.1:8000" }
+    }
+  }
+  ```
+
+#### 三档对比速查
+
+| 档位 | 装不装服务 | 资源门槛 | 中文 | 表格 | 看图问答 | License |
+|---|---|---|---|---|---|---|
+| **默认**(tesseract) | 不装 | 零(纯 CPU WASM) | 一般 | ❌ | ❌ | Apache 2.0 |
+| **PaddleX** | 装 | GPU 12GB 或 CPU 4 核 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 |
+| **vLLM Qwen2.5-VL** | 装 | **GPU 16–24GB**(CPU 不可用) | ✅ | 一般 | ✅ | Apache 2.0 |
+
+> 识别侧刻意只选 Apache 2.0 引擎(tesseract.js + PaddleOCR + Qwen2.5-VL),避开 AGPL / GPL / 商用申请陷阱,**企业可直接商用**。
 
 ---
 
-## ❓ FAQ
+### 三、自动兜底机制(配了就不用管)
 
-**Q:视频生成为什么这么慢?**
-A:AI 视频走异步,5s 视频约 1-3 分钟,18s 视频可能 5-10 分钟。`create_video` 智能判断:预估 ≤60s 同步等、>60s 异步返回 handle,完成后自动通知。可用 `get_video` 主动轮询取片。
+- **生成侧**:Agnes ↔ 智谱,任一家失败自动切另一家(60 秒内连续失败触发软切换,你不用重启、不用改配置)
+- **识别侧**:默认轻量引擎(进程内兜底)→ PaddleX → vLLM,按能力自动降级
+- **唯一例外**:视频轮询取片时**不切换**(避免拿到错的结果)
+- 你要做的:配两家生成 API Key + 可选装一档识别服务,剩下的交给 Claude
 
-**Q:识别要不要 Key?**
-A:**不要**。`extract_text` 默认走进程内 tesseract WASM,零配置。要中文 SOTA 才自托管 paddle(也是 Apache 免费)。
+> 你机器跑不动 PaddleX 或 vLLM?**继续用默认轻量引擎即可**,MCP 不会因为没装本地服务而报错 —— 只是中文 SOTA / 表格 / 看图问答 这几项能力不可用,其它全照常。
 
-**Q:和 paddleocr-mcp 啥区别?**
-A:本 MCP 直连 PaddleX 原生 REST(走 `baseUrl`),不走 MCP-over-HTTP 转发;且 fallback 链 tesseract↔paddle↔vlm,任一挂自动切,你零感知。
+---
 
-**Q:支持 Mermaid 吗?**
-A:`generate_diagram` 不支持 mermaid(需要浏览器)。用 D2 或 Graphviz 代替,能力等价且更稳,矢量输出。
+## 常见问题
+
+**Q:不装任何东西能用吗?**
+A:能。装上 MCP 就有画图 / 卡片 / 二维码 / 公式 / 数据图表 + 英文 / 验证码 OCR,全部本地跑,零联网。
+
+**Q:识别中文乱码吗?**
+A:默认轻量引擎对英文 / 数字 / 简单文档够用,中文准确率一般。要中文 SOTA 自托管 PaddleX(GPU 12GB 或 CPU 4 核 8GB),详见上方[配置详解](#配置详解)。
+
+**Q:AI 视频要等多久?**
+A:5 秒视频约 1–3 分钟,18 秒视频可能 5–10 分钟。后台异步生成,完成后自动通知你取片;预估 ≤60 秒的会同步等。
+
+**Q:我的 RTX 3060 能跑表格识别吗?**
+A:能。PaddleX GPU 模式最低 12GB VRAM(RTX 3060 12GB 正好),CPU 模式 4 核 + 8GB 内存也能跑(慢 3–5 倍)。详见[配置详解](#配置详解)。
 
 **Q:中文 / emoji / 渐变能正常出吗?**
-A:`generate_card` 通过内置 Noto Sans SC + Satori 全自动支持中文、日文汉字、彩色 emoji、渐变标题、辉光效果。无需额外字体配置。
+A:能。分享卡通过内置中文字体 + 排版引擎全自动支持中文、日文汉字、彩色 emoji、渐变标题、辉光效果,无需额外字体配置。
 
-**Q:酷炫 SVG(辉光 / 景深)怎么保证保真?**
-A:`render_svg` 自动检测 SVG 是否含 `<filter>` / `<feGaussianBlur>`,有则走 Chrome 100% 保真,无则 resvg 92% 轻量。
+**Q:支持 Mermaid 吗?**
+A:不支持(需要浏览器)。用 D2 或 Graphviz 代替,能力等价且更稳,矢量输出。
 
-**Q:踩 429 / 限流?**
-A:免费层有 RPM 限制。配两家 provider(agnes + zhipu)后自动 fallback,基本无感。
+**Q:踩限流(429)?**
+A:免费层有每分钟请求数限制。配两家服务方(Agnes + 智谱)后自动切换,基本无感。
 
 **Q:视频帧数限制?**
-A:随分辨率递减 —— 1080p ≤ 241 帧(约 10s),720p 可达 441 帧(约 18s)。`list_models` 可查实时约束。
+A:随分辨率递减 —— 1080p ≤ 241 帧(约 10 秒),720p 可达 441 帧(约 18 秒)。可问 Claude 查实时约束。
 
 **Q:npx 连不上 / 启动慢?**
-A:兜底全局装 `npm i -g media-gen-mcp-server`,再用 `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`。
+A:全局装也行:先 `npm i -g media-gen-mcp-server`,再 `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`。
 
 **Q:能用敏感词 / 武器 / 战争题材吗?**
 A:真实武器词会触发内容过滤。改用科幻设定词(如"未来战甲"、"机甲")可绕过,效果等同。
 
 ---
 
-## 🏗️ 架构
+## 这是给谁的
 
-- **Provider 可插拔**:agnes / zhipu 实现 `capabilities` + `health` + `tier` + `notifyUnavailable` 接口,handler 按能力矩阵路由
-- **Engine 可插拔**:D2 / Graphviz / Vega-Lite / MathJax / Satori / resvg / Chrome 全打包进 npm 包,首次取 CDN 后本地缓存
-- **Fallback 双层**:provider 层(生成)+ provider 层(识别),60s 软熔断 + 能力谈判 + spec 重吸附
-- **本地优先**:结构化工具不联网、不调 AI、同输入同输出(逐字节一致,可 git)
-- **核心认知**:keep-alive 句柄在 server 进程内无害;独立脚本场景必须 `unref` + active refcount
+- **Claude Code 重度用户** —— 每周都要做几次图像任务,不想为每件事装一个 MCP、记一套参数。
+- **写技术文档 / 博客的开发者** —— 反复需要架构图、时序图、ER 图、数据图、公式,不想离开工作流。
+- **个人开发者 / 独立产品** —— 关注成本(全免费)与可控(同输入同输出),不想为图像任务单独搭后端。
+- **数据 / 财务 / 法务** —— 双向场景:把数据画成图表,从截图 / 发票里反向抽数据点。
+- **运营 / 内容创作者 / 公众号作者** —— 分享卡 / OG 图 / 海报 / 二维码,中文 + 彩色 emoji + 渐变开箱即用。
 
-📄 完整文档见 `doc/` 目录(Agnes/智谱开通指引、provider 横评、交付分析)。
+> **不太适合**:不用 Claude Code 的用户;只要单一能力且已搭好流水线的工程化团队;需要付费商用模型 / 训练微调 / 实时视频 OCR 的场景(这些超出免费 MCP 范围)。
 
 ---
 
-## 💝 支持作者
+## 支持作者
 
 如果这个 MCP 帮到你,欢迎:
 
-- ⭐ Star 这个仓库(让更多人看到)
-- 🐛 [提 Issue](../../issues) 报 bug / 提需求
-- 🔀 [发 PR](../../pulls) 贡献代码
+- Star 这个仓库(让更多人看到)
+- [提 Issue](../../issues) 报 bug / 提需求
+- [发 PR](../../pulls) 贡献代码
 
 <p align="center"><em>微信 / 支付宝赞赏码见 <code>docs/support</code></em></p>
 
 ---
 
-## 📄 License
+## License
 
 **MIT** —— 主体代码随便用。
 
 识别侧依赖全栈 **Apache 2.0**(tesseract.js + PaddleOCR + Qwen2.5-VL),企业商用无 license 风险。
 
 ---
+
+> 技术细节:服务方与引擎都可插拔,结构化工具同输入同输出可入 git,失败自动切换服务方。贡献者详见 `CONTRIBUTING.md`,完整文档见 `docs/` 目录。
 
 <p align="center">
   <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>
