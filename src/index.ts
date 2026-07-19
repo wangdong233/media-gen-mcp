@@ -20,7 +20,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import path from "node:path";
 import { config } from "./config.js";
-import { getProvider, listProviders, resolveProvider, buildListModelsDetail, getFallbackProvider } from "./providers/registry.js";
+import { getProvider, listProviders, resolveProvider, buildListModelsDetail, getFallbackProvider, asImageProvider, asVideoProvider } from "./providers/registry.js";
 import { isFallbackWorthy } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
@@ -52,10 +52,13 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
+/** URI 校验(http(s): / data:),generate_image images / create_video image+keyframes / vision image 共用(pares5 抽取,消除重复正则,R-CI-01)。 */
+const isImageUri = (u: string) => /^(https?:|data:)/i.test(u);
+
 function buildTools() {
   // create_video 的 schema 约束按"视频模态默认 provider"展示,与实际路由一致
   // (例:defaultVideoProvider=zhipu 时展示 150/300,而非 agnes 的 81/121/...;handler 仍按实际 provider 复算 vc)
-  const vc = getProvider(config.defaultVideoProvider).videoConstraints();
+  const vc = asVideoProvider(getProvider(config.defaultVideoProvider)).videoConstraints();
 
   return [
     {
@@ -356,7 +359,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const model = optString(a.model);
         // model↔provider 校验 + 自动路由(消除 "cogview-4 配 agnes → 503 No available channel" 这类不透明错误)
         const resolved = resolveProvider(optString(a.provider), model, "image");
-        const p = resolved.provider;
+        const p = asImageProvider(resolved.provider);
         const warnings: string[] = [];
         if (resolved.autoRouted) {
           warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
@@ -367,7 +370,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (reqN && reqN > 8) warnings.push(`n=${reqN} 超上限,已钳制为 8。`);
         // H3:images[] 须为 URI(与 create_video 对称,防本地路径/相对路径 silent 进 body)
         const imgs = toStringArray(a.images);
-        if (imgs?.some((u) => !/^(https?:|data:)/i.test(u))) {
+        if (imgs?.some((u) => !isImageUri(u))) {
           return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
         }
         // images 图生图:provider 不支持时拒绝(免静默丢弃 — zhipu cogview 纯文生图,传 images 会忽略)
@@ -382,8 +385,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           } catch (e: any) {
             // pares3: 免费 Provider 自动 Fallback(Agnes 挂 → Zhipu 免费层)
             if (!isFallbackWorthy(e)) throw e;
-            const fb = getFallbackProvider(p.name, "image", { images: imgs });
-            if (!fb) throw e;
+            const fbRaw = getFallbackProvider(p.name, "image", { images: imgs });
+            if (!fbRaw) throw e;
+            const fb = asImageProvider(fbRaw);
             if (imgs?.length && fb.supportsImageToImage?.() === false) throw e; // 双保险
             // size 按目标 provider 自有规则重吸附(走接口方法,非硬编码厂商函数;agnes 无 snapImageSize → 原值)
             const baseSize = optString(a.size) ?? "1024x1024";
@@ -448,11 +452,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (ratio && !RATIO_OK.has(ratio)) {
           return err('ratio 须为 "16:9" / "9:16" / "1:1" / "4:3" / "3:4" 之一。');
         }
-        const isUri = (u: string) => /^(https?:|data:)/i.test(u);
         const image = optString(a.image);
-        if (image && !isUri(image)) return err("`image` 须为 http(s): 或 data: URI。");
+        if (image && !isImageUri(image)) return err("`image` 须为 http(s): 或 data: URI。");
         const keyframes = toStringArray(a.keyframes);
-        if (keyframes?.some((u) => !isUri(u))) return err("`keyframes` 每项须为 http(s): 或 data: URI。");
+        if (keyframes?.some((u) => !isImageUri(u))) return err("`keyframes` 每项须为 http(s): 或 data: URI。");
         // M4:numFrames 与 durationSeconds 互斥(防 silent 覆盖 + estimate 错位导致长时间阻塞)
         if (optNumber(a.numFrames) != null && optNumber(a.durationSeconds) != null) {
           return err("`numFrames` 与 `durationSeconds` 互斥,二选一(numFrames 精确;durationSeconds 自动吸附最近合法帧数)。");
@@ -468,7 +471,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // model↔provider 校验 + 自动路由
         const model = optString(a.model);
         const resolved = resolveProvider(optString(a.provider), model, "video");
-        const p = resolved.provider;
+        const p = asVideoProvider(resolved.provider);
         const vc = p.videoConstraints();
         const warnings: string[] = [];
         if (resolved.autoRouted) {
@@ -507,8 +510,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           });
         } catch (e: any) {
           if (!isFallbackWorthy(e)) throw e;
-          const fb = getFallbackProvider(p.name, "video", { mode, keyframes, image });
-          if (!fb) throw e;
+          const fbRaw = getFallbackProvider(p.name, "video", { mode, keyframes, image });
+          if (!fbRaw) throw e;
+          const fb = asVideoProvider(fbRaw);
           // numFrames/frameRate 按目标 provider 约束重吸附
           const fbVc = fb.videoConstraints();
           let fbFrames = nearestAllowed(effFrames, fbVc.allowedNumFrames);
@@ -587,7 +591,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (!a.videoId && !a.taskId) {
           return err("get_video requires `videoId` (preferred) or `taskId`");
         }
-        const p = getProvider(optString(a.provider) ?? config.defaultVideoProvider);
+        const p = asVideoProvider(getProvider(optString(a.provider) ?? config.defaultVideoProvider));
         const r = await p.getVideo({ videoId: optString(a.videoId), taskId: optString(a.taskId) });
         let localPath: string | null = null;
         if (r.status === "completed" && r.url && a.download !== false) {
@@ -815,12 +819,6 @@ async function runPool<T>(tasks: (() => Promise<T>)[], capacity: number): Promis
   });
   await Promise.all(workers);
   return { results, firstError };
-}
-function humanDuration(sec: number): string {
-  if (sec < 60) return `约 ${sec} 秒`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return s ? `约 ${m} 分 ${s} 秒` : `约 ${m} 分钟`;
 }
 function ok(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };

@@ -11,7 +11,8 @@
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": false,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true
   },
   "include": ["src/**/*"]
 }

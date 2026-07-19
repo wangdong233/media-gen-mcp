@@ -66,6 +66,9 @@ export const config = {
   defaultVideoProvider:
     userCfg.defaultVideoProvider ?? userCfg.defaultProvider ?? process.env.MEDIA_PROVIDER ?? "agnes",
 
+  /** pares5: 识别模态默认 provider(未显式指定时);M1 起注册 tesseract 进程内兜底。与 image/video 一致,不暴露 per-modality env。 */
+  defaultVisionProvider: userCfg.defaultVisionProvider ?? "tesseract",
+
   outDir: userCfg.outDir
     ? path.resolve(userCfg.outDir)
     : process.env.OUT_DIR

@@ -1,5 +1,7 @@
 import type {
-  MediaProvider,
+  MediaProviderBase,
+  ImageProvider,
+  VideoProvider,
   ImageRequest,
   ImageResult,
   VideoRequest,
@@ -68,7 +70,7 @@ function framesForDuration(seconds: number, frameRate: number): number {
  * 限流(per-model + TTL):基线 videoMinIntervalMs;429 学习 per-model 回写;TTL 过期降级基线。
  * 时钟 per-model:lastSubmitAt 按 model 独立计时,多模型交替不被错误全局串行。
  */
-export class AgnesProvider implements MediaProvider {
+export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoProvider {
   readonly name = "agnes";
   private readonly apiKey: string;
   private readonly baseUrl: string;

@@ -1,5 +1,7 @@
 import type {
-  MediaProvider,
+  MediaProviderBase,
+  ImageProvider,
+  VideoProvider,
   ImageRequest,
   ImageResult,
   VideoRequest,
@@ -130,7 +132,7 @@ function nearestDuration(seconds: number): number {
  * 限流(per-model + TTL):基线 videoMinIntervalMs;429/1302 学习 per-model 回写;TTL 过期降级基线。
  * 智谱限流为"并发在途任务数"(按账户权益),非固定 QPM;learnRateLimit 仅在文案可解析时生效,否则 inert。
  */
-export class ZhipuProvider implements MediaProvider {
+export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoProvider {
   readonly name = "zhipu";
   private readonly apiKey: string;
   private readonly baseUrl: string;

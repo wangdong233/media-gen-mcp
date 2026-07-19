@@ -11,6 +11,12 @@ export type VideoMode = "text-to-video" | "image-to-video" | "keyframes";
 export type Resolution = "480p" | "720p" | "1080p";
 export type TaskStatus = "queued" | "in_progress" | "completed" | "failed" | "timeout";
 
+/** 模态(pares5:加 vision 第三模态,与 image/video 同位 peer)。 */
+export type Modality = "image" | "video" | "vision";
+
+/** 图像识别任务(4 类,各自产出 shape 不同——故 4 工具而非 1 工具+enum,避 R-ABS-01 分流)。 */
+export type VisionTask = "extract-text" | "extract-table" | "analyze-chart" | "describe-image";
+
 /** 通用图像请求(文生图 / 图生图)。 */
 export interface ImageRequest {
   prompt: string;
@@ -89,8 +95,6 @@ export interface ImageConstraints {
 }
 
 export interface ImageProvider {
-  readonly name: string;
-  listModels(): string[];
   /** 仅图像模型清单(供 model↔provider 路由校验)。 */
   listImageModels(): string[];
   generateImage(req: ImageRequest): Promise<ImageResult>;
@@ -107,8 +111,6 @@ export interface ImageProvider {
 }
 
 export interface VideoProvider {
-  readonly name: string;
-  listModels(): string[];
   /** 仅视频模型清单(供 model↔provider 路由校验)。 */
   listVideoModels(): string[];
   /** 声明该 provider 的视频约束,供工具层构建 schema(避免在通用层硬编码厂商专有值)。 */
@@ -126,10 +128,99 @@ export interface VideoProvider {
   getVideo(handle: VideoHandle): Promise<VideoResult>;
 }
 
-/** Provider 能力矩阵(pares3:fallback 能力谈判基础)。 */
+// ── pares5: vision 模态(图像识别)类型。语义级 what,不泄漏引擎 how(采纳审查 finding-1)。 ──
+
+/** 各 task 的 hints —— 按 task 形状不同(4 工具而非 1 工具+enum 的根本原因)。 */
+export interface ExtractTextHints {
+  /** BCP-47(如 zh-Hans/zh-Hant/en/ja);provider 内部映射为引擎 lang 文件名(tesseract→chi_sim / paddle→自带多语)。 */
+  languages?: string[];
+  /** 语义契约「仅输出数字」;各引擎各自实现(tesseract→char_whitelist / paddle→rec 字典约束),不绑死引擎参数名。 */
+  digitOnly?: boolean;
+  /** 语义级版面假设;provider 翻译为自家 PSM(tesseract 0-13)/版面策略。 */
+  segmentation?: "auto" | "single-line" | "single-char" | "sparse-text";
+}
+export interface ExtractTableHints {
+  format?: "html" | "markdown" | "json" | "latex";
+}
+export interface AnalyzeChartHints {
+  chartType?: "bar" | "line" | "pie" | "scatter" | "auto";
+}
+export interface DescribeImageHints {
+  /** 留空=默认描述提示;存在=VQA 回答该问题。 */
+  question?: string;
+}
+
+/** 通用识别请求(4 task 共用;image URI-only,与 create_video 同源约束)。 */
+export interface VisionRequest {
+  image: string;
+  task: VisionTask;
+  /** 按 task 窄化;OCR 语种只在 ExtractTextHints.languages 单点承载(采纳 finding-5:无顶层 languages 双口)。 */
+  hints?: ExtractTextHints | ExtractTableHints | AnalyzeChartHints | DescribeImageHints;
+  model?: string;
+  /** provider 私有字段透传口,对称于 ImageRequest.extra。 */
+  extra?: Record<string, unknown>;
+}
+
+/** 各 task 产出形态(VisionResult 按 task 携带不同字段)。 */
+export interface TextBlock {
+  text: string;
+  bbox?: [number, number, number, number];
+  confidence?: number;
+  level: "word" | "line" | "paragraph";
+}
+export interface TableOut {
+  format: string;
+  content: string;
+}
+export interface ChartOut {
+  type: string;
+  axes: Record<string, string>;
+  series: { name?: string; points: { x: string | number; y: number }[] }[];
+}
+
+export interface VisionResult {
+  task: VisionTask;
+  /** extract-text 全文。 */
+  text?: string;
+  /** extract-text 带坐标块。 */
+  blocks?: TextBlock[];
+  /** extract-table。 */
+  table?: TableOut;
+  /** analyze-chart。 */
+  chart?: ChartOut;
+  /** describe-image 自然语言答案。 */
+  description?: string;
+  raw?: unknown;
+  warnings?: string[];
+}
+
+/**
+ * vision 能力组约束。**不含 tasks**(采纳 finding-4):「支持哪些 task」的单一真值源是 visionTasks()。
+ * 这里只留跨 task 的通用约束。
+ */
+export interface VisionConstraints {
+  languages?: string[];
+  maxImageBytes?: number;
+}
+
+/**
+ * vision 能力组子接口(对称 ImageProvider/VideoProvider)。
+ * pares5: 与 image/video 同位的第三模态 peer;asVisionProvider 守卫契约源 + 单一声明源。
+ */
+export interface VisionProvider {
+  /** 仅识别模型清单(供 model↔provider 路由校验)。 */
+  listVisionModels(): string[];
+  /** 单一真值源:provider 支持哪些 task(对称 listImageModels/listVideoModels)。 */
+  visionTasks(): readonly VisionTask[];
+  recognize(req: VisionRequest): Promise<VisionResult>;
+  visionConstraints?(): VisionConstraints | undefined;
+}
+
+/** Provider 能力矩阵(pares3:fallback 能力谈判基础;pares5:加 vision 维度)。 */
 export interface ProviderCapabilities {
   image: { textToImage: boolean; imageToImage: boolean };
   video: { textToVideo: boolean; imageToVideo: boolean; keyframes: boolean };
+  // pares5: vision 能力的单一真值源是 VisionProvider.visionTasks();不另设 vision 字段(审查 finding:零消费方的第二真值源,R-CI-08)。
 }
 
 /** Provider 健康状态(纯本地,无网络调用)。 */
@@ -139,8 +230,15 @@ export interface ProviderHealth {
   lastErrorAt?: string;
 }
 
-/** 一个同时具备图像与视频能力的 provider(Agnes 即如此)。 */
-export interface MediaProvider extends ImageProvider, VideoProvider {
+/**
+ * pares5: 能力袋 MediaProvider(采纳审查 finding-2)。
+ * 子接口 ImageProvider/VideoProvider/VisionProvider 是单一声明源(各自描述能力组形状);
+ * MediaProvider 自动派生为组合,无需手动同步 20+ 签名 —— 消解 R-INT-03 god interface + R-CI-08 双声明。
+ * image/video/vision 三能力组并列可选(非破坏性拓宽);class implements 此交叉 object type 仍成立。
+ */
+export interface MediaProviderBase {
+  readonly name: string;
+  listModels(): string[];
   /** 能力矩阵,供 fallback 路由判断能否承接。未实现 → 保守默认(不承接 fallback)。 */
   capabilities?(): ProviderCapabilities;
   /** 健康状态。未实现 → { configured: true, cooldown: false }。 */
@@ -150,3 +248,9 @@ export interface MediaProvider extends ImageProvider, VideoProvider {
   /** fallback 失败时回调,让 provider 自更新 cooldown。 */
   notifyUnavailable?(e: any): void;
 }
+
+export type MediaProvider =
+  & MediaProviderBase
+  & Partial<ImageProvider>
+  & Partial<VideoProvider>
+  & Partial<VisionProvider>;

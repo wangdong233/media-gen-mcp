@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import { AgnesProvider } from "./agnes.js";
 import { ZhipuProvider } from "./zhipu.js";
-import type { MediaProvider, ProviderCapabilities } from "./types.js";
+import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
  * Provider 注册表。新增 provider 时:
@@ -36,6 +36,38 @@ export function listProviders(): string[] {
   return Object.keys(registry);
 }
 
+// ── pares5: 能力组类型守卫(能力断言 + 友好报错,非裸 ! 断言,R-DEP-03 安全)。 ──
+
+/** provider 是否有 vision 能力(实现 VisionProvider 全部必选:recognize + visionTasks + listVisionModels)。 */
+export function isVisionProvider(p: MediaProvider): p is MediaProvider & VisionProvider {
+  return typeof p.recognize === "function" && typeof p.visionTasks === "function" && typeof p.listVisionModels === "function";
+}
+/** 窄化为 ImageProvider,无能力时抛清晰错(校验 listImageModels + generateImage)。 */
+export function asImageProvider(p: MediaProvider): MediaProvider & ImageProvider {
+  if (typeof p.generateImage !== "function" || typeof p.listImageModels !== "function") {
+    throw new Error(`provider "${p.name}" 不支持 image 能力(generateImage 或 listImageModels 未实现)。`);
+  }
+  return p as MediaProvider & ImageProvider;
+}
+/** 窄化为 VideoProvider,无能力时抛清晰错(校验 VideoProvider 全部必选:5 个方法)。 */
+export function asVideoProvider(p: MediaProvider): MediaProvider & VideoProvider {
+  if (typeof p.createVideo !== "function" || typeof p.videoConstraints !== "function"
+    || typeof p.listVideoModels !== "function" || typeof p.estimateGenerationSeconds !== "function" || typeof p.getVideo !== "function") {
+    throw new Error(`provider "${p.name}" 不支持 video 能力(createVideo 或 videoConstraints 或 listVideoModels 或 estimateGenerationSeconds 或 getVideo 未实现)。`);
+  }
+  return p as MediaProvider & VideoProvider;
+}
+/** 窄化为 VisionProvider,无能力时抛清晰错。 */
+export function asVisionProvider(p: MediaProvider): MediaProvider & VisionProvider {
+  if (!isVisionProvider(p)) {
+    throw new Error(`provider "${p.name}" 不支持 vision 能力(recognize 或 visionTasks 或 listVisionModels 未实现)。`);
+  }
+  return p;
+}
+
+/** pares5: fallback 能力谈判请求特征(审查 finding:抽类型避免 capableOf/getFallbackProvider 两处重复声明,R-CI-08)。 */
+export type FallbackReq = { images?: string[]; image?: string; mode?: string; keyframes?: string[]; task?: VisionTask };
+
 /**
  * 按 (provider?, model?, modality) 解析 provider,做 model↔provider 校验 + 自动路由。
  * - model 属于 target → 返回 target
@@ -49,14 +81,21 @@ export function listProviders(): string[] {
 export function resolveProvider(
   name: string | undefined,
   model: string | undefined,
-  modality: "image" | "video",
+  modality: Modality,
 ): { provider: MediaProvider; autoRouted: boolean; routedFrom?: string } {
-  const targetName = name ?? (modality === "image" ? config.defaultImageProvider : config.defaultVideoProvider);
+  const targetName = name ?? (
+    modality === "image" ? config.defaultImageProvider :
+    modality === "video" ? config.defaultVideoProvider :
+    config.defaultVisionProvider
+  );
   const target = getProvider(targetName);
   if (!model) return { provider: target, autoRouted: false };
 
-  const owns = (p: MediaProvider) =>
-    (modality === "image" ? p.listImageModels() : p.listVideoModels()).includes(model);
+  const modelsOf = (p: MediaProvider): string[] =>
+    modality === "image" ? (p.listImageModels?.() ?? [])
+    : modality === "video" ? (p.listVideoModels?.() ?? [])
+    : (p.listVisionModels?.() ?? []);
+  const owns = (p: MediaProvider) => modelsOf(p).includes(model);
 
   if (owns(target)) return { provider: target, autoRouted: false };
 
@@ -69,11 +108,12 @@ export function resolveProvider(
     return { provider: owners[0].p, autoRouted: true, routedFrom: targetName };
   }
 
-  const available = modality === "image" ? target.listImageModels() : target.listVideoModels();
+  const available = modelsOf(target);
   const availStr = available.length ? available.join(", ") : "(无)";
+  const modalityLabel = modality === "image" ? "图像" : modality === "video" ? "视频" : "识别";
   if (owners.length === 0) {
     throw new Error(
-      `未知模型 "${model}"。provider "${targetName}" 的${modality === "image" ? "图像" : "视频"}模型可用:${availStr}。调用 list_models 查看全部 provider 的模型。`,
+      `未知模型 "${model}"。provider "${targetName}" 的${modalityLabel}模型可用:${availStr}。调用 list_models 查看全部 provider 的模型。`,
     );
   }
   throw new Error(
@@ -91,16 +131,22 @@ export function buildListModelsDetail(provider?: string): Record<string, any> {
   const out: Record<string, any> = {};
   for (const n of names) {
     const prov = getProvider(n);
-    const dv = prov.videoConstraints().defaultNumFrames;
+    const vc = prov.videoConstraints?.();
     const ic = prov.imageConstraints?.() ?? null;
+    const visionOk = isVisionProvider(prov);
+    const dv = vc?.defaultNumFrames;
     out[n] = {
       models: prov.listModels(),
-      imageModels: prov.listImageModels(),
-      videoModels: prov.listVideoModels(),
-      videoConstraints: prov.videoConstraints(),
+      imageModels: prov.listImageModels?.() ?? [],
+      videoModels: prov.listVideoModels?.() ?? [],
+      visionModels: visionOk ? prov.listVisionModels() : undefined,
+      visionTasks: visionOk ? prov.visionTasks() : undefined,
+      videoConstraints: vc ?? null,
       imageConstraints: ic,
       imageConstraintsNote: ic ? undefined : "no hard size constraints (provider accepts free size)",
-      estimate_example: `${dv} 帧 → ~${prov.estimateGenerationSeconds(dv)}s 生成`,
+      ...(dv != null && typeof prov.estimateGenerationSeconds === "function"
+        ? { estimate_example: `${dv} 帧 → ~${prov.estimateGenerationSeconds(dv)}s 生成` }
+        : {}),
     };
   }
   return out;
@@ -113,16 +159,17 @@ export function buildListModelsDetail(provider?: string): Record<string, any> {
  * mode 推断须与 provider createVideo 内部一致(agnes/zhipu 都按 keyframes → image → text 优先级),
  * 否则用户传 image 但不传 mode 时,此处按 text-to-video 误判能力,future t2v-only provider 会咬 i2v。
  */
-function capableOf(
-  p: MediaProvider,
-  modality: "image" | "video",
-  req?: { images?: string[]; image?: string; mode?: string; keyframes?: string[] },
-): boolean {
+function capableOf(p: MediaProvider, modality: Modality, req?: FallbackReq): boolean {
+  if (modality === "vision") {
+    // vision 能力谈判:isVisionProvider + task 在 visionTasks() 内(单一真值源;ProviderCapabilities 不含 vision 字段)
+    return isVisionProvider(p) && !!req?.task && p.visionTasks().includes(req.task);
+  }
   const cap = p.capabilities?.();
   if (!cap) return false;
   if (modality === "image") {
     return req?.images?.length ? cap.image.imageToImage : cap.image.textToImage;
   }
+  // video
   const mode = req?.mode ??
     (req?.keyframes?.length ? "keyframes" : req?.image ? "image-to-video" : "text-to-video");
   if (mode === "text-to-video") return cap.video.textToVideo;
@@ -136,11 +183,7 @@ function capableOf(
  * 排除 currentName → 按 health(configured & !cooldown) + capableOf 能力矩阵过滤 → 按 tier 降序。
  * 返回 undefined 表示无可用 fallback(两家都挂/无能力承接)。
  */
-export function getFallbackProvider(
-  currentName: string,
-  modality: "image" | "video",
-  req?: { images?: string[]; image?: string; mode?: string; keyframes?: string[] },
-): MediaProvider | undefined {
+export function getFallbackProvider(currentName: string, modality: Modality, req?: FallbackReq): MediaProvider | undefined {
   const candidates = listProviders()
     .filter((n) => n.toLowerCase() !== currentName.toLowerCase())
     .map((n) => getProvider(n))
