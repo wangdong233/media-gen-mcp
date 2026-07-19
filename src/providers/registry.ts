@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { AgnesProvider } from "./agnes.js";
 import { ZhipuProvider } from "./zhipu.js";
+import { TesseractProvider } from "./tesseract.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -19,6 +20,7 @@ const registry: Record<string, MediaProvider> = {
     ...(config.providers.zhipu ?? {}),
     rateLimitTtlMs: config.rateLimitTtlMs,
   }),
+  tesseract: new TesseractProvider(), // pares5 M1: 进程内 WASM OCR 兜底,零配置
 };
 
 export function getProvider(name?: string): MediaProvider {

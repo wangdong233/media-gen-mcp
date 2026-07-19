@@ -20,9 +20,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import path from "node:path";
 import { config } from "./config.js";
-import { getProvider, listProviders, resolveProvider, buildListModelsDetail, getFallbackProvider, asImageProvider, asVideoProvider } from "./providers/registry.js";
+import { getProvider, listProviders, resolveProvider, buildListModelsDetail, getFallbackProvider, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
 import { isFallbackWorthy } from "./providers/http.js";
-import type { ImageResult, VideoMode, Resolution, VideoTask } from "./providers/types.js";
+import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, VisionResult } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
 import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
@@ -133,6 +133,25 @@ function buildTools() {
           outDir: { type: "string", description: "下载落盘目录,省略用默认。与 create_video 一致以避免异步轮询落盘到别处。" },
           provider: { type: "string", default: config.defaultVideoProvider, description: "Provider: 'agnes' or 'zhipu' — 用任务创建时的 provider 查询(默认 agnes)。" },
         },
+      },
+    },
+    {
+      name: "extract_text",
+      description:
+        "Extract/recognize text from an image (OCR / 文字识别 / 文字提取 / 画像からの文字起こし) — verification codes, digits, license plates, printed Latin, or Chinese documents. Zero-config: tesseract runs in-process (WASM, bundled). Chinese accuracy is weak by default; configure a `paddleocr` provider for Chinese SOTA. The reverse operation is generate_image (text→image). Multilingual triggers: 文字识别 · OCR · 文字提取 · 文字起こし · texto · textoerkennung (ja/es/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          image: { type: "string", description: "Image URI: http(s):// or data: URI. Read local files into a data URI before passing." },
+          languages: { type: "array", items: { type: "string" }, description: "BCP-47 language codes (e.g. en / zh-Hans / zh-Hant / ja / ko). Default [en]; use [zh-Hans,en] for Chinese." },
+          digitOnly: { type: "boolean", description: "Recognize digits only (verification code / digit readout) → whitelist 0-9." },
+          segmentation: { type: "string", enum: ["auto", "single-line", "single-char", "sparse-text"], default: "auto", description: "Layout assumption: auto=fully automatic / single-line=one line of text (captcha) / single-char=one character / sparse-text=scattered text." },
+          outputFormat: { type: "string", enum: ["text", "json"], default: "text", description: "text=full text only; json=includes blocks (bbox+confidence per line)." },
+          provider: { type: "string", description: "Vision provider; default config.defaultVisionProvider (tesseract fallback; paddle/vlm need configuration)." },
+          name: { type: "string", description: "Output filename (no extension; saved as .txt when text is extracted)." },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["image"],
       },
     },
     {
@@ -605,6 +624,53 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return ok({ ...r, local_path: localPath, ...retryHint });
       }
 
+      case "extract_text": {
+        const image = requireString(a.image, "image");
+        if (!isImageUri(image)) return err("`image` 须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
+        const resolved = resolveProvider(optString(a.provider), optString(a.model), "vision");
+        let activeProvider = asVisionProvider(resolved.provider);
+        if (!activeProvider.visionTasks().includes("extract-text")) {
+          return err(`provider "${activeProvider.name}" 不支持 extract-text(支持:${[...activeProvider.visionTasks()].join("/")})。`);
+        }
+        const hints: ExtractTextHints = {
+          languages: toStringArray(a.languages),
+          digitOnly: a.digitOnly === true,
+          segmentation: optString(a.segmentation) as ExtractTextHints["segmentation"],
+        };
+        const outputFormat = optString(a.outputFormat) ?? "text";
+        let result: VisionResult;
+        try {
+          result = await activeProvider.recognize({ image, task: "extract-text", hints });
+        } catch (e: any) {
+          // pares3 fallback 链复用(M1 仅 tesseract;M2 paddle 接入后 tesseract↔paddle 自动切换)
+          if (!isFallbackWorthy(e)) throw e;
+          const fb = getFallbackProvider(activeProvider.name, "vision", { task: "extract-text" });
+          if (!fb) throw e;
+          activeProvider.notifyUnavailable?.(e);
+          activeProvider = asVisionProvider(fb);
+          if (!activeProvider.visionTasks().includes("extract-text")) throw e;
+          result = await activeProvider.recognize({ image, task: "extract-text", hints });
+        }
+        let localPath: string | null = null;
+        if (result.text && a.download !== false) {
+          const outDir = resolveOutDir(a.outDir);
+          await fs.mkdir(outDir, { recursive: true });
+          const safeName = path.basename(optString(a.name) ?? `ocr_${Date.now().toString(36)}`);
+          localPath = path.join(outDir, `${safeName}.txt`);
+          await fs.writeFile(localPath, result.text, "utf-8");
+        }
+        const warnings: string[] = [];
+        if (activeProvider.name === "tesseract") {
+          warnings.push("使用 tesseract 进程内 OCR(零配置兜底,中文精度弱);配置 paddleocr provider 可获中文 SOTA。");
+        }
+        return ok({
+          text: result.text,
+          ...(outputFormat === "json" && result.blocks?.length ? { blocks: result.blocks } : {}),
+          provider_used: activeProvider.name,
+          ...(localPath ? { local_path: localPath } : {}),
+          ...(warnings.length ? { warnings } : {}),
+        });
+      }
       case "list_models": {
         return ok({ providers: listProviders(), detail: buildListModelsDetail(optString(a.provider)) });
       }
