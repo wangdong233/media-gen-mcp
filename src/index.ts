@@ -22,7 +22,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, getFallbackProvider, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
 import { isFallbackWorthy } from "./providers/http.js";
-import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, VisionResult } from "./providers/types.js";
+import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
 import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
@@ -54,6 +54,40 @@ const server = new Server(
 
 /** URI 校验(http(s): / data:),generate_image images / create_video image+keyframes / vision image 共用(pares5 抽取,消除重复正则,R-CI-01)。 */
 const isImageUri = (u: string) => /^(https?:|data:)/i.test(u);
+
+/**
+ * pares5 M2: vision task 通用执行(provider 解析 + 能力门禁 + fallback 链)。
+ * extract_table/analyze_chart/describe_image 共用,避 3 处重复 fallback 逻辑(R-CI-08 DRY)。
+ * extract_text(M1)因 hints/outputFormat 特殊保持独立,但 fallback 语义与此一致。
+ */
+async function runVisionTask(
+  task: VisionTask,
+  image: string,
+  providerName: string | undefined,
+  hints?: ExtractTextHints | ExtractTableHints | AnalyzeChartHints | DescribeImageHints,
+): Promise<{ result: VisionResult; providerUsed: string; warnings: string[] }> {
+  if (!isImageUri(image)) throw new Error("`image` 须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
+  const resolved = resolveProvider(providerName, undefined, "vision");
+  let activeProvider = asVisionProvider(resolved.provider);
+  if (!activeProvider.visionTasks().includes(task)) {
+    throw new Error(`provider "${activeProvider.name}" 不支持 ${task}(支持:${[...activeProvider.visionTasks()].join(",")})。`);
+  }
+  const warnings: string[] = [];
+  let result: VisionResult;
+  try {
+    result = await activeProvider.recognize({ image, task, hints });
+  } catch (e: any) {
+    if (!isFallbackWorthy(e)) throw e;
+    const fb = getFallbackProvider(activeProvider.name, "vision", { task });
+    if (!fb) throw e;
+    activeProvider.notifyUnavailable?.(e);
+    warnings.push(`provider "${resolved.provider.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"。`);
+    activeProvider = asVisionProvider(fb);
+    if (!activeProvider.visionTasks().includes(task)) throw e;
+    result = await activeProvider.recognize({ image, task, hints });
+  }
+  return { result, providerUsed: activeProvider.name, warnings };
+}
 
 function buildTools() {
   // create_video 的 schema 约束按"视频模态默认 provider"展示,与实际路由一致
@@ -151,6 +185,57 @@ function buildTools() {
           name: { type: "string", description: "Output filename (no extension; saved as .txt when text is extracted)." },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
           download: { type: "boolean", default: true, description: "Save extracted text as .txt (default true)." },
+        },
+        required: ["image"],
+      },
+    },
+    {
+      name: "extract_table",
+      description:
+        "Recognize a table from an image → HTML/Markdown/JSON (表格识别/表格提取/tabla): invoices, receipts, financial statements, academic paper tables. Requires a `paddleocr` provider (PaddleX serving, Chinese SOTA); no pure-JS fallback (tesseract cannot parse table structure — a clear error is returned, not a silent OCR downgrade). The reverse operation is generate_chart (data→chart). Multilingual triggers: 表格识别 · 表格提取 · tabla · 表 (ja/es/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          image: { type: "string", description: "Image URI: http(s):// or data: URI. Read local files into a data URI before passing." },
+          format: { type: "string", enum: ["html", "markdown", "json", "latex"], default: "html", description: "Output format for the table content." },
+          provider: { type: "string", description: "Vision provider; default paddle (requires configured baseUrl)." },
+          name: { type: "string", description: "Output filename (no extension)." },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+          download: { type: "boolean", default: true, description: "Save table content to file (default true)." },
+        },
+        required: ["image"],
+      },
+    },
+    {
+      name: "analyze_chart",
+      description:
+        "Extract data points from a chart image (图表识别/图表数据提取/Chart OCR): reverse-engineer bar/line/pie/scatter charts into structured data series. Requires a `paddleocr` provider (PP-Chart2Table via useChartRecognition). Multilingual triggers: 图表识别 · 图表数据 · gráfico (ja/es/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          image: { type: "string", description: "Chart image URI: http(s):// or data: URI." },
+          chartType: { type: "string", enum: ["bar", "line", "pie", "scatter", "auto"], default: "auto", description: "Chart type hint (auto lets provider decide)." },
+          provider: { type: "string" },
+          name: { type: "string" },
+          outDir: { type: "string" },
+          download: { type: "boolean", default: true },
+        },
+        required: ["image"],
+      },
+    },
+    {
+      name: "describe_image",
+      description:
+        "VLM image understanding — natural-language description or visual QA (图像描述/看图说话/VQA/describir imagen): handwritten text, complex layouts, scenes, formulas→LaTeX. Requires `paddleocr` provider (PaddleOCR-VL); M3+ adds `vlm` provider for enhanced VQA. Leave `question` empty for a default description. Multilingual triggers: 图像描述 · 看图说话 · 描述图片 (ja/es/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          image: { type: "string", description: "Image URI: http(s):// or data: URI." },
+          question: { type: "string", description: "Optional VQA question; empty = default description." },
+          provider: { type: "string" },
+          name: { type: "string" },
+          outDir: { type: "string" },
+          download: { type: "boolean", default: true },
         },
         required: ["image"],
       },
@@ -669,6 +754,58 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           text: result.text,
           ...(outputFormat === "json" && result.blocks?.length ? { blocks: result.blocks } : {}),
           provider_used: activeProvider.name,
+          ...(localPath ? { local_path: localPath } : {}),
+          ...(warnings.length ? { warnings } : {}),
+        });
+      }
+      case "extract_table": {
+        const image = requireString(a.image, "image");
+        const format = (optString(a.format) ?? "html") as "html" | "markdown" | "json" | "latex";
+        const hints: ExtractTableHints = { format };
+        const { result, providerUsed, warnings } = await runVisionTask("extract-table", image, optString(a.provider), hints);
+        let localPath: string | null = null;
+        if (result.table?.content && a.download !== false) {
+          const outDir = resolveOutDir(a.outDir);
+          await fs.mkdir(outDir, { recursive: true });
+          const ext = format === "html" ? "html" : format === "markdown" ? "md" : format === "latex" ? "tex" : "json";
+          const safeName = path.basename(optString(a.name) ?? `table_${Date.now().toString(36)}`);
+          localPath = path.join(outDir, `${safeName}.${ext}`);
+          await fs.writeFile(localPath, result.table.content, "utf-8");
+        }
+        return ok({
+          ...(result.table ? { table: result.table } : {}),
+          provider_used: providerUsed,
+          ...(localPath ? { local_path: localPath } : {}),
+          ...(warnings.length ? { warnings } : {}),
+        });
+      }
+      case "analyze_chart": {
+        const image = requireString(a.image, "image");
+        const hints: AnalyzeChartHints = { chartType: optString(a.chartType) as AnalyzeChartHints["chartType"] };
+        const { result, providerUsed, warnings } = await runVisionTask("analyze-chart", image, optString(a.provider), hints);
+        return ok({
+          ...(result.chart ? { chart: result.chart } : {}),
+          ...(result.description ? { description: result.description } : {}),
+          provider_used: providerUsed,
+          ...(warnings.length ? { warnings } : {}),
+        });
+      }
+      case "describe_image": {
+        const image = requireString(a.image, "image");
+        const question = optString(a.question);
+        const hints: DescribeImageHints | undefined = question ? { question } : undefined;
+        const { result, providerUsed, warnings } = await runVisionTask("describe-image", image, optString(a.provider), hints);
+        let localPath: string | null = null;
+        if (result.description && a.download !== false) {
+          const outDir = resolveOutDir(a.outDir);
+          await fs.mkdir(outDir, { recursive: true });
+          const safeName = path.basename(optString(a.name) ?? `desc_${Date.now().toString(36)}`);
+          localPath = path.join(outDir, `${safeName}.md`);
+          await fs.writeFile(localPath, result.description, "utf-8");
+        }
+        return ok({
+          description: result.description,
+          provider_used: providerUsed,
           ...(localPath ? { local_path: localPath } : {}),
           ...(warnings.length ? { warnings } : {}),
         });

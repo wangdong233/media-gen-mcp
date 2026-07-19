@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { AgnesProvider } from "./agnes.js";
 import { ZhipuProvider } from "./zhipu.js";
 import { TesseractProvider } from "./tesseract.js";
+import { PaddleocrProvider } from "./paddle.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -21,6 +22,10 @@ const registry: Record<string, MediaProvider> = {
     rateLimitTtlMs: config.rateLimitTtlMs,
   }),
   tesseract: new TesseractProvider(), // pares5 M1: 进程内 WASM OCR 兜底,零配置
+  paddle: new PaddleocrProvider({ // pares5 M2: PaddleX serving REST 全能主力(中文 SOTA+表格+图表+描述)
+    baseUrl: config.providers.paddle?.baseUrl,
+    rateLimitTtlMs: config.rateLimitTtlMs,
+  }),
 };
 
 export function getProvider(name?: string): MediaProvider {

@@ -45,8 +45,8 @@ try {
     eq(cv.inputSchema.properties.frameRate.enum, vc.allowedFrameRates, `frameRate.enum === ${effProvider} allowedFrameRates`);
   }
 
-  console.log("[G2] 13 工具齐全(pares5 M1 +extract_text)");
-  eq(tools.map((t) => t.name).sort(), ["create_video", "extract_text", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_qrcode", "get_video", "list_models", "render_svg", "render_video"], "13 工具齐全");
+  console.log("[G2] 16 工具齐全(pares5 M2 +extract_table/analyze_chart/describe_image)");
+  eq(tools.map((t) => t.name).sort(), ["analyze_chart", "create_video", "describe_image", "extract_table", "extract_text", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_qrcode", "get_video", "list_models", "render_svg", "render_video"], "16 工具齐全");
 
   console.log("[G3] mode/resolution schema enum 与共享常量一致(0.8.1 单一真源)");
   if (cv) {
