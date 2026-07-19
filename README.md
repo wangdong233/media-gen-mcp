@@ -12,7 +12,7 @@
 
 每周做几次图、装 N 个工具记 N 套参数很烦?这里只装一次,所有图像场景都丢给 Claude。
 
-🌐 Languages: **简体中文** · English · 日本語 · Español · Français · Deutsch · Русский · Português
+🌐 简体中文(其他语言版本欢迎通过 PR 贡献 🤝)
 
 ## 目录
 
@@ -284,7 +284,13 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
   | 磁盘 | 约 14GB(7B 权重) | — | 3B 约 6GB |
   | CUDA 要求 | Compute Capability ≥ 7.0 | — | Tesla T4(7.5)起步,V100 / A100 / RTX 30/40 系均可 |
 
-- **怎么装**:参考 [vLLM 官方文档](https://docs.vllm.ai) 部署 `Qwen/Qwen2.5-VL-7B-Instruct`,然后在 `config.json` 加:
+- **怎么装**:
+  ```bash
+  pip install vllm
+  vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
+  # 看到 "Uvicorn running on http://0.0.0.0:8000" 即就绪
+  ```
+  更多参数(GPU 选择 / 量化版本 / 并发上限)见 [vLLM 官方文档](https://docs.vllm.ai)。然后在 `config.json` 加:
 
   ```json
   {
@@ -371,7 +377,13 @@ A:真实武器词会触发内容过滤。改用科幻设定词(如"未来战甲"
 - [提 Issue](../../issues) 报 bug / 提需求
 - [发 PR](../../pulls) 贡献代码
 
-<p align="center"><em>微信 / 支付宝赞赏码见 <code>docs/support</code></em></p>
+<div align="center">
+
+微信赞赏 | 支付宝赞赏
+:-: | :-:
+<img src="doc/support-wechat.jpg" height="200" alt="微信赞赏"> | <img src="doc/support-alipay.jpg" height="200" alt="支付宝赞赏">
+
+</div>
 
 ---
 
