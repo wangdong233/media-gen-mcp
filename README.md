@@ -125,6 +125,43 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 - **文生视频 / 图生视频 / 关键帧动画**——智能异步(长视频后台生成,完成通知)
 - 指定厂商/模型:"用**智谱 cogview-4** 画一张" / "用 **agnes** 生成视频"
 
+### 🔍 图像识别(0.11.0+ · 4 工具 · 3 provider)
+
+4 个按图像类型专精的识别工具 + 3 个纯免费 provider(Apache 全栈):
+
+| 工具 | 能力 | 主力 provider | 兜底 |
+|---|---|---|---|
+| **extract_text** | OCR 文字(验证码/数字/中文文档) | paddle(PP-OCRv6 中文 SOTA) | tesseract(进程内,零配置) |
+| **extract_table** | 表格 → HTML/Markdown | paddle(PP-StructureV3) | 无(清晰报错,不静默降级) |
+| **analyze_chart** | 图表 → 数据点 | paddle(PP-Chart2Table) | vlm(ChartQA 89.5) |
+| **describe_image** | 图像描述/VQA/手写/公式 | paddle(PaddleOCR-VL) | vlm(Qwen2.5-VL VQA) |
+
+| provider | 形态 | 部署 | 配置 |
+|---|---|---|---|
+| **tesseract** | 进程内 WASM | 零配置(装包即用,中文弱) | 无需(默认兜底) |
+| **paddle** | HTTP(PaddleX serving) | `pip install paddlex paddlepaddle` && `paddlex --serve --pipeline PP-StructureV3.yaml --port 8080` | `providers.paddle.baseUrl` |
+| **vlm** | HTTP(vLLM OpenAI 兼容) | `pip install vllm` && `vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000` | `providers.vlm.baseUrl` |
+
+> **关键**:paddleocr-mcp 的 `--http` 是 MCP 协议(非 REST),本工具**不走它**,直连 PaddleX 原生 serving REST(Node fetch 一个 POST,对称 Agnes/Zhipu)。vlm 走 vLLM 标准 OpenAI 兼容 `/v1/chat/completions`。
+
+配置 `~/.media-gen-mcp/config.json`(识别 provider 可选——不配则 tesseract 零配置兜底 extract_text):
+
+```json
+{
+  "defaultVisionProvider": "tesseract",
+  "providers": {
+    "paddle": { "baseUrl": "http://127.0.0.1:8080" },
+    "vlm": { "baseUrl": "http://127.0.0.1:8000" }
+  }
+}
+```
+
+**自动 fallback**(复用 0.10.0 机制):`extract_text` paddle 挂→tesseract;`describe_image`/`analyze_chart` paddle 挂→vlm。配置了 baseUrl 的 provider 才参与,未配不报错。
+
+**License 干净**:Apache 全栈(tesseract.js + PaddleOCR + Qwen2.5-VL 7B/32B);避开 AGPL(DocLayout-YOLO 网络传染)、GPL(Marker)、阈值(Surya >$5M)、署名(MinerU)、商用申请(Qwen 3B/72B)。
+
+**故意不做**(rejected-by-design):实时视频 OCR / 训练微调 / 流式渐进识别 / 手写专用模型(待 SOTA) / LangChain RAG / 付费或商用受限模型 / PDF 多页(M1) / 批量多图 / paddleocr-js 进程内(仅 PP-OCRv5 不含版面)。
+
 ### 📐 结构化绘图(本地 · 确定性 · 免 Key)
 
 以下能力**不调用 AI、确定性出图**(SVG 矢量高清):
