@@ -1,193 +1,378 @@
-<div align="center">
-
 # media-gen-mcp
 
-[![npm](https://img.shields.io/npm/v/media-gen-mcp-server?style=flat-square&color=6f42c1)](https://www.npmjs.com/package/media-gen-mcp-server)
-[![Price](https://img.shields.io/badge/Price-Free-success?style=flat-square)](#-obtén-una-key-gratuita)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#licencia)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![MCP](https://img.shields.io/badge/MCP-Server-6f42c1?style=flat-square)](https://modelcontextprotocol.io/)
+> El «todo-en-uno de imágenes» para Claude Code — crea imágenes, dibuja ideas, entiende imágenes: una frase y listo. Todo gratis.
 
-**Dale a Claude Code "superpoderes de generación de imágenes": una sola frase para generar imágenes / videos / gráficos / tarjetas / códigos QR**
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/license-MIT-green">
+  <img src="https://img.shields.io/badge/MCP-compatible-purple">
+</p>
 
-Generación de imágenes y videos con IA (gratis) + Dibujo estructurado (determinista, en local) + Renderizado SVG impresionante (alta fidelidad con Chrome)
+**Instala una vez en Claude Code y, a partir de ahora, cualquier tarea de imágenes se resuelve con una frase.** Diseñadores generando ilustraciones, programadores dibujando arquitecturas, equipos de operaciones creando tarjetas para compartir, finanzas extrayendo tablas de facturas — generación de imágenes / video + reconocimiento + dibujo / tarjetas / códigos QR, **todo cubierto y todo gratis** (proveedores gratuitos + motores locales; funciona al instalar).
 
-[English](README.en.md) | [简体中文](README.md) | [日本語](README.ja.md) | **Español** | [Français](README.fr.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Português](README.pt.md)
+¿Te cansa hacer imágenes varias veces por semana y tener que instalar N herramientas y recordar N configuraciones? Aquí instalas una sola vez y le tiras todo a Claude.
 
-</div>
+🌐 Idiomas: [简体中文](README.md) · [English](README.en.md) · 日本語 · **Español** · Français · Deutsch · Русский · Português (se aceptan PR para otros idiomas)
+
+## Tabla de contenidos
+
+- [Dices una frase, obtienes esto](#dices-una-frase-obtienes-esto)
+- [Empieza en 60 segundos](#empieza-en-60-segundos)
+- [Kit completo de capacidades](#kit-completo-de-capacidades)
+- [Configuración detallada](#configuración-detallada)
+- [Preguntas frecuentes](#preguntas-frecuentes)
+- [Para quién es esto](#para-quién-es-esto)
+- [Apoya al Autor](#apoya-al-autor)
+- [License](#license)
 
 ---
 
-## ✨ Características
+## Dices una frase, obtienes esto
 
-- 🆓 **Totalmente gratis** — La generación de imágenes y videos con IA usa Agnes AI + los modelos gratuitos de Zhipu; el dibujo estructurado es completamente local, de costo cero
-- 🧠 **Curva de aprendizaje cero** — Habla con naturalidad, Claude elige la herramienta automáticamente, genera el código y produce la imagen
-- 📐 **Generación determinista** — Diagramas estructurales / gráficos / fórmulas / tarjetas: la misma entrada produce siempre la misma salida, con el contenido bajo control
-- 🇨🇳 **Compatible con chino** — Las tarjetas renderizan chino automáticamente (fuente integrada); los modelos de Zhipu son nativos en chino
-- 🔌 **Sin instalaciones adicionales** — D2 / Graphviz / Vega / MathJax vienen todos empaquetados, no hace falta instalar d2/dot/matplotlib en el sistema
-- 🎨 **Renderizado impresionante** — Resplandor feGaussianBlur / degradados / profundidad de campo, con renderizado automático de alta fidelidad mediante Chrome
-- 🌐 Documentación en 8 idiomas · MIT · Node ≥18
-
----
-
-## 💬 ¿Qué puedes obtener?
-
-Tras instalarlo, en Claude Code **di una sola frase** y podrás:
-
-| Lo que dices | Lo que obtienes |
+| Dices… | Obtienes |
 |---|---|
-| "Genera una imagen realista de un gato naranja estilo wuxia" | 🖼️ Imagen realista generada por IA |
-| "Genera un video de 5 segundos del mar" | 🎬 Video corto generado por IA |
-| "Dibuja un diagrama de arquitectura: cliente → API gateway → dos microservicios" | 📐 Diagrama de arquitectura vectorial nítido |
-| "Haz un gráfico de barras con este conjunto de datos de ventas" | 📊 Gráfico de visualización de datos |
-| "Renderiza esta fórmula `E=mc^2`" | ➗ Imagen de fórmula matemática en alta resolución |
-| "Crea una tarjeta para compartir con degradado y un emoji 🚀" | 🎴 Imagen OG / para redes sociales (chino automático) |
-| "Dame un logo de GitHub" | 🏷️ Icono vectorial |
-| "Genera un código QR" | ▪️ Código QR |
-| "Dibuja un diagrama de arquitectura oscuro y tecnológico, con resplandor" | ✨ Imagen renderizada de alta fidelidad con Chrome |
+| «Dibuja un gato cyberpunk con resplandor neón» | Imagen fotorrealista de IA, guardada en `output/` |
+| «Genera un video de 5 s de una puesta de sol en la playa» | Video MP4 de IA (generación en segundo plano, te avisa al terminar) |
+| «Dibuja un diagrama de arquitectura: cliente → API gateway → servicio de pedidos + servicio de pago» | Diagrama de arquitectura vectorial |
+| «Convierte estos datos de ventas en un gráfico de barras» | Gráfico de datos en alta resolución |
+| «Haz un código QR que apunte a github.com» | Código QR vectorial |
+| «Renderiza E=mc² como una fórmula en alta resolución» | Fórmula vectorial |
+| «Haz una tarjeta para compartir con gradiente oscuro, título "Novedades de julio 🚀"» | Tarjeta maquetada con esmero (chino + emoji automáticos) |
+| «Reconoce la tabla en esta captura de factura» | Tabla HTML/Markdown pegable (nuevo en 0.11.0) |
+| «Lee este gráfico de barras como puntos de datos» | Datos estructurados CSV/JSON (nuevo en 0.11.0) |
+| «Describe qué hay en esta imagen» | Respuesta en lenguaje natural (nuevo en 0.11.0) |
 
-> **Todo con decir una sola frase.** No necesitas aprender ningún nombre de herramienta ni parámetro.
+> Sin aprender nombres de herramientas, sin instalar dependencias del sistema: **Claude elige automáticamente la mejor manera de hacerlo.**
 
 ---
 
-## 🚀 Inicio rápido
+## Empieza en 60 segundos
 
-### ① Obtén una Key gratuita
+Idea clave: **dibujos / tarjetas / códigos QR / fórmulas son motores locales, y el reconocimiento de imágenes (OCR) también usa por defecto un respaldo en proceso — todo sin llamar a la IA, sin conexión; funciona al instalar.** Solo las imágenes fotorrealistas / videos de IA necesitan una API Key gratuita — así adelantamos «la primera imagen» y «la primera lectura» a antes del registro.
 
-Regístrate en cualquiera de los siguientes proveedores (o en ambos) y consigue una API Key gratuita:
+### 30 s | Conéctalo en una línea (sin Key)
 
-| Proveedor | Gratuito | Cómo solicitarla |
+```bash
+# Instala en una línea (sin Key, 30 s)
+claude mcp add media-gen-mcp npx media-gen-mcp-server
+
+# Reinicia Claude Code → escribe /mcp → cuando veas media-gen-mcp ✓ Connected, listo
+```
+
+### 30 s | Tu primera imagen al instante, sin Key
+
+Dile directamente a Claude:
+
+```
+Haz una tarjeta para compartir con estilo tecnológico oscuro, título: Claude Code todo-en-uno de imágenes
+```
+
+→ La imagen vectorial se guarda automáticamente en `output/`; ábrela y úsala. **Todavía no has registrado ninguna API Key y ya tienes el resultado.**
+
+Estos también salen al instante, sin Key y sin red:
+
+- «Haz un código QR que apunte a github.com»
+- «Renderiza E=mc² como una fórmula en alta resolución»
+- «Dibuja una arquitectura: cliente → gateway → servicio de pedidos + servicio de pago → base de datos, estilo tecnológico oscuro»
+- «Reconoce los dígitos de esta imagen de captcha» (OCR, por defecto en proceso, sin instalar nada)
+- «Extrae el texto en inglés de esta captura»
+
+### ¿Quieres imágenes fotorrealistas / video de IA? Agrega una API Key gratuita (opcional)
+
+```bash
+# ① Consigue una API Key gratuita (recomendado Agnes, proveedor por defecto)
+#    https://platform.agnes-ai.com/ → Regístrate → API Keys → Copia sk-xxx
+#    (cogview-3-flash / cogvideox-flash de Zhipu también son gratis para siempre;
+#     puedes configurar uno solo, o ambos)
+
+# ② Escríbela en ~/.media-gen-mcp/config.json (también vale con un solo proveedor)
+{
+  "providers": {
+    "agnes": { "apiKey": "sk-tu-agnes-key" }
+  }
+}
+
+# ③ Vuelve a Claude Code y dile: «Dibuja un gato naranja cyberpunk, estilo fotorrealista»
+#    → Imagen fotorrealista de IA guardada. Igual para video: «Genera un video de 5 s de una puesta de sol en la playa»
+```
+
+> ¿Prefieres no usar npx? También puedes instalar global: primero `npm i -g media-gen-mcp-server`, luego `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`.
+
+---
+
+## Kit completo de capacidades
+
+> Simplemente dile a Claude qué quieres hacer; escoge automáticamente la mejor manera de hacerlo. Abajo está agrupado por «qué quieres hacer» — no necesitas saber cómo se llama la herramienta por debajo.
+
+### Crear una imagen (de cero)
+
+**Dibuja una foto fotorrealista o ilustración**
+> Tú: «Dibuja un gato naranja cyberpunk con resplandor neón, estilo fotorrealista»
+> Obtienes: imagen fotorrealista guardada en `output/` (también soporta ilustraciones / conceptos de producto / bocetos de logo / escenas de ciencia ficción)
+
+**Convierte una frase o imagen en un video corto**
+> Tú: «Genera un video de 5 s de una puesta de sol en la playa»
+> Obtienes: video MP4 (3–18 s; los videos largos se generan en segundo plano y te avisan cuando están listos)
+
+**Captura un icono o logo de marca**
+> Tú: «Captura el logo de GitHub, 128 píxeles»
+> Obtienes: logo vectorial de una librería de más de 200 000 iconos, listo para usar (GitHub / Twitter / Material / Lucide / Font Awesome, entre otros)
+
+### Entender una imagen (imagen → datos · nuevo en 0.11.0)
+
+**Extrae texto de una captura**
+> Tú: «Lee los dígitos de este captcha»
+> Obtienes: texto plano (captchas / números de factura / documentos escaneados / historiales de chat: todo se puede extraer)
+
+**Convierte una tabla en HTML / Markdown**
+> Tú: «Reconoce la tabla en esta captura de factura»
+> Obtienes: tabla Markdown lista para pegar (facturas / reportes / documentos escaneados sin volver a teclearlos a mano)
+
+**Reconstruye los datos originales desde un gráfico**
+> Tú: «Lee este gráfico de barras como datos»
+> Obtienes: datos estructurados CSV / JSON (barras / líneas / circulares, todos valen)
+
+**Pídele que te explique la imagen en lenguaje sencillo**
+> Tú: «¿Cuántas personas hay en esta imagen? ¿Qué están haciendo?»
+> Obtienes: respuesta en lenguaje natural (preguntas sobre imágenes / escritura a mano / fórmulas / comprensión de escenas complejas)
+
+### Dibuja tus ideas con claridad (sin Key, funciona al instalar)
+
+**Dibuja diagramas estructurados**
+> Tú: «Dibuja una arquitectura: cliente → API gateway → servicio de pedidos + servicio de pago → base de datos»
+> Obtienes: diagrama de arquitectura vectorial (también flujos / secuencia / clases / ER / mapas mentales)
+
+**Convierte datos en gráficos**
+> Tú: «Convierte estos datos de ventas en un gráfico de barras»
+> Obtienes: gráfico de datos en alta resolución (barras / líneas / circulares / área / dispersión; pásale números sueltos o un CSV)
+
+### Haz tarjetas / pósters / códigos QR (para compartir con estilo)
+
+**Crea tarjetas para compartir / OG / citas / portadas / pósters**
+> Tú: «Haz una tarjeta para compartir con gradiente oscuro, título "Novedades de julio 🚀"»
+> Obtienes: tarjeta maquetada con esmero (título, subtítulo, color en gradiente, resplandor, emoji en color y logo incrustado, todo automático; chino y kanji japonés sin caracteres rotos)
+
+**Genera un código QR**
+> Tú: «Haz un código QR que apunte a github.com»
+> Obtienes: código QR vectorial (URL / texto, todo vale; nítido incluso en póster impreso)
+
+**Renderiza fórmulas matemáticas en alta resolución**
+> Tú: «Renderiza E=mc² como una fórmula en alta resolución»
+> Obtienes: fórmula vectorial (LaTeX, fracciones complejas, ecuaciones químicas: todo soportado)
+
+### Crea efectos geniales / gráficos con estilo tecnológico (misma entrada, siempre misma salida)
+
+**Renderiza SVG a PNG en alta resolución**
+> Tú: «Dibuja un fondo con estilo tecnológico con resplandor, campo de estrellas y profundidad»
+> Obtienes: PNG llamativo, escogiendo automáticamente el mejor modo de render para máxima fidelidad sin pérdidas
+
+**Convierte animaciones HTML / CSS en video**
+> Tú: «Haz una animación de intro de producto de 3 s, con gradiente + partículas»
+> Obtienes: video MP4 / GIF / WebM (intros de producto / animaciones de marca / demos de motion, render cuadro a cuadro; misma entrada, siempre misma salida)
+
+> **Pequeño aviso**: la generación de imágenes / la lectura de imágenes usan IA en la nube; los dibujos / tarjetas / códigos QR / animaciones son motores locales — **funcionan al instalar, son vectoriales y de alta resolución, y con la misma entrada siempre producen la misma salida**.
+
+---
+
+## Configuración detallada
+
+> En una frase: **las capacidades estructuradas (dibujos / gráficos / tarjetas / códigos QR / fórmulas) funcionan sin configuración; la generación de IA se activa con una línea de API Key; el reconocimiento por defecto es cero configuración, y solo necesitas autohospedarlo si quieres chino SOTA / tablas / gráficos.** Lo que quieras hacer determina lo que debes configurar — no tienes que configurarlo todo.
+
+### Consulta la configuración según «qué quieres hacer»
+
+| Qué quieres hacer | Qué configurar | Qué obtienes al configurar |
 |---|---|---|
-| **Agnes AI** (predeterminado) | Texto a imagen + texto a video, todo gratis | https://platform.agnes-ai.com/ → Regístrate → API Keys |
-| **Zhipu BigModel** (opcional, 4K / chino) | Imagen con cogview-3-flash + video con cogvideox-flash, gratis para siempre | https://bigmodel.cn/usercenter/proj-mgmt/apikeys → Verificación de identidad → Crear Key |
+| Dibujar arquitecturas / gráficos de datos / tarjetas / códigos QR / fórmulas | **No necesitas configurar nada** | Motor local, funciona al instalar |
+| Imágenes fotorrealistas / video de IA (texto→imagen, texto→video) | Configura un proveedor gratuito (Agnes o Zhipu, cualquiera de los dos) | Generación en la nube, guarda en `output/` |
+| OCR de texto (inglés / captcha / números / documentos simples) | **No necesitas configurar nada** | Por defecto usa motor ligero en proceso, funciona al instalar |
+| OCR en chino / tablas de facturas / lectura de gráficos / preguntas sobre imagen / escritura a mano / fórmulas | Autohospeda un motor de comprensión (PaddleX o vLLM, ver requisitos abajo) | Tras levantar el servicio autohospedado, agrega una línea baseUrl |
 
-> Pasos detallados con imágenes: [Guía de activación de Agnes](doc/Agnes%20开通指引.md) · [Guía de activación de Zhipu](doc/Zhipu%20开通指引.md)
+---
 
-### ② Configuración
+### I. Configuración de generación (imágenes / video de IA)
 
-Crea `~/.media-gen-mcp/config.json` e introduce tu Key:
+**Proveedor por defecto: Agnes** (capa gratuita permanente, texto→imagen + texto→video totalmente abiertos). Zhipu como alternativa (optimización nativa para chino).
+
+**Basta con configurar uno** (este es el `config.json` completo; también puedes llenar solo uno):
 
 ```json
 {
   "providers": {
-    "agnes": { "apiKey": "sk-tu-key-de-agnes" },
-    "zhipu": { "apiKey": "tu-key-de-zhipu" }
-  }
+    "agnes": { "apiKey": "sk-tu-agnes-key" },
+    "zhipu": { "apiKey": "tu-zhipu-key" }
+  },
+  "defaultProvider": "agnes",
+  "outDir": "/absolute/path/to/output"
 }
 ```
 
-También puedes configurar únicamente agnes (elimina la línea de zhipu). Si no rellenas `models`, se usarán los modelos predeterminados integrados.
+**Cómo obtener API Key gratuitas**:
 
-### ③ Conéctalo a Claude Code
+- **Agnes** (recomendado, por defecto): https://platform.agnes-ai.com/ → Regístrate → API Keys → Copia `sk-xxx`
+- **Zhipu**: https://open.bigmodel.cn/ → Regístrate → API Keys (modelos gratuitos: `cogview-3-flash` / `cogvideox-flash`, gratis para siempre)
 
-```bash
-claude mcp add media-gen-mcp npx media-gen-mcp-server
-```
+**Configura ambos para mayor robustez**: si uno falla temporalmente (rate limiting / inestabilidad del servicio), el otro entra automáticamente; tú no te enteras y sin cobros duplicados.
 
-El comando de conexión **no incluye la Key** (la Key va en el config anterior). Cuando veas `media-gen-mcp ✓ Connected` en `/mcp`, estará listo.
+**Ubicación del archivo de configuración**: `~/.media-gen-mcp/config.json` (macOS / Linux) o `%USERPROFILE%\.media-gen-mcp\config.json` (Windows).
 
-### ④ Di una frase
-
-En Claude Code di directamente "dibuja un diagrama de arquitectura" o "genera una imagen realista de un gato naranja" — listo.
-
-> **¿Solo quieres dibujar diagramas / gráficos / tarjetas / códigos QR?** No necesitas ninguna Key: con instalarlo (③) ya funciona.
+> Este archivo **puede no existir y nada se rompe** — las capacidades estructuradas y el OCR por defecto siguen funcionando; solo no se podrá invocar la generación de IA.
 
 ---
 
-## 📡 Proveedores
+### II. Configuración de reconocimiento (imágenes / OCR / tablas / gráficos / comprensión visual)
 
-| | Predeterminado | Imagen (gratis) | Video (gratis) | Características |
-|---|:---:|---|---|---|
-| **agnes** | ✅ | agnes-image-2.1-flash | agnes-video-v2.0 | Todo gratis, textura fotorrealista, audio y vídeo nativos |
-| **zhipu** (opcional) | | cogview-3-flash | cogvideox-flash | 4K/60fps, chino nativo, cumplimiento normativo local |
+Las capacidades de reconocimiento se dividen en **tres niveles**: instala según necesidad; por defecto el nivel 1 ya está listo.
 
-Cómo cambiar: `defaultProvider: "zhipu"`, o por modalidad con `defaultImageProvider`/`defaultVideoProvider`, o pásalo en una sola llamada con `provider`. ¿No sabes cuál elegir? Consulta la [comparativa](doc/Agnes_vs_Zhipu_横评.md).
+#### Nivel 1: motor ligero por defecto (cero configuración, funciona al instalar)
+
+- **Qué hace**: OCR en inglés / números / captcha / documentos simples
+- **¿Hay que instalar un servicio?**: **No**, viene empaquetado como WASM dentro del proceso MCP; carga el modelo de lenguaje automáticamente en la primera llamada
+- **Requisitos mínimos de recursos**:
+  - CPU: cualquiera (puramente en CPU, sin dependencia de GPU)
+  - GPU: no requerida
+  - Memoria: ~200–500MB (varía según el tamaño de la imagen)
+  - Disco: ~30–50MB (motor WASM + paquete de idioma)
+  - Tamaño del modelo: incluido en el disco de arriba (paquete de inglés, unos pocos MB)
+- **Velocidad**: ~3–5 s por imagen
+- **Para quién**: el 90% de los escenarios ligeros de OCR, documentos en latín, reconocimiento de captcha
+
+> La mayoría de usuarios tiene suficiente con este nivel; los dos siguientes son mejoras opcionales.
+
+#### Nivel 2: PaddleX / PP-StructureV3 (chino SOTA + reconocimiento de tablas)
+
+- **Qué hace**: OCR en chino (calidad claramente superior al motor por defecto), análisis de layout, **facturas / reportes / documentos escaneados → tabla HTML/Markdown**, lectura de datos desde gráficos
+- **¿Hay que instalar un servicio?**: **Sí**, autohospeda un servicio REST PaddleX; MCP lo invoca vía `baseUrl`
+- **Requisitos mínimos de recursos** (medidos en real):
+
+  | Modo | Umbral mínimo | Recomendado | Notas |
+  |---|---|---|---|
+  | GPU | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | El modelo carga ~2.4GB; picos en PDF complejo ~6GB |
+  | CPU | 4 núcleos + 8GB memoria | 8 núcleos + 16GB memoria | Funciona (documentos ligeros), pero lotes / PDF complejo es 3–5× más lento |
+  | Disco | ~3GB | ~5GB | paddlepaddle + paddlex + pesos |
+  | Tamaño del modelo | ~100–300MB (una pipeline) | — | Acumula por cada pipeline |
+
+- **Requisitos CUDA**: Compute Capability ≥ 7.0 (V100 / T4 / RTX serie 20/30/40; la serie 50 no está totalmente adaptada); requiere CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 para aceleración en GPU
+- **Cómo instalar**:
+
+  ```bash
+  pip install paddlex paddlepaddle          # versión GPU: paddlepaddle-gpu
+  paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
+  ```
+
+  Luego, en `config.json`, agrega una línea:
+
+  ```json
+  {
+    "providers": {
+      "paddle": { "baseUrl": "http://127.0.0.1:8080" }
+    }
+  }
+  ```
+
+#### Nivel 3: vLLM + Qwen2.5-VL (VLM de comprensión visual general)
+
+- **Qué hace**: preguntas sobre imágenes, reconocimiento de escritura a mano, reconocimiento de fórmulas, descripción en lenguaje natural de escenas complejas — las tareas de «comprensión» que PaddleX no cubre
+- **¿Hay que instalar un servicio?**: **Sí**, autohospeda un servicio de inferencia vLLM
+- **Requisitos mínimos de recursos** (medidos en real):
+
+  | Modo | Umbral mínimo | Recomendado | Notas |
+  |---|---|---|---|
+  | GPU 7B full precision (FP16) | 16GB VRAM | **24GB VRAM** (RTX 3090 / 4090 / A5000) | Pesos ~15–16GB + KV cache; vLLM ocupa 90% de VRAM por defecto |
+  | GPU 7B cuantizado (INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | La versión cuantizada cabe en RTX 4080 / 4060 Ti 16GB |
+  | GPU versión ligera 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 ~6–8GB, INT4 ~3–4GB; el punto dulce del desarrollador individual |
+  | CPU | No recomendado | — | Funciona, pero 5–10× más lento; en producción usa GPU |
+  | Memoria | 16GB | 16–32GB | — |
+  | Disco | ~14GB (pesos 7B) | — | 3B ~6GB |
+  | Requisitos CUDA | Compute Capability ≥ 7.0 | — | Mínimo Tesla T4 (7.5); V100 / A100 / RTX serie 30/40 también sirven |
+
+- **Cómo instalar**:
+  ```bash
+  pip install vllm
+  vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
+  # Cuando veas "Uvicorn running on http://0.0.0.0:8000", está listo
+  ```
+  Más parámetros (selección de GPU / versión cuantizada / límite de concurrencia) en la [documentación oficial de vLLM](https://docs.vllm.ai). Luego, en `config.json`, agrega:
+
+  ```json
+  {
+    "providers": {
+      "vlm": { "baseUrl": "http://127.0.0.1:8000" }
+    }
+  }
+  ```
+
+#### Comparación rápida de los tres niveles
+
+| Nivel | ¿Instala servicio? | Umbral de recursos | Chino | Tabla | Pregunta sobre imagen | License |
+|---|---|---|---|---|---|---|
+| **Por defecto** (tesseract) | No | Cero (CPU WASM puro) | Normal | ❌ | ❌ | Apache 2.0 |
+| **PaddleX** | Sí | GPU 12GB o CPU 4 núcleos 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 |
+| **vLLM Qwen2.5-VL** | Sí | **GPU 16–24GB** (CPU no válido) | ✅ | Normal | ✅ | Apache 2.0 |
+
+> El lado de reconocimiento escoge deliberadamente solo motores Apache 2.0 (tesseract.js + PaddleOCR + Qwen2.5-VL), evitando las trampas de AGPL / GPL / licencias comerciales, **listo para uso empresarial directo**.
 
 ---
 
-## 🛠️ Capacidades en detalle
+### III. Mecanismo de respaldo automático (configúralo y olvídate)
 
-### 🤖 Generación con IA (modelos gratuitos · en línea)
+- **Lado de generación**: Agnes ↔ Zhipu; si uno falla, conmuta automáticamente al otro (fallos consecutivos en 60 s activan conmutación suave; no necesitas reiniciar ni cambiar configuración)
+- **Lado de reconocimiento**: motor ligero por defecto (respaldo en proceso) → PaddleX → vLLM; degradación automática según capacidad
+- **Única excepción**: durante el polling para obtener el clip de video **no se conmuta** (para evitar recibir un resultado equivocado)
+- Lo que tú haces: configura dos API Key de generación + opcionalmente instala un nivel de reconocimiento; del resto se encarga Claude
 
-Usa los modelos gratuitos de Agnes AI o de Zhipu:
-- **Texto a imagen / Imagen a imagen** — Realista, ilustración, arte conceptual
-- **Texto a video / Imagen a video / Animación por fotogramas clave** — Asíncrono inteligente (los videos largos se generan en segundo plano y se notifican al terminar)
-- Especifica proveedor/modelo: "Dibuja una con **Zhipu cogview-4**" / "Genera un video con **agnes**"
-
-### 📐 Dibujo estructurado (local · determinista · sin Key)
-
-Las siguientes capacidades **no invocan a la IA y generan imágenes de forma determinista** (SVG vectorial en alta resolución):
-
-| Capacidad | Motor (todos integrados) | Descripción |
-|---|---|---|
-| **Diagramas estructurales** | D2 + Graphviz | Arquitectura / flujo / secuencia / clases / ER / mapas mentales, con disposición automática |
-| **Gráficos de datos** | Vega-Lite | Barras / líneas / circular / área / dispersión, Claude los genera automáticamente a partir de los datos |
-| **Fórmulas matemáticas** | MathJax | LaTeX → SVG, con glifos incrustados |
-| **Tarjetas para compartir** | Satori | OG / pósters / tarjetas de citas (chino + degradado + emoji + resplandor automáticos) |
-| **Códigos QR** | qrcode | URL / texto → SVG/PNG |
-| **Iconos vectoriales** | Iconify | Más de 200.000 iconos (`icon: "mdi:home"`) |
-| **SVG impresionante** | Chrome / resvg | SVG escrito a mano (resplandor / filtros / profundidad) → renderizado de alta fidelidad con Chrome |
-
-<details>
-<summary>📖 ¿Qué pueden hacer las tarjetas?</summary>
-
-- 5 plantillas: og (jerarquía alineada a la izquierda) / quote (cita, las comillas pueden enmarcarla a izquierda y derecha) / minimal (minimalista) / hero (texto grande + destellos de luz) / panel (panel de cristal)
-- Texto de título con degradado + resplandor + profundidad mediante manchas de luz difuminadas
-- Logo incrustado / avatar circular
-- Chino automático (Noto Sans SC sin conexión) + emoji en color automáticos (caché en disco, disponibles sin conexión)
-- Tamaño personalizable (predeterminado 1200×630, estándar OG)
-</details>
-
-<details>
-<summary>📖 ¿Qué es el renderizado SVG impresionante?</summary>
-
-El motor D2 no admite filtros SVG (resplandor feGaussianBlur), así que cuando quieres efectos del tipo "oscuro, tecnológico e impresionante, con resplandor y profundidad":
-1. Claude escribe el SVG a mano (con filtros como feGaussianBlur)
-2. Llama a la herramienta `render_svg`
-3. La herramienta elige el backend automáticamente: si hay `<filter>` y Chrome está disponible en el sistema → Chrome (100% de fidelidad de filtros); en caso contrario → resvg (92%, más ligero)
-</details>
-
-<details>
-<summary>📖 Notas sobre el modo sin conexión (¿qué herramientas necesitan internet?)</summary>
-
-- **Totalmente sin conexión**: generate_diagram / generate_chart / generate_formula / generate_qrcode
-- **Caché sin conexión tras el primer uso online**: generate_card (la fuente Latin predeterminada Inter se obtiene del CDN en el primer uso y se cachea en `~/.media-gen-mcp/fonts/`; la fuente CJK Noto Sans SC ya está integrada sin conexión; los emoji twemoji se cachean en disco y funcionan sin conexión)
-- **Necesita conexión**: generate_icon (obtiene los iconos de la API de Iconify); render_svg cuando hay filtros (necesita Chrome)
-- **Siempre en línea**: herramientas de generación con IA (generate_image / create_video)
-</details>
+> ¿Tu máquina no corre PaddleX o vLLM? **Sigue usando el motor ligero por defecto**; el MCP no falla por no tener servicios locales — solo quedan sin efecto chino SOTA / tablas / preguntas sobre imagen; todo lo demás sigue funcionando con normalidad.
 
 ---
 
-## ❓ Preguntas frecuentes
+## Preguntas frecuentes
 
-**¿El video tarda?** 3–18s, unos 1–3 minutos. Omite `wait` para un asíncrono automático (>60s devuelve un handle y avisa al terminar).
-**¿Número de fotogramas?** Pasa `durationSeconds` y se selecciona solo (5/10/18s). Agnes solo permite 81/121/161/241/441.
-**¿Te topas con un 429?** Incorpora 62s en serie + aprendizaje automático de los límites reales de frecuencia.
-**¿Las herramientas estructuradas necesitan Key?** No. Con instalarlo ya puedes dibujar diagramas / gráficos / tarjetas / códigos QR.
-**¿Chino / emoji / degradado en las tarjetas?** Todo automático: fuente CJK integrada + emoji twemoji (caché en disco) + fondo con degradado CSS.
-**¿SVG impresionante?** Claude escribe el SVG a mano (con resplandor feGaussianBlur) → `render_svg` → Chrome con 100% de fidelidad de filtros.
-**¿Admite Mermaid?** No (necesitaría un navegador). Usa D2 en su lugar (cubre flujo / secuencia / clases / ER / mapas mentales).
-**¿No se lee el config?** Debe estar en `~/.media-gen-mcp/config.json`.
-**¿`npx` no conecta?** Solución de respaldo con instalación global:
-```bash
-npm i -g media-gen-mcp-server
-claude mcp remove media-gen-mcp
-claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"
-```
+**P: ¿Funciona sin instalar nada?**
+R: Sí. Instalando el MCP ya tienes dibujos / tarjetas / códigos QR / fórmulas / gráficos de datos + OCR inglés / captcha, todo local, sin conexión.
+
+**P: ¿El OCR de chino sale con caracteres raros?**
+R: El motor ligero por defecto es suficiente para inglés / números / documentos simples; la precisión en chino es normal. Para chino SOTA, autohospeda PaddleX (GPU 12GB o CPU 4 núcleos 8GB); ver [Configuración detallada](#configuración-detallada) arriba.
+
+**P: ¿Cuánto tarda un video de IA?**
+R: Un video de 5 s, ~1–3 min; uno de 18 s, ~5–10 min. Generación asíncrona en segundo plano; te avisa al terminar; los que se estiman en ≤60 s se esperan de forma síncrona.
+
+**P: ¿Mi RTX 3060 corre el reconocimiento de tablas?**
+R: Sí. PaddleX en modo GPU requiere mínimo 12GB VRAM (la RTX 3060 12GB justa); en modo CPU, 4 núcleos + 8GB memoria también corre (3–5× más lento). Ver [Configuración detallada](#configuración-detallada).
+
+**P: ¿Chino / emoji / gradientes salen bien?**
+R: Sí. Las tarjetas para compartir soportan automáticamente chino, kanji japonés, emoji en color, títulos en gradiente y efectos de resplandor mediante una fuente china integrada + motor de maquetación; sin configuración adicional de fuentes.
+
+**P: ¿Soporta Mermaid?**
+R: No (requiere navegador). Usa D2 o Graphviz en su lugar; capacidad equivalente y más estable, con salida vectorial.
+
+**P: ¿Rate limiting (429)?**
+R: La capa gratuita tiene límite de peticiones por minuto. Configurando dos proveedores (Agnes + Zhipu) se conmuta automáticamente, prácticamente imperceptible.
+
+**P: ¿Límite de fotogramas de video?**
+R: Disminuye con la resolución — 1080p ≤ 241 fotogramas (~10 s), 720p hasta 441 fotogramas (~18 s). Puedes preguntar a Claude por las restricciones en tiempo real.
+
+**P: ¿npx no conecta / arranca lento?**
+R: También puedes instalar global: primero `npm i -g media-gen-mcp-server`, luego `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`.
+
+**P: ¿Puedo usar palabras sensibles / armas / temas de guerra?**
+R: Las palabras de armas reales activan el filtro de contenido. Usa términos de ciencia ficción (p. ej. «armadura futurista», «mecha») para evitarlo; el efecto es equivalente.
 
 ---
 
-## 🏗️ Arquitectura + Documentación
+## Para quién es esto
 
-- **Proveedores enchufables** (agnes + Zhipu; añadir un nuevo proveedor no requiere tocar la capa de herramientas); **motores enchufables** (DiagramEngine y MediaProvider funcionan en paralelo, sin interferirse)
-- [Lista de requisitos de arquitectura](doc/架构要求清单.md) — Especificaciones de arquitectura del proyecto (mantenidas de forma continua)
-- Más en [doc/](doc/): [Guía de activación de Agnes](doc/Agnes%20开通指引.md) · [Guía de activación de Zhipu](doc/Zhipu%20开通指引.md) · [Comparativa de proveedores](doc/Agnes_vs_Zhipu_横评.md)
+- **Usuarios intensivos de Claude Code** — hacen tareas de imagen varias veces por semana y no quieren instalar un MCP distinto ni recordar parámetros nuevos para cada una.
+- **Desarrolladores que escriben docs / blogs técnicos** — necesitan una y otra vez diagramas de arquitectura, de secuencia, ER, de datos y fórmulas, sin salir de su flujo.
+- **Desarrolladores individuales / producto independiente** — cuidadosos con el coste (todo gratis) y la reproducibilidad (misma entrada, misma salida), sin querer montar un backend solo para imágenes.
+- **Datos / finanzas / legal** — escenario bidireccional: dibujar datos como gráficos y, a la inversa, extraer puntos de datos desde capturas / facturas.
+- **Operaciones / creadores de contenido / autores de blogs** — tarjetas para compartir / OG / pósters / códigos QR con chino + emoji en color + gradiente listos para usar.
+
+> **No tan adecuado para**: usuarios que no usan Claude Code; equipos de ingeniería que solo necesitan una capacidad y ya tienen su pipeline montado; escenarios que requieren modelos comerciales de pago / entrenamiento de fine-tuning / OCR de video en tiempo real (estos exceden el alcance de un MCP gratuito).
 
 ---
 
-## 💝 Apoya al autor
+## 💝 Apoya al Autor
 
-Si media-gen-mcp te resulta útil, invita al autor a un café ☕
+Si media-gen-mcp te ayuda, invita al autor a un café ☕
 
 <div align="center">
 
@@ -197,8 +382,21 @@ WeChat | Alipay
 
 </div>
 
-O pon un ⭐ Star, abre un Issue / PR — cualquier gesto cuenta como apoyo al autor.
+O ⭐ [Star](../../stargazers) / [Issue](../../issues) / [PR](../../pulls) — toda forma de apoyo se agradece.
 
-## Licencia
+---
 
-[MIT](LICENSE)
+## License
+
+**MIT** — el código principal, úsalo como quieras.
+
+El lado de reconocimiento es pila totalmente **Apache 2.0** (tesseract.js + PaddleOCR + Qwen2.5-VL), sin riesgo de licencia para uso empresarial.
+
+---
+
+> Detalles técnicos: proveedores y motores son enchufables; las herramientas estructuradas producen la misma salida para la misma entrada (apto para git); conmutación automática de proveedor ante fallos. Contribuidores en `CONTRIBUTING.md`; documentación completa en el directorio `docs/`.
+
+<p align="center">
+  <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>
+  <sub>Instala una vez: a partir de ahora, cada tarea de imagen es solo una frase.</sub>
+</p>

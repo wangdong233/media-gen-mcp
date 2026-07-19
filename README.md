@@ -12,7 +12,7 @@
 
 每周做几次图、装 N 个工具记 N 套参数很烦?这里只装一次,所有图像场景都丢给 Claude。
 
-🌐 简体中文(其他语言版本欢迎通过 PR 贡献 🤝)
+🌐 Languages: **简体中文** · [English](README.en.md) · 日本語 · Español · Français · Deutsch · Русский · Português(其他语言欢迎 PR 贡献)
 
 ## 目录
 
@@ -369,21 +369,19 @@ A:真实武器词会触发内容过滤。改用科幻设定词(如"未来战甲"
 
 ---
 
-## 支持作者
+## 💝 支持作者
 
-如果这个 MCP 帮到你,欢迎:
-
-- Star 这个仓库(让更多人看到)
-- [提 Issue](../../issues) 报 bug / 提需求
-- [发 PR](../../pulls) 贡献代码
+如果 media-gen-mcp 帮到你,欢迎请作者喝杯咖啡 ☕
 
 <div align="center">
 
-微信赞赏 | 支付宝赞赏
+微信 | 支付宝
 :-: | :-:
 <img src="doc/support-wechat.jpg" height="200" alt="微信赞赏"> | <img src="doc/support-alipay.jpg" height="200" alt="支付宝赞赏">
 
 </div>
+
+或 ⭐ [Star 这个仓库](../../stargazers)、[提 Issue](../../issues) / [发 PR](../../pulls) —— 都是对作者的鼓励与支持。
 
 ---
 
