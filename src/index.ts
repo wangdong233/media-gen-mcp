@@ -150,6 +150,7 @@ function buildTools() {
           provider: { type: "string", description: "Vision provider; default config.defaultVisionProvider (tesseract fallback; paddle/vlm need configuration)." },
           name: { type: "string", description: "Output filename (no extension; saved as .txt when text is extracted)." },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
+          download: { type: "boolean", default: true, description: "Save extracted text as .txt (default true)." },
         },
         required: ["image"],
       },
@@ -638,6 +639,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           segmentation: optString(a.segmentation) as ExtractTextHints["segmentation"],
         };
         const outputFormat = optString(a.outputFormat) ?? "text";
+        const warnings: string[] = [];
         let result: VisionResult;
         try {
           result = await activeProvider.recognize({ image, task: "extract-text", hints });
@@ -649,6 +651,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           activeProvider.notifyUnavailable?.(e);
           activeProvider = asVisionProvider(fb);
           if (!activeProvider.visionTasks().includes("extract-text")) throw e;
+          warnings.push(`provider "${resolved.provider.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${activeProvider.name}"。`);
           result = await activeProvider.recognize({ image, task: "extract-text", hints });
         }
         let localPath: string | null = null;
@@ -659,7 +662,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           localPath = path.join(outDir, `${safeName}.txt`);
           await fs.writeFile(localPath, result.text, "utf-8");
         }
-        const warnings: string[] = [];
         if (activeProvider.name === "tesseract") {
           warnings.push("使用 tesseract 进程内 OCR(零配置兜底,中文精度弱);配置 paddleocr provider 可获中文 SOTA。");
         }

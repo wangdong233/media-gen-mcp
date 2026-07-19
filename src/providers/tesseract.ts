@@ -1,16 +1,23 @@
 /**
- * TesseractProvider —— 进程内 OCR 兜底(pares5 M1)。
+ * TesseractProvider —— 进程内 OCR 兜底(pares5 M1,M1 审查修复版)。
  *
  * 定位:vision 模态的零配置兜底 provider(对称 generate_diagram 内置 D2 WASM)。
- * 仅做 extract-text(数字/验证码/拉丁/中文弱);表格/图表/描述不声明,M2 paddle 接入后退居 fallback 兜底。
+ * 仅做 extract-text(数字/验证码/拉丁/中文弱);表格/图表/描述不声明,M2 paddle 接入后退居 fallback。
  *
  * 设计要点(采纳 pares4 审查 finding-1):接口层只暴露语义级 hints(BCP-47/segmentation/digitOnly),
- * 引擎参数(tesseract lang 文件名 / PSM 编号 / char_whitelist)下沉到本文件内部翻译,不泄漏到 types.ts。
+ * 引擎参数(tesseract lang 文件名 / PSM / char_whitelist)下沉到本文件内部翻译,不泄漏到 types.ts。
+ *
+ * M1 审查修复:
+ * - blocks 提取:tesseract.js Page 无 lines 字段,改走 data.blocks[].paragraphs[].lines[],且 recognize 显式 {blocks:true}
+ * - BCP47 翻译表:key 全小写(查表 toLowerCase 对齐)+ 补 zh-CN/zh-TW/zh-HK 等region 变体 + fallback 递归查表(en-US→eng)
+ * - setParameters 合并语义:whitelist 显式清空(非 digitOnly→""),免跨调用残留
+ * - getWorker 并发安全:workerPromise 串行化(防 TOCTOU 竞态导致孤儿 worker)
  *
  * WASM worker 生命周期(0.7.0 教训):单例懒加载 + 跨调用复用 + lang 变更才重建;
- * MCP server 长驻(StdioServerTransport 保活),worker 常驻无害;独立脚本/测试用 terminateForTest 防 pin。
+ * MCP server 长驻 worker 常驻无害;独立脚本/测试用 terminateTesseractForTest 防 pin。
  */
-import { createWorker } from "tesseract.js";
+import { createWorker, PSM } from "tesseract.js";
+import type { Worker } from "tesseract.js";
 import type {
   MediaProviderBase,
   VisionProvider,
@@ -24,49 +31,57 @@ import type {
   ExtractTextHints,
 } from "./types.js";
 
-/** BCP-47 → tesseract lang 文件名(常见映射 + 主子标签透传)。 */
+/**
+ * BCP-47 → tesseract lang 文件名(全小写 key,与 bcp47ToTesseract 的 toLowerCase 对齐)。
+ * 覆盖常见 region 变体(zh-CN/zh-TW/zh-HK/zh-SG/zh-MO),免 split 出 "zh" 崩溃(tesseract 无 zh.traineddata)。
+ */
 const BCP47_TO_TESS: Record<string, string> = {
-  "zh-hans": "chi_sim",
-  "zh-hant": "chi_tra",
-  en: "eng",
-  ja: "jpn",
-  ko: "kor",
+  "zh-hans": "chi_sim", "zh-cn": "chi_sim", "zh-sg": "chi_sim",
+  "zh-hant": "chi_tra", "zh-tw": "chi_tra", "zh-hk": "chi_tra", "zh-mo": "chi_tra",
+  en: "eng", ja: "jpn", ko: "kor",
 };
-function bcp47ToTesseract(lang: string): string {
+
+/** BCP-47 → tesseract lang(导出供测试)。先全量查表,未命中取主子标签再查表(en-US→"en"→"eng"),最后才透传。 */
+export function bcp47ToTesseract(lang: string): string {
   const key = lang.toLowerCase();
-  return BCP47_TO_TESS[key] ?? key.split("-")[0];
+  if (BCP47_TO_TESS[key]) return BCP47_TO_TESS[key];
+  const main = key.split("-")[0];
+  return BCP47_TO_TESS[main] ?? main;
 }
 
-/** 语义级 segmentation → tesseract PSM(tessedit_pageseg_mode)。 */
-const SEG_TO_PSM: Record<string, string> = {
-  auto: "3",
-  "single-line": "7",
-  "single-char": "10",
-  "sparse-text": "11",
+/** 语义级 segmentation → tesseract PSM enum(tesseract.js 导出,类型安全)。 */
+const SEG_TO_PSM: Record<string, PSM> = {
+  auto: PSM.AUTO,
+  "single-line": PSM.SINGLE_LINE,
+  "single-char": PSM.SINGLE_CHAR,
+  "sparse-text": PSM.SPARSE_TEXT,
 };
 
-// 单例 worker(跨调用复用;lang 变更才重建)。
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let worker: any = null;
+// 单例 worker(in-progress promise 串行化,防并发 TOCTOU 竞态)。
+let workerPromise: Promise<Worker> | null = null;
 let workerLang = "";
 
-async function getWorker(tessLangs: string[]): Promise</* eslint-disable-next-line @typescript-eslint/no-explicit-any */ any> {
+function getWorker(tessLangs: string[]): Promise<Worker> {
   const langStr = tessLangs.length ? tessLangs.join("+") : "eng";
-  if (worker && workerLang === langStr) return worker;
-  if (worker) {
-    try { await worker.terminate(); } catch { /* 忽略 */ }
-    worker = null;
+  if (workerPromise && workerLang === langStr) return workerPromise;
+  if (workerPromise) {
+    // lang 变:串行 terminate 旧 → createWorker 新(后到的等前一个完成,无竞态)
+    workerPromise = workerPromise.then(async (w) => {
+      try { await w.terminate(); } catch { /* 忽略 */ }
+      return createWorker(langStr);
+    });
+  } else {
+    workerPromise = createWorker(langStr);
   }
-  worker = await createWorker(langStr);
   workerLang = langStr;
-  return worker;
+  return workerPromise;
 }
 
 /** 测试/独立脚本用:终止 worker 防 pin 事件循环(server 长驻无需调用)。 */
 export async function terminateTesseractForTest(): Promise<void> {
-  if (worker) {
-    try { await worker.terminate(); } catch { /* 忽略 */ }
-    worker = null;
+  if (workerPromise) {
+    try { const w = await workerPromise; await w.terminate(); } catch { /* 忽略 */ }
+    workerPromise = null;
     workerLang = "";
   }
 }
@@ -84,10 +99,10 @@ export class TesseractProvider implements MediaProviderBase, VisionProvider {
     return ["extract-text"];
   }
   visionConstraints(): VisionConstraints {
-    return { languages: ["en", "zh-Hans", "zh-Hant", "ja", "ko"], maxImageBytes: 10 * 1024 * 1024 };
+    // M1 审查:maxImageBytes 删(handler 未消费,YAGNI;M2/M3 真要时再加 + handler 校验)
+    return { languages: ["en", "zh-Hans", "zh-Hant", "ja", "ko"] };
   }
   capabilities(): ProviderCapabilities {
-    // 纯识别 provider,无生成能力
     return {
       image: { textToImage: false, imageToImage: false },
       video: { textToVideo: false, imageToVideo: false, keyframes: false },
@@ -97,7 +112,7 @@ export class TesseractProvider implements MediaProviderBase, VisionProvider {
     return { configured: true, cooldown: false };
   }
   tier(): number {
-    return 1; // fallback 兜底,最低优先
+    return 1;
   }
   notifyUnavailable(_e: any): void {
     // 进程内 WASM 恒可用,no-op(保留接口对称)
@@ -112,20 +127,25 @@ export class TesseractProvider implements MediaProviderBase, VisionProvider {
     const h = (req.hints as ExtractTextHints | undefined) ?? {};
     const bcpLangs = h.languages?.length ? h.languages : ["en"];
     const tessLangs = bcpLangs.map(bcp47ToTesseract);
-    const psm = SEG_TO_PSM[h.segmentation ?? "auto"] ?? "3";
+    const psm = SEG_TO_PSM[h.segmentation ?? "auto"] ?? PSM.AUTO;
 
     const w = await getWorker(tessLangs);
-    const params: Record<string, string> = { tessedit_pageseg_mode: psm };
-    if (h.digitOnly) params.tessedit_char_whitelist = "0123456789";
-    await w.setParameters(params);
+    // whitelist 显式清空(非 digitOnly→""):setParameters 是合并语义,不清则跨调用残留
+    await w.setParameters({
+      tessedit_pageseg_mode: psm,
+      tessedit_char_whitelist: h.digitOnly ? "0123456789" : "",
+    });
 
-    const { data } = await w.recognize(req.image);
+    // 显式开启 blocks 输出(默认 blocks=false);Page.blocks[].paragraphs[].lines[] 是真实层级
+    const { data } = await w.recognize(req.image, {}, { blocks: true });
     const text = (data?.text ?? "").trim();
-    const blocks: TextBlock[] = (data?.lines ?? [])
+    const lines = (data?.blocks ?? [])
+      .flatMap((b: any) => (b?.paragraphs ?? []).flatMap((p: any) => p?.lines ?? []));
+    const blocks: TextBlock[] = lines
       .map((ln: any) => ({
         text: (ln.text ?? "").trim(),
         bbox: ln.bbox ? [ln.bbox.x0, ln.bbox.y0, ln.bbox.x1, ln.bbox.y1] as [number, number, number, number] : undefined,
-        confidence: typeof ln.confidence === "number" ? ln.confidence : undefined, // 0-100
+        confidence: typeof ln.confidence === "number" ? ln.confidence : undefined,
         level: "line" as const,
       }))
       .filter((b: TextBlock) => b.text);
