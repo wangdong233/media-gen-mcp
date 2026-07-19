@@ -24,7 +24,6 @@ const registry: Record<string, MediaProvider> = {
   tesseract: new TesseractProvider(), // pares5 M1: 进程内 WASM OCR 兜底,零配置
   paddle: new PaddleocrProvider({ // pares5 M2: PaddleX serving REST 全能主力(中文 SOTA+表格+图表+描述)
     baseUrl: config.providers.paddle?.baseUrl,
-    rateLimitTtlMs: config.rateLimitTtlMs,
   }),
 };
 

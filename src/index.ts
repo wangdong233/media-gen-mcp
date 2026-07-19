@@ -192,7 +192,7 @@ function buildTools() {
     {
       name: "extract_table",
       description:
-        "Recognize a table from an image → HTML/Markdown/JSON (表格识别/表格提取/tabla): invoices, receipts, financial statements, academic paper tables. Requires a `paddleocr` provider (PaddleX serving, Chinese SOTA); no pure-JS fallback (tesseract cannot parse table structure — a clear error is returned, not a silent OCR downgrade). The reverse operation is generate_chart (data→chart). Multilingual triggers: 表格识别 · 表格提取 · tabla · 表 (ja/es/de).",
+        "Recognize a table from an image → HTML/Markdown/JSON (表格识别/表格提取/tabla): invoices, receipts, financial statements, academic paper tables. Requires a `paddleocr` provider (PaddleX serving, Chinese SOTA); no pure-JS fallback (tesseract cannot parse table structure — a clear error is returned, not a silent OCR downgrade). Multilingual triggers: 表格识别 · 表格提取 · tabla · 表 (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -231,7 +231,7 @@ function buildTools() {
         type: "object",
         properties: {
           image: { type: "string", description: "Image URI: http(s):// or data: URI." },
-          question: { type: "string", description: "Optional VQA question; empty = default description." },
+          question: { type: "string", description: "Optional VQA question; empty = default description. Note: paddle provider (PaddleOCR-VL) gives a default description and ignores the question; full VQA via question requires the M3+ vlm provider." },
           provider: { type: "string" },
           name: { type: "string" },
           outDir: { type: "string" },
@@ -760,14 +760,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
       case "extract_table": {
         const image = requireString(a.image, "image");
-        const format = (optString(a.format) ?? "html") as "html" | "markdown" | "json" | "latex";
-        const hints: ExtractTableHints = { format };
+        const hints: ExtractTableHints = { format: (optString(a.format) ?? "html") as "html" | "markdown" | "json" | "latex" };
         const { result, providerUsed, warnings } = await runVisionTask("extract-table", image, optString(a.provider), hints);
         let localPath: string | null = null;
         if (result.table?.content && a.download !== false) {
           const outDir = resolveOutDir(a.outDir);
           await fs.mkdir(outDir, { recursive: true });
-          const ext = format === "html" ? "html" : format === "markdown" ? "md" : format === "latex" ? "tex" : "json";
+          // 扩展名按 provider 实际返回的 format(非用户 hints.format),免 format=latex 但 provider 返 html→.tex 装 html 内容
+          const actualFormat = result.table.format ?? "html";
+          const ext = actualFormat === "html" ? "html" : actualFormat === "markdown" ? "md" : "txt";
           const safeName = path.basename(optString(a.name) ?? `table_${Date.now().toString(36)}`);
           localPath = path.join(outDir, `${safeName}.${ext}`);
           await fs.writeFile(localPath, result.table.content, "utf-8");
@@ -783,10 +784,20 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const image = requireString(a.image, "image");
         const hints: AnalyzeChartHints = { chartType: optString(a.chartType) as AnalyzeChartHints["chartType"] };
         const { result, providerUsed, warnings } = await runVisionTask("analyze-chart", image, optString(a.provider), hints);
+        let localPath: string | null = null;
+        const content = result.chart ? JSON.stringify(result.chart, null, 2) : result.description;
+        if (content && a.download !== false) {
+          const outDir = resolveOutDir(a.outDir);
+          await fs.mkdir(outDir, { recursive: true });
+          const safeName = path.basename(optString(a.name) ?? `chart_${Date.now().toString(36)}`);
+          localPath = path.join(outDir, `${safeName}.json`);
+          await fs.writeFile(localPath, content, "utf-8");
+        }
         return ok({
           ...(result.chart ? { chart: result.chart } : {}),
           ...(result.description ? { description: result.description } : {}),
           provider_used: providerUsed,
+          ...(localPath ? { local_path: localPath } : {}),
           ...(warnings.length ? { warnings } : {}),
         });
       }
