@@ -90,6 +90,21 @@ export const config = {
   /** 学习限流 TTL(ms),过期降级基线;默认 7 天 */
   rateLimitTtlMs: num("RATE_LIMIT_TTL_MS", 7 * 24 * 60 * 60 * 1000, userCfg.rateLimitTtlMs),
 
+  /**
+   * pares6: PDF 异步识别管线配置。pdfjs-dist + @napi-rs/canvas 进 optionalDependencies,
+   * 不安装时调 extract_pdf 返清晰错误,不破坏零配置承诺。
+   */
+  pdf: {
+    /** 单 PDF 最大页数(风险 R5:大 PDF OOM 保护),默认 200。 */
+    maxPages: num("PDF_MAX_PAGES", 200, userCfg?.pdf?.maxPages),
+    /** 异步 job TTL(ms),默认 30 分钟。 */
+    jobTtlMs: num("PDF_JOB_TTL_MS", 30 * 60 * 1000, userCfg?.pdf?.jobTtlMs),
+    /** 默认渲染 scale(高 DPI),默认 2.0;调用方可覆盖,代码侧钳制到 [0.5, 3.0]。 */
+    scale: num("PDF_SCALE", 2.0, userCfg?.pdf?.scale),
+    /** 默认并发页数,默认 1(串行,内存安全)。v2 可调大。 */
+    concurrency: num("PDF_CONCURRENCY", 1, userCfg?.pdf?.concurrency),
+  },
+
   /** 各 provider 连接配置(动态遍历 config.json) */
   providers: buildProviders(),
 

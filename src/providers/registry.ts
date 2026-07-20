@@ -165,6 +165,126 @@ export function buildListModelsDetail(provider?: string): Record<string, any> {
 }
 
 /**
+ * pares6: 构造 list_vision_capabilities 的 detail(per-provider 能力矩阵 + per-task 路由)。
+ *
+ * 对称 `buildListModelsDetail`(导出函数 → handler / 测试 / 诊断同一真值源)。
+ *
+ * 三方法真值分工(R-CI-08 双声明防护):
+ *   - tasks ← visionTasks()
+ *   - languages/maxImageBytes ← visionConstraints()
+ *   - role/latency/accuracy/perTaskNotes/notes ← describeVisionOptions()
+ *   - configured/cooldown/lastErrorAt ← health()
+ *   - tier ← tier()
+ *
+ * 副作用铁律:仅读 health/visionConstraints/describeVisionOptions,零网络/零懒加载 —— 自省无副作用。
+ *
+ * taskCoverage 排序确定性:configured 优先 → tier 降序 → 注册顺序(tiebreak)。
+ */
+export function buildVisionCapabilitiesDetail(provider?: string): {
+  defaultVisionProvider: string;
+  providers: any[];
+  taskCoverage: Record<string, string[]>;
+  routingGuidance: Record<string, string>;
+} {
+  const names = provider ? [provider] : listProviders();
+  const providers: any[] = [];
+  const taskCoverage: Record<string, string[]> = {};
+
+  for (const n of names) {
+    const p = getProvider(n);
+    if (!isVisionProvider(p)) continue; // 跳过 agnes/zhipu(非 vision)
+    const h = p.health?.() ?? { configured: true, cooldown: false };
+    const vc = p.visionConstraints?.() ?? {};
+    const opt = p.describeVisionOptions?.();
+    const tasks = [...p.visionTasks()];
+
+    providers.push({
+      name: n,
+      configured: h.configured !== false,
+      cooldown: h.cooldown === true,
+      tier: p.tier?.() ?? 0,
+      role: opt?.role,
+      tasks,
+      languages: vc.languages,
+      maxImageBytes: vc.maxImageBytes,
+      latencyTier: opt?.latencyTier,
+      accuracyTier: opt?.accuracyTier,
+      perTaskNotes: opt?.perTaskNotes,
+      notes: opt?.notes,
+      lastErrorAt: h.lastErrorAt,
+    });
+
+    for (const t of tasks) {
+      (taskCoverage[t] ??= []).push(n);
+    }
+  }
+
+  // taskCoverage 排序:configured 优先 → tier 降序 → 注册顺序(确定性 tiebreak)
+  for (const t of Object.keys(taskCoverage)) {
+    taskCoverage[t].sort((a, b) => {
+      const pa = getProvider(a), pb = getProvider(b);
+      const ca = pa.health?.().configured !== false ? 1 : 0;
+      const cb = pb.health?.().configured !== false ? 1 : 0;
+      if (ca !== cb) return cb - ca;
+      const ta = pa.tier?.() ?? 0, tb = pb.tier?.() ?? 0;
+      if (tb !== ta) return tb - ta;
+      return 0; // 注册顺序 = registry 插入顺序(sort 稳定)
+    });
+  }
+
+  return {
+    defaultVisionProvider: config.defaultVisionProvider,
+    providers,
+    taskCoverage,
+    routingGuidance: buildVisionRoutingGuidance(taskCoverage, providers, config.defaultVisionProvider),
+  };
+}
+
+/**
+ * 构造 per-task 路由建议(给 CC 一句话决策)。基于 taskCoverage + provider configured 状态推导,
+ * 非硬编码 provider 名(若用户配置变化,建议自动跟随)。
+ */
+function buildVisionRoutingGuidance(
+  taskCoverage: Record<string, string[]>,
+  providers: any[],
+  defaultVision: string,
+): Record<string, string> {
+  const guidance: Record<string, string> = {};
+  const configuredOf = (task: string) => (taskCoverage[task] ?? []).filter((n) => {
+    const p = providers.find((x) => x.name === n);
+    return p?.configured !== false;
+  });
+  const hasPaddle = providers.some((p) => p.name === "paddle" && p.configured !== false);
+
+  for (const task of Object.keys(taskCoverage)) {
+    const configured = configuredOf(task);
+    if (task === "extract-text") {
+      guidance[task] = hasPaddle
+        ? `paddle 中文 SOTA 优先(若 configured);否则 ${defaultVision} 兜底`
+        : `默认 ${defaultVision}(零配置兜底);中文文档建议配 paddle(accuracyTier=high)`;
+    } else if (task === "extract-table") {
+      guidance[task] = configured.length
+        ? "paddle 支持;已 configured"
+        : "仅 paddle 支持;未配置时返回清晰错误,无静默降级到 OCR(请配置 providers.paddle.baseUrl)";
+    } else if (task === "analyze-chart") {
+      guidance[task] = configured.length
+        ? "paddle 主力 + vlm fallback(按 configured 状态)"
+        : "需配置 paddle 或 vlm;未配置时返回清晰错误";
+    } else if (task === "describe-image") {
+      const vlmCfg = providers.some((p) => p.name === "vlm" && p.configured !== false);
+      guidance[task] = vlmCfg
+        ? "需 question(VQA)用 vlm;paddle 仅默认描述(忽略 question)"
+        : "paddle 仅默认描述;完整 VQA(带 question)需配置 vlm provider";
+    } else {
+      guidance[task] = configured.length
+        ? `可用:${configured.join(", ")}`
+        : "暂无 configured 的 provider";
+    }
+  }
+  return guidance;
+}
+
+/**
  * 能力判断:provider 是否能承接指定模态+模式的请求(pares3 fallback 能力谈判)。
  * 未实现 capabilities() 的 provider 保守返回 false(不承接 fallback)。
  *

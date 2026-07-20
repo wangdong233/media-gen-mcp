@@ -19,6 +19,7 @@ import type {
   VisionResult,
   VisionTask,
   VisionConstraints,
+  VisionOptionDescriptors,
   ProviderCapabilities,
   ProviderHealth,
   DescribeImageHints,
@@ -67,6 +68,19 @@ export class VlmProvider implements MediaProviderBase, VisionProvider {
   }
   visionConstraints(): VisionConstraints {
     return { languages: ["en", "zh-Hans", "zh-Hant", "ja", "ko"] };
+  }
+  describeVisionOptions(): VisionOptionDescriptors {
+    // pares6: 自描述维度。铁律:不返 tasks/languages/maxBytes(R-CI-08,三方法真值分工)
+    return {
+      role: "describe/chart 增强 + fallback(完整 VQA)",
+      latencyTier: "moderate",
+      accuracyTier: "high",
+      perTaskNotes: {
+        "describe-image": "支持 question 参数的完整 VQA(Qwen2.5-VL)",
+        "analyze-chart": "提示工程抽取 JSON;失败返占位 + description",
+      },
+      notes: "需配置 providers.vlm.baseUrl(指向 vLLM,如 http://127.0.0.1:8000);Qwen2.5-VL Apache-2.0",
+    };
   }
   capabilities(): ProviderCapabilities {
     return {

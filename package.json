@@ -48,6 +48,10 @@
     "vega": "^5.30.0",
     "vega-lite": "^5.22.0"
   },
+  "optionalDependencies": {
+    "@napi-rs/canvas": "^1.0.2",
+    "pdfjs-dist": "^6.1.200"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",

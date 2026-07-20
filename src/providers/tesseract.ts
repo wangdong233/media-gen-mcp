@@ -25,6 +25,7 @@ import type {
   VisionResult,
   VisionTask,
   VisionConstraints,
+  VisionOptionDescriptors,
   ProviderCapabilities,
   ProviderHealth,
   TextBlock,
@@ -101,6 +102,18 @@ export class TesseractProvider implements MediaProviderBase, VisionProvider {
   visionConstraints(): VisionConstraints {
     // M1 审查:maxImageBytes 删(handler 未消费,YAGNI;M2/M3 真要时再加 + handler 校验)
     return { languages: ["en", "zh-Hans", "zh-Hant", "ja", "ko"] };
+  }
+  describeVisionOptions(): VisionOptionDescriptors {
+    // pares6: 自描述维度。铁律:不返 tasks/languages/maxBytes(R-CI-08,三方法真值分工)
+    return {
+      role: "零配置兜底(进程内 WASM)",
+      latencyTier: "instant",
+      accuracyTier: "low",
+      perTaskNotes: {
+        "extract-text": "拉丁字母/数字强(验证码、车牌);中文弱(配置 paddle 升中文 SOTA)",
+      },
+      notes: "M2 paddle / M3 vlm 接入后退居 fallback,恒可用(无 baseUrl 依赖)",
+    };
   }
   capabilities(): ProviderCapabilities {
     return {

@@ -22,6 +22,7 @@ import type {
   VisionResult,
   VisionTask,
   VisionConstraints,
+  VisionOptionDescriptors,
   ProviderCapabilities,
   ProviderHealth,
   TextBlock,
@@ -60,6 +61,21 @@ export class PaddleocrProvider implements MediaProviderBase, VisionProvider {
   }
   visionConstraints(): VisionConstraints {
     return { languages: ["en", "zh-Hans", "zh-Hant", "ja", "ko"] };
+  }
+  describeVisionOptions(): VisionOptionDescriptors {
+    // pares6: 自描述维度。铁律:不返 tasks/languages/maxBytes(R-CI-08,三方法真值分工)
+    return {
+      role: "全能主力(中文 SOTA + 表格 + 图表 + 描述)",
+      latencyTier: "fast",
+      accuracyTier: "high",
+      perTaskNotes: {
+        "extract-text": "中文 SOTA(PaddleOCR-VL);多语",
+        "extract-table": "PP-StructureV3,支持 html/markdown(json/latex 自动 fallback html)",
+        "analyze-chart": "useChartRecognition;响应格式待用户部署验证(M2 warning)",
+        "describe-image": "PaddleOCR-VL 默认描述,**忽略 question**(VQA 用 vlm provider)",
+      },
+      notes: "需配置 providers.paddle.baseUrl(指向 PaddleX serving,如 http://127.0.0.1:8080)",
+    };
   }
   capabilities(): ProviderCapabilities {
     return {

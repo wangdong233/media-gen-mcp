@@ -45,6 +45,8 @@ Tired of producing images a few times a week and juggling N tools with N sets of
 | "Recognize the table in this invoice screenshot" | A paste-able HTML/Markdown table (new in 0.11.0) |
 | "Read this bar chart into data points" | Structured CSV/JSON data (new in 0.11.0) |
 | "Describe what's in this image" | A natural-language answer (new in 0.11.0) |
+| "Extract all the text from this 20-page PDF report" | Full text / Markdown / JSON (digital PDFs instant; scanned PDFs auto-OCR'd page by page) (new in pares6) |
+| "Can I do table recognition right now? Is Chinese OCR configured?" | A live capability list + routing advice (what's ready / unconfigured / cooling down) (new in pares6) |
 
 > No need to learn tool names or install system dependencies — **Claude automatically picks the best way to get it done**.
 
@@ -121,7 +123,7 @@ The following also produce output instantly, with zero Key and zero network:
 > You: "Grab a GitHub logo, 128 pixels"
 > Get: a vector logo from a library of 200k+ icons, ready to use (GitHub / Twitter / Material / Lucide / Font Awesome, etc.)
 
-### Understand an Image (Image → Data · New in 0.11.0)
+### Understand an Image / a PDF (Image & Document → Data)
 
 **Extract Text From a Screenshot**
 > You: "Read the digits in this captcha"
@@ -138,6 +140,14 @@ The following also produce output instantly, with zero Key and zero network:
 **Have It Explain the Image in Plain Language**
 > You: "How many people are in this image? What are they doing?"
 > Get: a natural-language answer (visual QA / handwriting / formulas / complex scene understanding)
+
+**Extract Text From a Whole PDF** (new in pares6)
+> You: "Extract all the text from this 20-page PDF report and export it as Markdown"
+> Get: full text / Markdown / JSON — digital PDFs pull the embedded text layer instantly, scanned PDFs are rendered and OCR'd page by page; supports page ranges (`3` / `1-10` / `odd` / `last`), ignoring watermark / header-footer regions, and merged or per-page output; long documents run in the background and notify you when done (invoices / contracts / financial reports / papers / scanned books all work)
+
+**Ask First: "What Can My Recognition Stack Do Right Now?"** (new in pares6)
+> You: "Can I do table recognition right now? Is Chinese OCR configured? What about handwriting?"
+> Get: a live capability list — which of the three recognition tiers is configured / unconfigured / cooling down or errored, plus routing advice on "use X for tables, Y for handwriting"; **ask before you act, so you don't hit a runtime error mid-call**
 
 ### Draw Your Ideas Clearly (No Key Needed, Works on Install)
 
@@ -189,6 +199,8 @@ The following also produce output instantly, with zero Key and zero network:
 | AI photorealistic images / AI video (text-to-image, text-to-video) | One free API Key (Agnes or Zhipu, pick one) | Online generation, saved to `output/` |
 | OCR text recognition (English / captchas / digits / simple documents) | **Nothing** | Falls back to the in-process lightweight engine by default, works on install |
 | Chinese OCR / invoice tables / chart reading / visual QA / handwriting / formulas | Self-hosted understanding engine (PaddleX or vLLM, see resource requirements below) | After the self-hosted service is running, fill in one line of baseUrl |
+| **PDF text extraction** (digital / scanned / multi-page) | Two deps: `npm i pdfjs-dist @napi-rs/canvas` (install on first PDF use) | Digital PDFs instant; scanned PDFs follow the OCR tiers above (default zero-config also works) |
+| **Look up current recognition capabilities** (what's ready / unconfigured) | **Nothing** | Just ask; Claude returns a live capability list + routing advice |
 
 ---
 
@@ -366,7 +378,7 @@ A: Real-weapon terms trigger content filters. Swap in sci-fi setting words (e.g.
 - **Heavy Claude Code users** — anyone producing image tasks a few times a week, who doesn't want to install a separate MCP and memorize a new parameter set for every task.
 - **Developers writing technical docs / blogs** — who constantly need architecture diagrams, sequence diagrams, ER diagrams, data charts, formulas, and don't want to leave their workflow.
 - **Individual developers / indie products** — cost-conscious (100% free) and reproducibility-minded (same input → same output); don't want to build a separate backend just for image tasks.
-- **Data / Finance / Legal** — two-way scenarios: plot data as charts, and reverse-extract data points from screenshots / invoices.
+- **Data / Finance / Legal** — two-way scenarios: plot data as charts, and reverse-extract data points from screenshots / invoices / **PDF reports / contracts**.
 - **Operations / content creators / newsletter authors** — share cards / OG images / posters / QR codes, with Chinese + color emoji + gradients working out of the box.
 
 > **Probably not for**: users who don't use Claude Code; engineering teams that want only a single capability and already have a pipeline set up; scenarios that require paid commercial models / training/fine-tuning / real-time video OCR (these exceed the scope of a free MCP).

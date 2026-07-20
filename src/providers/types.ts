@@ -218,8 +218,30 @@ export interface VisionConstraints {
 }
 
 /**
+ * pares6: vision provider 自描述维度(参考 Umi-OCR self-describing options)。
+ *
+ * 铁律(R-CI-08 双声明防护):此处**只承载 role/latency/accuracy/notes** —— 不重复
+ * `visionTasks()`(任务清单)和 `visionConstraints()`(语言/字节上限),三者形成分工表,
+ * 见 vision-capabilities.md §3.1「三方法的真值分工」。
+ */
+export interface VisionOptionDescriptors {
+  /** 角色定位(一句话),如「零配置兜底」「全能主力」「VQA 增强」。 */
+  role: string;
+  /** 延迟档位:instant(进程内)< fast(本地 serving)< moderate(本地 GPU 推理)< slow(云 API,本 MCP 不走)。 */
+  latencyTier: "instant" | "fast" | "moderate" | "slow";
+  /** 精度档位:low(兜底)< medium < high(SOTA)。 */
+  accuracyTier: "low" | "medium" | "high";
+  /** 按 task 细化的备注(任务粒度的 caveat),key 取自 VisionTask。 */
+  perTaskNotes?: Partial<Record<VisionTask, string>>;
+  /** 通用备注(部署/配置边界)。 */
+  notes?: string;
+}
+
+/**
  * vision 能力组子接口(对称 ImageProvider/VideoProvider)。
  * pares5: 与 image/video 同位的第三模态 peer;asVisionProvider 守卫契约源 + 单一声明源。
+ * pares6: 加可选 `describeVisionOptions()` —— 供 list_vision_capabilities 聚合(R-INT-03 god interface
+ * 防护:可选方法,旧/外部 provider 不实现自动降级)。
  */
 export interface VisionProvider {
   /** 仅识别模型清单(供 model↔provider 路由校验)。 */
@@ -228,6 +250,8 @@ export interface VisionProvider {
   visionTasks(): readonly VisionTask[];
   recognize(req: VisionRequest): Promise<VisionResult>;
   visionConstraints?(): VisionConstraints | undefined;
+  /** pares6: 自描述新维度,供 list_vision_capabilities 聚合(可选,避 R-INT-03)。 */
+  describeVisionOptions?(): VisionOptionDescriptors;
 }
 
 /** Provider 能力矩阵(pares3:fallback 能力谈判基础;pares5:加 vision 维度)。 */

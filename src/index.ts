@@ -20,7 +20,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import path from "node:path";
 import { config } from "./config.js";
-import { getProvider, listProviders, resolveProvider, buildListModelsDetail, getFallbackProvider, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
+import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
 import { isFallbackWorthy } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
@@ -36,6 +36,15 @@ import { renderSvg } from "./render-svg.js";
 import { renderVideo } from "./render-video.js";
 import { applyTbpu } from "./vision/tbpu.js";
 import { filterIgnoreAreas, parseIgnoreAreas } from "./vision/ignore-area.js";
+import {
+  runPdfPipeline,
+  runPdfAsync,
+  estimatePdfSeconds,
+  buildResultFromJob,
+  getPdfJob,
+  type PdfPipelineInput,
+} from "./pdf/pipeline.js";
+import { parsePageRange } from "./pdf/page-range.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -56,6 +65,14 @@ const server = new Server(
 
 /** URI 校验(http(s): / data:),generate_image images / create_video image+keyframes / vision image 共用(pares5 抽取,消除重复正则,R-CI-01)。 */
 const isImageUri = (u: string) => /^(https?:|data:)/i.test(u);
+
+/**
+ * pares6: PDF source URI 校验。
+ * 接受:http(s):// / data:application/pdf / file:// / 本地路径(.pdf 后缀,CC 可直接传本地文件)。
+ * 与 isImageUri 不同:PDF 路径本地文件允许(渲染层会 readFile),因为 CC Read 工具不能把 PDF 转 data URI。
+ */
+const isPdfSource = (u: string) =>
+  /^(https?:|data:application\/pdf|file:)/i.test(u) || /\.pdf$/i.test(u);
 
 /**
  * pares5 M2: vision task 通用执行(provider 解析 + 能力门禁 + fallback 链)。
@@ -253,6 +270,17 @@ function buildTools() {
       },
     },
     {
+      name: "list_vision_capabilities",
+      description:
+        "Introspect vision (image recognition) provider capabilities BEFORE calling extract_text/extract_table/analyze_chart/describe_image — shows which providers are configured, what each supports (tasks/languages/latency/accuracy), per-task caveats, and routing guidance. Use this to avoid runtime errors (e.g. extract_table needs paddle; if paddle is unconfigured you can warn the user upfront instead of hitting a 503). Output is dynamic: reflects configured/cooldown/lastErrorAt at call time. Pure local, no network. Multilingual triggers: 能力自省 · 能力 introspect · capacités · Fähigkeiten (zh/en/fr/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          provider: { type: "string", description: "Optional; filter to one provider (e.g. 'paddle'). Omit for all vision providers (tesseract/paddle/vlm)." },
+        },
+      },
+    },
+    {
       name: "generate_diagram",
       description:
         "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, hand-writing SVG is appropriate. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).",
@@ -411,6 +439,49 @@ function buildTools() {
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
         required: ["html", "duration"],
+      },
+    },
+    {
+      name: "extract_pdf",
+      description:
+        "Extract text from a PDF document (PDF识别/多页OCR/财务报表/发票/扫描件文字提取): supports both digital PDFs (with embedded text layer → instant text extraction) and scanned PDFs (rendered to images → OCR via configured vision provider). Smart async: long PDFs return a handle to poll with get_pdf; short ones block until done. Requires `pdfjs-dist` + `@napi-rs/canvas` (run `npm install pdfjs-dist @napi-rs/canvas` in the media-gen-mcp install dir if missing). Companion to extract_text (which is single-image). Multilingual triggers: PDF识别 · PDF文字提取 · PDF OCR · 多页OCR · tabla PDF (zh/es/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          source: { type: "string", description: "PDF source: http(s):// URL / data:application/pdf;base64,... / file:// path / local .pdf path. Unlike extract_text, local paths are accepted (PDF rendering happens in-process)." },
+          pageRange: { type: "string", description: "Page selector (1-based, comma-separated): '3' / '1-10' / '1,3,5-7' / 'odd' / 'even' / 'last' / 'all' (default). Pages outside [1,total] are dropped with a warning." },
+          textStrategy: { type: "string", enum: ["auto", "ocr-only", "text-layer-only"], default: "auto", description: "auto (default) = try embedded text layer first, fall back to OCR if missing/sparse; ocr-only = force render+OCR every page; text-layer-only = only use embedded text (skip OCR, even if empty)." },
+          languages: { type: "array", items: { type: "string" }, description: "BCP-47 language codes for OCR path (same as extract_text). Default [en]; [zh-Hans,en] for Chinese PDFs." },
+          digitOnly: { type: "boolean", description: "OCR digits only (per-page, same as extract_text)." },
+          segmentation: { type: "string", enum: ["auto", "single-line", "single-char", "sparse-text"], default: "auto", description: "OCR layout assumption (per-page, same as extract_text)." },
+          layout: { type: "string", enum: ["none", "natural", "plain", "code"], default: "none", description: "Per-page TBPU layout post-processing (same as extract_text). natural=multi-column paragraphs (best for documents); none=join by newline." },
+          ignoreAreas: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, required: ["x", "y", "w", "h"] }, description: "Ignore regions per page (watermark/stamp/header-footer). Coordinates in the rendered page pixel space (scale-applied). Blocks whose bbox falls fully inside any area are dropped. Applied per-page (not globally)." },
+          mergePages: { type: "boolean", default: true, description: "true (default) = join all pages into a single `text` field (page separator = form feed \\f); false = return only `pages[]` without merging." },
+          outputFormat: { type: "string", enum: ["text", "markdown", "json"], default: "text", description: "Output format: text/markdown saved as .txt/.md (page text joined); json saved as .json with pages[]+blocks. Markdown wraps each page in '## Page N' headers." },
+          scale: { type: "number", description: "PDF render scale for OCR path (default 2.0, high DPI). Clamped to [0.5, 3.0]. Higher = better OCR accuracy but more memory." },
+          concurrency: { type: "number", description: "Page concurrency (default 1 = serial; max 4). Memory-safe default; raise only for short PDFs with fast providers." },
+          wait: { type: "boolean", description: "Omit = smart (estimated ≤60s sync, >60s async returns handle); true = block until done (emits progress); false = immediately return handle." },
+          provider: { type: "string", description: "OCR vision provider; default config.defaultVisionProvider (tesseract fallback; paddle recommended for Chinese)." },
+          download: { type: "boolean", default: true, description: "Save extracted text to file (default true)." },
+          name: { type: "string", description: "Output filename (without extension). Defaults to pdf_<uuid>." },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["source"],
+      },
+    },
+    {
+      name: "get_pdf",
+      description:
+        "Poll and retrieve a PDF extraction task created by extract_pdf (by pdfId). Companion to extract_pdf — use it after an async PDF returns a handle, or to check progress of a long PDF extraction.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pdfId: { type: "string", description: "PDF job handle returned by extract_pdf (async mode)." },
+          download: { type: "boolean", default: true, description: "Save extracted text to file once completed (default true)." },
+          name: { type: "string", description: "Output filename (without extension). Defaults to pdf_<uuid>." },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["pdfId"],
       },
     },
   ];
@@ -854,6 +925,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return ok({ providers: listProviders(), detail: buildListModelsDetail(optString(a.provider)) });
       }
 
+      case "list_vision_capabilities": {
+        // pares6: 自省工具。零网络(仅 health/visionConstraints/describeVisionOptions)。
+        return ok(buildVisionCapabilitiesDetail(optString(a.provider)));
+      }
+
       case "generate_diagram": {
         const code = requireString(a.code, "code");
         const outDir = resolveOutDir(a.outDir);
@@ -1009,6 +1085,223 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           elapsed_ms: rendered.elapsedMs,
           local_path: fp,
           ...(rendered.warning ? { warning: rendered.warning } : {}),
+        });
+      }
+
+      case "extract_pdf": {
+        // pares6: PDF 异步识别管线。镜像 create_video/get_video 异步模式 + 复用 extract_text per-page 后处理。
+        const source = requireString(a.source, "source");
+        if (!isPdfSource(source)) {
+          return err("`source` 须为 http(s):// / data:application/pdf / file:// 或本地 .pdf 路径。");
+        }
+        // 校验 ignoreAreas 早期失败(同 extract_text)
+        let ignoreAreasRaw: unknown;
+        try {
+          // 先 parse 校验合法性(若非法 isError 退出);原值透传给 pipeline 内部再 parse
+          parseIgnoreAreas(a.ignoreAreas);
+          ignoreAreasRaw = a.ignoreAreas;
+        } catch (e: any) {
+          return err(e?.message ?? String(e));
+        }
+        // concurrency 钳制 [1,4](防大并发 OOM)。v1 pipeline 实际为串行(concurrency 仅校验,不改变行为);v2 加并行池后启用。
+        const reqConc = optNumber(a.concurrency);
+        if (reqConc && (reqConc < 1 || reqConc > 4)) {
+          return err("`concurrency` 须在 [1, 4] 区间(v1 实际为串行;此参数保留给 v2 并行池)。");
+        }
+        // scale 钳制 [0.5, 3.0](render.ts 内部再钳一次,这里前置给清晰错)
+        const reqScale = optNumber(a.scale);
+        if (reqScale != null && (reqScale < 0.5 || reqScale > 3.0)) {
+          return err("`scale` 须在 [0.5, 3.0] 区间(大 PDF OOM 保护)。");
+        }
+        // textStrategy 白名单
+        const textStrategy = optString(a.textStrategy);
+        if (textStrategy && !["auto", "ocr-only", "text-layer-only"].includes(textStrategy)) {
+          return err("`textStrategy` 须为 auto / ocr-only / text-layer-only。");
+        }
+        const outputFormat = (optString(a.outputFormat) ?? "text") as "text" | "markdown" | "json";
+
+        // 解析 provider(对齐 extract_text:resolveProvider + asVisionProvider + task 门禁)
+        const resolved = resolveProvider(optString(a.provider), optString(a.model), "vision");
+        const preferred = asVisionProvider(resolved.provider);
+        if (!preferred.visionTasks().includes("extract-text")) {
+          return err(`provider "${preferred.name}" 不支持 extract-text(支持:${[...preferred.visionTasks()].join("/")})。`);
+        }
+
+        // 同步/异步决策:先确定总页数(pageRange 解析需要),再估算耗时
+        // 注意 getPdfPageCount 内部会 dynamic import pdfjs;若缺 → 友好错误
+        const { getPdfPageCount } = await import("./pdf/render.js");
+        let totalPages: number;
+        try {
+          totalPages = await getPdfPageCount(source);
+        } catch (e: any) {
+          return err(`PDF 加载失败:${e instanceof Error ? e.message : String(e)}`);
+        }
+        if (totalPages <= 0) return err("PDF 无任何页面。");
+        const maxPages = (config as any).pdf?.maxPages ?? 200;
+        if (totalPages > maxPages) {
+          return err(`PDF 总页数 ${totalPages} 超过上限 ${maxPages}(OOM 保护,可经 config.pdf.maxPages 调优)。`);
+        }
+        const range = parsePageRange(optString(a.pageRange), totalPages);
+        const targetCount = range.pages.length || totalPages;
+        const estSeconds = estimatePdfSeconds(targetCount, preferred.name);
+        const wait = a.wait === true || (a.wait === undefined && estSeconds <= ASYNC_THRESHOLD_SECONDS);
+
+        const pipelineInput: PdfPipelineInput = {
+          source,
+          pageRange: optString(a.pageRange),
+          textStrategy: textStrategy as PdfPipelineInput["textStrategy"],
+          languages: toStringArray(a.languages),
+          digitOnly: a.digitOnly === true,
+          segmentation: optString(a.segmentation) as PdfPipelineInput["digitOnly"] extends never ? never : ExtractTextHints["segmentation"],
+          layout: optString(a.layout) as ExtractTextHints["layout"],
+          ignoreAreasRaw,
+          mergePages: a.mergePages === false ? false : true,
+          outputFormat,
+          scale: reqScale,
+          provider: optString(a.provider),
+        };
+        const warnings: string[] = [];
+        if (range.warnings.length) warnings.push(...range.warnings);
+        if (resolved.autoRouted) {
+          warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${preferred.name}"。`);
+        }
+
+        if (!wait) {
+          // 异步:fire-and-forget 注册 job
+          const pdfId = runPdfAsync(
+            pipelineInput,
+            preferred,
+            targetCount,
+            totalPages,
+            (pct, msg) => emitProgress(pct, msg),
+          );
+          return ok({
+            async: true,
+            pdfId,
+            status: "in_progress",
+            total_pages: totalPages,
+            target_pages: targetCount,
+            estimated_seconds: estSeconds,
+            provider_used: preferred.name,
+            hint: `get_pdf(pdfId="${pdfId}")`,
+            ...(warnings.length ? { warnings } : {}),
+          });
+        }
+
+        // 同步:跑完
+        let result;
+        try {
+          result = await runPdfPipeline(pipelineInput, preferred, (pct, msg) => emitProgress(pct, msg));
+        } catch (e: any) {
+          // 同步路径失败也保持 extract_text 风格:抛 → 顶层 catch 转 isError
+          throw e;
+        }
+        // 把 pipeline 产出的 warnings 与早期 warnings 合并去重
+        for (const w of result.warnings) {
+          if (!warnings.includes(w)) warnings.push(w);
+        }
+        // 落盘
+        let localPath: string | null = null;
+        if (a.download !== false) {
+          const outDir = resolveOutDir(a.outDir);
+          await fs.mkdir(outDir, { recursive: true });
+          const safeName = path.basename(optString(a.name) ?? `pdf_${Date.now().toString(36)}`);
+          const ext = outputFormat === "json" ? ".json" : outputFormat === "markdown" ? ".md" : ".txt";
+          localPath = path.join(outDir, `${safeName}${ext}`);
+          let fileContent: string;
+          if (outputFormat === "json") {
+            fileContent = JSON.stringify({
+              provider_used: result.providerUsed,
+              path: result.path,
+              total_pages: result.totalPages,
+              pages: result.pages,
+            }, null, 2);
+          } else if (outputFormat === "markdown") {
+            fileContent = result.pages.map((p) => `## Page ${p.page}\n\n${p.text ?? "(empty)"}`).join("\n\n---\n\n");
+          } else {
+            fileContent = result.text ?? result.pages.map((p) => p.text ?? "").join("\n\f\n");
+          }
+          await fs.writeFile(localPath, fileContent, "utf-8");
+        }
+        if (result.path === "text-layer" && preferred.name === "tesseract") {
+          // 走 text-layer 时 tesseract 未被实际调用,不必加兜底提示
+        } else if (result.path !== "text-layer" && preferred.name === "tesseract") {
+          warnings.push("使用 tesseract 进程内 OCR(零配置兜底,中文精度弱);配置 paddleocr provider 可获中文 SOTA。");
+        }
+        return ok({
+          path: result.path,
+          total_pages: result.totalPages,
+          target_pages: result.pages.length,
+          pages: result.pages,
+          ...(result.text != null ? { text: result.text } : {}),
+          provider_used: result.providerUsed,
+          ...(localPath ? { local_path: localPath } : {}),
+          ...(warnings.length ? { warnings } : {}),
+        });
+      }
+
+      case "get_pdf": {
+        // 镜像 get_video:读 job-store;非终态给 retry 提示
+        const pdfId = requireString(a.pdfId, "pdfId");
+        const job = getPdfJob(pdfId);
+        if (!job) {
+          return err(`pdfId "${pdfId}" 不存在(可能已过期,job TTL ${(config as any).pdf?.jobTtlMs ? Math.round(((config as any).pdf.jobTtlMs / 1000 / 60)) : 30} 分钟)。请重新调用 extract_pdf。`);
+        }
+        if (job.status === "in_progress" || job.status === "registered") {
+          const retryAfter = 5;
+          return ok({
+            status: job.status,
+            pdfId: job.id,
+            progress: job.progress,
+            done: job.done,
+            total: job.total,
+            retry_after_seconds: retryAfter,
+            hint: `识别中(已完成 ${job.done}/${job.total} 页),约 ${retryAfter}s 后再次调用 get_pdf 拉取。`,
+          });
+        }
+        if (job.status === "failed") {
+          return ok({
+            status: "failed",
+            pdfId: job.id,
+            error: job.error ?? "unknown error",
+            provider_used: job.providerUsed,
+            hint: `任务失败。修正后请重新调用 extract_pdf。`,
+            ...(job.warnings.length ? { warnings: job.warnings } : {}),
+          });
+        }
+        // completed
+        const mergePages = job.input.mergePages !== false;
+        const built = buildResultFromJob(job, mergePages);
+        // 落盘(同 extract_pdf 同步路径)
+        let localPath: string | null = null;
+        if (a.download !== false) {
+          const outDir = resolveOutDir(a.outDir);
+          await fs.mkdir(outDir, { recursive: true });
+          const safeName = path.basename(optString(a.name) ?? `pdf_${job.id}`);
+          const outputFormat = (job.input.outputFormat ?? "text") as "text" | "markdown" | "json";
+          const ext = outputFormat === "json" ? ".json" : outputFormat === "markdown" ? ".md" : ".txt";
+          localPath = path.join(outDir, `${safeName}${ext}`);
+          let fileContent: string;
+          if (outputFormat === "json") {
+            fileContent = JSON.stringify({
+              provider_used: built.providerUsed,
+              pages: built.pages,
+            }, null, 2);
+          } else if (outputFormat === "markdown") {
+            fileContent = built.pages.map((p) => `## Page ${p.page}\n\n${p.text ?? "(empty)"}`).join("\n\n---\n\n");
+          } else {
+            fileContent = built.text ?? built.pages.map((p) => p.text ?? "").join("\n\f\n");
+          }
+          await fs.writeFile(localPath, fileContent, "utf-8");
+        }
+        return ok({
+          status: "completed",
+          pdfId: job.id,
+          pages: built.pages,
+          ...(built.text != null ? { text: built.text } : {}),
+          provider_used: built.providerUsed,
+          ...(localPath ? { local_path: localPath } : {}),
+          ...(built.warnings.length ? { warnings: built.warnings } : {}),
         });
       }
 
