@@ -133,6 +133,27 @@ export class GlmVisionProvider implements MediaProviderBase, VisionProvider {
     return r?.choices?.[0]?.message?.content ?? "";
   }
 
+  /**
+   * chat + transient 退避重试(1305 平台过载 / 网络抖动)。
+   * 真实端到端发现:GLM-4.6V-Flash 免费、访问量大,常返 1305(瞬态),原直接抛让用户手动重试体验差。
+   * key-dead/key-cool 立即抛(交外层 KeyPool 切下一 key);transient 同 key 退避重试 3 次(0/1s/2s)。
+   */
+  private async chatWithRetry(image: string, prompt: string, key: string): Promise<string> {
+    const backoffMs = [0, 1_000, 2_000];
+    let lastErr: any;
+    for (const delay of backoffMs) {
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+      try {
+        return await this.chat(image, prompt, key);
+      } catch (e: any) {
+        lastErr = e;
+        if (classifyZhipuError(e) !== "transient") throw e; // key-dead/key-cool 立即抛(外层切 key)
+        // transient(1305/网络):继续退避重试同 key
+      }
+    }
+    throw lastErr;
+  }
+
   async recognize(req: VisionRequest): Promise<VisionResult> {
     if (!this.visionTasks().includes(req.task)) {
       throw new Error(`glm-vision 不支持 task="${req.task}"(支持:${[...this.visionTasks()].join("/")})。`);
@@ -155,7 +176,7 @@ export class GlmVisionProvider implements MediaProviderBase, VisionProvider {
       if (!key || tried.has(key)) break; // 全耗尽或全试过 → 退出让 provider 级 fallback
       tried.add(key);
       try {
-        const content = await this.chat(req.image, prompt, key);
+        const content = await this.chatWithRetry(req.image, prompt, key);
         return this.parseResult(req, content);
       } catch (e: any) {
         lastErr = e;
@@ -168,7 +189,7 @@ export class GlmVisionProvider implements MediaProviderBase, VisionProvider {
           this.pool.markLimited(key);
           continue; // 切下一 key
         }
-        // transient(1305 平台过载 / 网络 / 401 保守 / 未知):不动 key 池,抛给 provider 级 fallback
+        // transient(1305 backoff 用尽 / 网络 / 401 保守 / 未知):不动 key 池,抛给 provider 级 fallback
         throw e;
       }
     }
