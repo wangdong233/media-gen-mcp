@@ -372,6 +372,83 @@ Claude に一言だけ伝えます:
   }
   ```
 
+##### 応用:Unlimited-OCR 長文書解析(SGLang/vLLM セルフホスト)
+
+段階 4 のデフォルト Qwen2.5-VL は汎用 VLM(画像 QA / シーン描写に強い)。欲しいのが**長文書 OCR / 複雑テーブル / 複数ページ PDF の一括解析**(単図で数千〜数万文字)なら、[baidu/Unlimited-OCR](https://github.com/baidu/Unlimited-OCR)(MIT、Deepseek-OCR ラインを一歩前進)に切り替え。**訓練分布は 2 単語プロンプトのみ** `document parsing.` で、長出力は `custom_logit_processor`(DeepseekOCRNoRepeatNGram)により退化を防止 —— Qwen2.5-VL とは異なるクラスのツールです。
+
+**Unlimited-OCR を設定すると、`vlm` プロバイダは全 4 タスクを自動的に開放**(extract-text / extract-table / describe-image / analyze-chart)。`extract-text` / `extract-table` は README の単図契約ショートプロンプトを使用し、`describe-image`(VQA)と `analyze-chart`(JSON 抽出)は元の長いプロンプトのまま —— プロンプト override を手書きする必要はなく、MCP がモデルに応じて自動選択します。
+
+**デプロイ(SGLang を推奨 —— `custom_logit_processor` の全機能をサポート)**:
+
+```bash
+# イメージをプル(詳細は Unlimited-OCR README を参照)
+docker pull vllm/vllm-openai:unlimited-ocr          # デフォルト CUDA 13.0
+# Hopper GPU の場合は cu129 を使用:
+# docker pull vllm/vllm-openai:unlimited-ocr-cu129
+
+# SGLang サーバーを起動(主要パラメータの説明は Unlimited-OCR README「SGLang」節を参照)
+python -m sglang.launch_server \
+  --model baidu/Unlimited-OCR \
+  --served-model-name Unlimited-OCR \
+  --attention-backend fa3 --page-size 1 \
+  --mem-fraction-static 0.8 --context-length 32768 \
+  --enable-custom-logit-processor \
+  --host 0.0.0.0 --port 10000
+```
+
+`custom_logit_processor` は Python 側の `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` の文字列化出力(SGLang プライベートの直列化フォーマット、TS 側では合成不可)。**デプロイ時に一度だけ実行**して文字列を取得し、`config.json` に貼り付け:
+
+```bash
+# sglang をインストール済みの Python 環境で以下の 1 行を実行:
+python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoRepeatNGramLogitProcessor as P; print(P.to_str())"
+# 1 行の長い文字列が出力されるので、下記 config.json の custom_logit_processor フィールドにコピー
+```
+
+**config.json の例**(`vlm` を Unlimited-OCR に切り替え + `extra_body` 拡張フィールドを設定):
+
+```json
+{
+  "providers": {
+    "vlm": {
+      "baseUrl": "http://127.0.0.1:10000",
+      "models": { "default": "Unlimited-OCR" },
+      "extra_body": {
+        "images_config": { "image_mode": "gundam" },
+        "custom_params": { "ngram_size": 35, "window_size": 128 },
+        "custom_logit_processor": "<上記の python -c が出力した文字列>",
+        "skip_special_tokens": false
+      }
+    }
+  }
+}
+```
+
+フィールドの意味(すべてトップレベル、SGLang の OpenAI 互換 API が受け付けます;MCP は `Object.assign` でフラット化して fetch body に展開):
+
+| フィールド | 値 | 説明 |
+|---|---|---|
+| `images_config.image_mode` | `gundam` / `base` | 単図・高精度なら `gundam`(base_size=1024, image_size=640, crop_mode=true);複数ページ PDF なら `base`(image_size=1024, crop_mode=false)。media-gen-mcp は**単図契約**なので、デフォルト `gundam` が最適 |
+| `custom_params.ngram_size` | `35`(推奨) | NoRepeatNGram の長さ、35 は README 推奨値 |
+| `custom_params.window_size` | `128`(単図) / `1024`(複数ページ) | 単図は 128;media-gen-mcp の単図契約では 128 を推奨 |
+| `custom_logit_processor` | Python 側 `.to_str()` の出力 | 必須(省略すると長出力が繰り返し退化);TS では合成不可、Python で一度実行して文字列を取得 |
+| `skip_special_tokens` | `false` | OCR タスクでは特殊 token を保持する必要あり、skip しないでください |
+
+> ⚠️ **タスクゲーティング(重要)**:`extra_body`(`custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam` を含む)は `extract-text` / `extract-table`(OCR パス)の fetch body にのみ展開されます —— `describe-image`(VQA)と `analyze-chart`(JSON 抽出)には**これらのフィールドは付与されません**。理由:NoRepeatNGram(ngram_size=35)は VQA 記述における正当な繰り返し語も抑制してしまう、`skip_special_tokens:false` は OCR 構造 token を description に漏洩し `analyze-chart` の `JSON.parse` を汚染する、`image_mode:gundam`(crop_mode=true)は画像全体をスライスしシーンレベルの VQA 全体理解を破壊するため。これは model-aware なショートプロンプトゲーティング(`promptForUnlimited`)の対称設計 —— `describe-image` / `analyze-chart` は元の長いプロンプトを維持し、クリーンな body のまま処理されます。`describe-image` / `analyze-chart` に拡張フィールドを強制伝達したい場合は per-call の `extra`(`extract_text` / `extract_table` / `describe_image` / `analyze_chart` ツールの `extra` パラメータで渡す)を使用してください —— こちらはタスクゲーティングの制約を受けません。
+
+**呼び出し**:`extract_text` ツールに `provider=vlm` を明示的に渡してください(省略時は defaultVisionProvider=tesseract にフォールバック):
+
+```
+extract_text(image="data:image/png;base64,...", provider="vlm")
+```
+
+**重要な制限事項**:
+
+- **非ストリームモード**:media-gen-mcp は vLLM/SGLang の**非ストリーム** `/v1/chat/completions`(JSON を一括返却)を使用、単ページ / 中短文書に適しています。Unlimited-OCR の `infer.py` はデフォルトで `stream:true` ですが、**`stream:true` を `extra_body` に書き写さないでください** —— MCP が検出すると reject し「extra.stream を削除してください」のヒントを表示します。超長 PDF は事前に [PyMuPDF でページ分割](https://github.com/baidu/Unlimited-OCR#transformers)(README に `pdf_to_images` スニペットあり)を行い、ページごとに `extract_text` を呼び出すことを推奨 —— ページ独立のリクエストで超長出力を自然に回避できます。
+- **サーバータイムアウト**:長文書の生成は時間を要するため、vLLM のデフォルト 60 秒では足りない場合は SGLang の `REQUEST_TIMEOUT` または vLLM の `--timeout-keepalive` を調整してください。
+- **GPU 要件**:16–24GB VRAM(段階 4 と同等);満たせない場合は引き続き paddle(10)/glm-vision(9) チェーンを使用してください。
+
+**License**:[MIT](https://github.com/baidu/Unlimited-OCR/blob/main/LICENSE)(純無料スタンスに合致、Qwen Apache-2.0 と同段階、企業の商用利用も可能)。
+
 #### 4 段階クイック比較
 
 | 段階 | サービス設置 | リソース要件 | 中文 | テーブル | 画像 QA | License / 出典 |

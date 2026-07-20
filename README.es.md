@@ -372,6 +372,83 @@ Las capacidades de reconocimiento se dividen en **cuatro niveles**: instala seg�
   }
   ```
 
+##### Avanzado: Unlimited-OCR para análisis de documentos largos (autohospedado con SGLang/vLLM)
+
+El Qwen2.5-VL por defecto del nivel 4 es un VLM de propósito general (fuerte en VQA / descripción de escena). Si lo que necesitas es **OCR de documentos largos / tablas complejas / análisis de PDF multipágina en una sola pasada** (miles~decenas de miles de caracteres por imagen), cambia a [baidu/Unlimited-OCR](https://github.com/baidu/Unlimited-OCR) (MIT, un paso más allá de la línea Deepseek-OCR). Se **entrena con un prompt de solo 2 palabras** `document parsing.`; la salida larga se protege contra la degeneración mediante `custom_logit_processor` (DeepseekOCRNoRepeatNGram) — una clase distinta de herramienta frente a Qwen2.5-VL.
+
+**Cuando configuras Unlimited-OCR, el provider `vlm` activa automáticamente los 4 task** (extract-text / extract-table / describe-image / analyze-chart); además, `extract-text` / `extract-table` usan el contrato de prompt corto para imagen única del README, mientras que `describe-image` (VQA) y `analyze-chart` (extracción JSON) siguen usando el prompt largo original — no necesitas escribir un prompt override a mano, el MCP escoge automáticamente según el modelo.
+
+**Despliegue (SGLang, recomendado — soporta el conjunto completo de `custom_logit_processor`)**:
+
+```bash
+# Pull de la imagen (detalles en el README de Unlimited-OCR)
+docker pull vllm/vllm-openai:unlimited-ocr          # CUDA 13.0 por defecto
+# Para GPUs Hopper usa cu129:
+# docker pull vllm/vllm-openai:unlimited-ocr-cu129
+
+# Arranca el servidor SGLang (los parámetros clave se explican en la sección «SGLang» del README de Unlimited-OCR)
+python -m sglang.launch_server \
+  --model baidu/Unlimited-OCR \
+  --served-model-name Unlimited-OCR \
+  --attention-backend fa3 --page-size 1 \
+  --mem-fraction-static 0.8 --context-length 32768 \
+  --enable-custom-logit-processor \
+  --host 0.0.0.0 --port 10000
+```
+
+`custom_logit_processor` es la salida convertida a cadena del método Python `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` (un formato de serialización privado de SGLang que TS no puede sintetizar). **Ejecútalo una vez durante el despliegue** y pega la cadena en `config.json`:
+
+```bash
+# En un entorno Python con sglang instalado, ejecuta esta línea:
+python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoRepeatNGramLogitProcessor as P; print(P.to_str())"
+# Imprime una cadena larga; cópiala en el campo custom_logit_processor de abajo
+```
+
+**Ejemplo de config.json** (cambia `vlm` a Unlimited-OCR + configura los campos de extensión `extra_body`):
+
+```json
+{
+  "providers": {
+    "vlm": {
+      "baseUrl": "http://127.0.0.1:10000",
+      "models": { "default": "Unlimited-OCR" },
+      "extra_body": {
+        "images_config": { "image_mode": "gundam" },
+        "custom_params": { "ngram_size": 35, "window_size": 128 },
+        "custom_logit_processor": "<la cadena impresa por python -c arriba>",
+        "skip_special_tokens": false
+      }
+    }
+  }
+}
+```
+
+Significado de los campos (todos top-level, aceptados por la API OpenAI-compatible de SGLang; el MCP simplemente los aplana con `Object.assign` dentro del body del fetch):
+
+| Campo | Valor | Notas |
+|---|---|---|
+| `images_config.image_mode` | `gundam` / `base` | Imagen única de alta precisión: `gundam` (base_size=1024, image_size=640, crop_mode=true); PDF multipágina: `base` (image_size=1024, crop_mode=false). media-gen-mcp usa un **contrato de imagen única**, por lo que `gundam` es el óptimo por defecto |
+| `custom_params.ngram_size` | `35` (recomendado) | Longitud de NoRepeatNGram; 35 es el valor recomendado por el README |
+| `custom_params.window_size` | `128` (imagen única) / `1024` (multipágina) | Imagen única: 128; el contrato de imagen única de media-gen-mcp recomienda 128 |
+| `custom_logit_processor` | Salida de `.to_str()` en Python | Obligatorio (sin él, la salida larga degenera por repetición); TS no puede sintetizarlo — hay que ejecutar Python una vez para obtener la cadena |
+| `skip_special_tokens` | `false` | Las tareas de OCR deben conservar los tokens especiales; no skip |
+
+> ⚠️ **Gating por task (importante)**: `extra_body` (incl. `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`) solo se aplana al body del fetch en `extract-text` / `extract-table` (la ruta OCR) — `describe-image` (VQA) y `analyze-chart` (extracción JSON) **NO llevan estos campos**. Motivo: NoRepeatNGram (ngram_size=35) suprime palabras legítimamente repetidas en las descripciones VQA; `skip_special_tokens:false` filtraría tokens estructurales de OCR a la descripción / corrompería el `JSON.parse` de `analyze-chart`; `image_mode:gundam` (crop_mode=true) trocea la imagen entera y rompe la comprensión holística de la escena en VQA. Este es el contrapunto simétrico del gating de prompt corto model-aware (`promptForUnlimited`) — `describe-image` / `analyze-chart` siguen usando el prompt largo original Y un body limpio. Si necesitas forzar campos de extensión en `describe-image` / `analyze-chart`, usa el `extra` por llamada (pásalo en el parámetro `extra` de las herramientas `extract_text` / `extract_table` / `describe_image` / `analyze_chart`); no está sujeto al gating por task.
+
+**Invocación**: pasa explícitamente `provider=vlm` a `extract_text` (si no, irá a defaultVisionProvider=tesseract):
+
+```
+extract_text(image="data:image/png;base64,...", provider="vlm")
+```
+
+**Limitaciones importantes**:
+
+- **Modo no streaming**: media-gen-mcp usa `/v1/chat/completions` en modo **no stream** de vLLM/SGLang (JSON devuelto de golpe), adecuado para documentos de una sola página o medianos/cortos. El `infer.py` de Unlimited-OCR usa `stream:true` por defecto — **NO copies `stream:true` al `extra_body`**; el MCP lo detecta y rechaza con el aviso «elimina extra.stream». Para PDFs muy largos, primero [parte las páginas con PyMuPDF](https://github.com/baidu/Unlimited-OCR#transformers) (el README trae un snippet `pdf_to_images`) y luego llama a `extract_text` por cada página — las peticiones independientes por página evitan de forma natural salidas demasiado largas.
+- **Timeout del servidor**: los documentos largos tardan bastante en generarse; cuando los 60 s por defecto de vLLM no basten, sube el `REQUEST_TIMEOUT` de SGLang o el `--timeout-keepalive` de vLLM.
+- **Umbral de GPU**: 16–24GB VRAM (igual que el nivel 4); si no llegas, sigue usando la cadena paddle(10)/glm-vision(9).
+
+**License**: [MIT](https://github.com/baidu/Unlimited-OCR/blob/main/LICENSE) (alineado con la postura puramente gratuita; mismo nivel que Apache-2.0 de Qwen; uso comercial OK).
+
 #### Comparación rápida de los cuatro niveles
 
 | Nivel | ¿Instala servicio? | Umbral de recursos | Chino | Tabla | Pregunta sobre imagen | License / origen |
