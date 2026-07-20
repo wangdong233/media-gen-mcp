@@ -12,7 +12,11 @@
 
 Tired of producing images a few times a week and juggling N tools with N sets of parameters? Install this once and hand every image scenario to Claude.
 
-简体中文 | **English** | Deutsch | Español | Français | 日本語 | Português | Русский
+<div align="center">
+
+[简体中文](README.md) | **English** | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
+
+</div>
 
 ## Table of Contents
 

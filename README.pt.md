@@ -12,7 +12,11 @@
 
 Cansado de produzir imagens algumas vezes por semana e lidar com N ferramentas e N conjuntos de parâmetros? Instale uma vez e entregue todos os cenários de imagem ao Claude.
 
-简体中文 | English | Deutsch | Español | Français | 日本語 | **Português** | Русский
+<div align="center">
+
+[简体中文](README.md) | [English](README.en.md) | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | **Português** | [Русский](README.ru.md)
+
+</div>
 
 ## Índice
 

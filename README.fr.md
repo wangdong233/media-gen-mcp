@@ -12,7 +12,11 @@
 
 Fatigué de produire des images plusieurs fois par semaine et d'installer N outils avec N jeux de paramètres ? Ici, un seul install, et vous confiez tous vos scénarios image à Claude.
 
-简体中文 | English | Deutsch | Español | **Français** | 日本語 | Português | Русский
+<div align="center">
+
+[简体中文](README.md) | [English](README.en.md) | [Deutsch](README.de.md) | [Español](README.es.md) | **Français** | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
+
+</div>
 
 ## Sommaire
 
