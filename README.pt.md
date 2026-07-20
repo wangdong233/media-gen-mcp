@@ -12,7 +12,7 @@
 
 Cansado de produzir imagens algumas vezes por semana e lidar com N ferramentas e N conjuntos de parâmetros? Instale uma vez e entregue todos os cenários de imagem ao Claude.
 
-🌐 Idiomas: [简体中文](README.md) · [English](README.en.md) · 日本語 · Español · Français · Deutsch · Русский · **Português** (PRs para outros idiomas bem-vindos)
+🌐 Languages: [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · **Português**
 
 ## Índice
 

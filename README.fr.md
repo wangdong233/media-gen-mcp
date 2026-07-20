@@ -12,7 +12,7 @@
 
 Fatigué de produire des images plusieurs fois par semaine et d'installer N outils avec N jeux de paramètres ? Ici, un seul install, et vous confiez tous vos scénarios image à Claude.
 
-🌐 Languages: [简体中文](README.md) · [English](README.en.md) · 日本語 · Español · **Français** · Deutsch · Русский · Português (les autres langues sont les bienvenues via PR)
+🌐 Languages: [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [Español](README.es.md) · **Français** · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Português](README.pt.md)
 
 ## Sommaire
 

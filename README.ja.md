@@ -12,7 +12,7 @@
 
 毎週何度も画像を作るたびに N 個のツールを入れて N 通りのパラメータを覚えるのは面倒?ここなら一度インストールするだけで、すべての画像シーンを Claude に任せられます。
 
-🌐 Languages: [简体中文](README.md) · [English](README.en.md) · **日本語** · Español · Français · Deutsch · Русский · Português(他言語の PR も歓迎)
+🌐 Languages: [简体中文](README.md) · [English](README.en.md) · **日本語** · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Português](README.pt.md)
 
 ## 目次
 

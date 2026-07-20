@@ -12,7 +12,7 @@
 
 Satt, mehrmals pro Woche Bilder zu erstellen und N Tools mit N Parametersätzen zu jonglieren? Einmal installieren und jedes Bild-Szenario an Claude übergeben.
 
-🌐 Sprachen: [简体中文](README.md) · [English](README.en.md) · 日本語 · Español · Français · **Deutsch** · Русский · Português (PRs für weitere Sprachen willkommen)
+🌐 Languages: [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Français](README.fr.md) · **Deutsch** · [Русский](README.ru.md) · [Português](README.pt.md)
 
 ## Inhaltsverzeichnis
 

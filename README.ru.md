@@ -12,7 +12,7 @@
 
 Мучаетесь, что каждую неделю нужно сделать пару картинок и для каждой ставить отдельный инструмент и запоминать свои параметры? Здесь — одна установка, и все сценарии работы с изображениями можно смело переложить на Claude.
 
-🌐 Языки: [简体中文](README.md) · [English](README.en.md) · 日本語 · Español · Français · Deutsch · **Русский** · Português (PR с переводами на другие языки приветствуются)
+🌐 Languages: [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · **Русский** · [Português](README.pt.md)
 
 ## Содержание
 
