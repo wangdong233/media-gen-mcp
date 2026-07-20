@@ -44,6 +44,7 @@ import {
   getPdfJob,
   type PdfPipelineInput,
 } from "./pdf/pipeline.js";
+import { getPdfPageCount } from "./pdf/render.js";
 import { parsePageRange } from "./pdf/page-range.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -1127,9 +1128,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           return err(`provider "${preferred.name}" 不支持 extract-text(支持:${[...preferred.visionTasks()].join("/")})。`);
         }
 
-        // 同步/异步决策:先确定总页数(pageRange 解析需要),再估算耗时
-        // 注意 getPdfPageCount 内部会 dynamic import pdfjs;若缺 → 友好错误
-        const { getPdfPageCount } = await import("./pdf/render.js");
+        // 同步/异步决策:先确定总页数 + pageRange,再用【目标页数】估耗时/OOM 门禁
+        // 审查数据#3:maxPages 原用文档总页数,pageRange 子集请求(如 300 页 PDF 取 1-5)被误拒;改为 targetCount
         let totalPages: number;
         try {
           totalPages = await getPdfPageCount(source);
@@ -1137,12 +1137,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           return err(`PDF 加载失败:${e instanceof Error ? e.message : String(e)}`);
         }
         if (totalPages <= 0) return err("PDF 无任何页面。");
-        const maxPages = (config as any).pdf?.maxPages ?? 200;
-        if (totalPages > maxPages) {
-          return err(`PDF 总页数 ${totalPages} 超过上限 ${maxPages}(OOM 保护,可经 config.pdf.maxPages 调优)。`);
-        }
         const range = parsePageRange(optString(a.pageRange), totalPages);
         const targetCount = range.pages.length || totalPages;
+        const maxPages = (config as any).pdf?.maxPages ?? 200;
+        if (targetCount > maxPages) {
+          return err(`目标页数 ${targetCount}(pageRange 解析后)超过上限 ${maxPages}(OOM 保护,可经 config.pdf.maxPages 调优)。文档总页数 ${totalPages}。`);
+        }
         const estSeconds = estimatePdfSeconds(targetCount, preferred.name);
         const wait = a.wait === true || (a.wait === undefined && estSeconds <= ASYNC_THRESHOLD_SECONDS);
 
@@ -1152,12 +1152,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           textStrategy: textStrategy as PdfPipelineInput["textStrategy"],
           languages: toStringArray(a.languages),
           digitOnly: a.digitOnly === true,
-          segmentation: optString(a.segmentation) as PdfPipelineInput["digitOnly"] extends never ? never : ExtractTextHints["segmentation"],
+          segmentation: optString(a.segmentation) as ExtractTextHints["segmentation"],
           layout: optString(a.layout) as ExtractTextHints["layout"],
           ignoreAreasRaw,
           mergePages: a.mergePages === false ? false : true,
           outputFormat,
-          scale: reqScale,
+          // 审查架构#4:per-call scale 缺省时回落 config.pdf.scale(原死配置,用户配 PDF_SCALE 现生效)
+          scale: reqScale ?? (config as any).pdf?.scale,
           provider: optString(a.provider),
         };
         const warnings: string[] = [];
@@ -1188,14 +1189,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           });
         }
 
-        // 同步:跑完
-        let result;
-        try {
-          result = await runPdfPipeline(pipelineInput, preferred, (pct, msg) => emitProgress(pct, msg));
-        } catch (e: any) {
-          // 同步路径失败也保持 extract_text 风格:抛 → 顶层 catch 转 isError
-          throw e;
-        }
+        // 同步:跑完(审查规范/业务/端到端:删原 no-op try/catch — 顶层 catch 已统一兜底)
+        const result = await runPdfPipeline(pipelineInput, preferred, (pct, msg) => emitProgress(pct, msg));
         // 把 pipeline 产出的 warnings 与早期 warnings 合并去重
         for (const w of result.warnings) {
           if (!warnings.includes(w)) warnings.push(w);
@@ -1285,7 +1280,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           if (outputFormat === "json") {
             fileContent = JSON.stringify({
               provider_used: built.providerUsed,
+              path: built.path,
+              total_pages: built.totalPagesDoc,
               pages: built.pages,
+              ...(built.rangeWarnings?.length ? { range_warnings: built.rangeWarnings } : {}),
             }, null, 2);
           } else if (outputFormat === "markdown") {
             fileContent = built.pages.map((p) => `## Page ${p.page}\n\n${p.text ?? "(empty)"}`).join("\n\n---\n\n");
@@ -1297,10 +1295,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return ok({
           status: "completed",
           pdfId: job.id,
+          ...(built.path ? { path: built.path } : {}),
+          ...(built.totalPagesDoc != null ? { total_pages: built.totalPagesDoc } : {}),
           pages: built.pages,
           ...(built.text != null ? { text: built.text } : {}),
           provider_used: built.providerUsed,
           ...(localPath ? { local_path: localPath } : {}),
+          ...(built.rangeWarnings?.length ? { range_warnings: built.rangeWarnings } : {}),
           ...(built.warnings.length ? { warnings: built.warnings } : {}),
         });
       }

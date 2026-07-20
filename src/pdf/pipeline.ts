@@ -7,18 +7,16 @@
  * 2. textStrategy 决策:
  *    - text-layer-only:只走 getTextContent,跳过 OCR
  *    - ocr-only:只走 render→recognize,跳过文本层
- *    - auto(默认):先 text-layer,有则用;否则 OCR
+ *    - auto(默认):先 text-layer;逐页判定 —— 非空文本层页走快路径,空页(扫描插入页)走 OCR
+ *      (审查数据#2 修复:原只看平均字数 → 空页静默丢文本,现 per-page 判定 + 路由到 OCR)
  * 3. OCR 路径:
  *    - page 1 选 provider(含 fallback 钉定);page 2..N 用同家(对齐 get_video 铁律:poll 路径不 fallback)
  *    - per-page:recognize → filterIgnoreAreas → applyTbpu(铁律:剔除先于排版)
- *    - emitProgress 每页一次
+ *    - render 单页失败 → 记 failed 页,继续后续页(render.ts 错误哨兵)
+ *    - emitProgress 每页一次,带 pageResult(异步路径逐页 pushPageResult,审查业务#1 修复)
  * 4. mergePages 决策:true=拼接全文;false=只返 pages[]
  *
- * 同步/异步决策:
- *    - estPerPage 按 provider(tesseract=4s,paddle=2s,vlm=6s,其他=4s)
- *    - est = pages × estPerPage + render_overhead(pages × 1s)
- *    - est ≤ ASYNC_THRESHOLD_SECONDS=60:同步走完
- *    - est > 60:异步注册 job,fire-and-forget 后台 run,返 handle
+ * 同步/异步决策由 index.ts 持有(ASYNC_THRESHOLD_SECONDS 工具层常量);本模块不持有。
  *
  * 接口零侵入:recognize 接口不变(per-page 单图 URI,本管线 render→PNG 后调用)。
  */
@@ -38,9 +36,6 @@ import {
   type PdfJob,
   type PdfPageResult,
 } from "./job-store.js";
-
-/** 工具层用的 ASYNC_THRESHOLD_SECONDS(对齐 src/index.ts:47)。 */
-export const ASYNC_THRESHOLD_SECONDS = 60;
 
 /** per-provider OCR 单页耗时粗估(秒,偏保守)。 */
 const EST_PER_PAGE_SECONDS: Record<string, number> = {
@@ -84,12 +79,20 @@ export interface PdfPipelineResult {
   totalPages: number;
 }
 
-/** 进度回调:type 签名对齐 index.ts 的 emitProgress。 */
-export type ProgressEmitter = (pct: number, message?: string) => void;
+/**
+ * 进度回调:type 签名对齐 index.ts 的 emitProgress + 携带 pageResult。
+ * 异步路径(runPdfAsync)用 pageResult 逐页 pushPageResult(审查业务#1 修复:
+ * 原仅批量末尾 push,get_pdf 进度 hint 与 progress% 自相矛盾)。
+ */
+export type ProgressEmitter = (pct: number, message?: string, pageResult?: PdfPageResult) => void;
 
 /**
  * 估算总耗时(秒)。供同步/异步决策。
  * pages:目标页数;providerName:用于 per-page 估时。
+ *
+ * 注:est 恒按 OCR 单页耗时估,text-layer 命中时实际更快(<1s)。偏保守 ——
+ *宁可把可同步完成的数字 PDF 推异步,也不把耗时 OCR 任务阻塞同步。
+ *若用户确知是数字 PDF,可显式传 wait=true 或 textStrategy=text-layer-only。
  */
 export function estimatePdfSeconds(pages: number, providerName: string): number {
   const perPage = EST_PER_PAGE_SECONDS[providerName] ?? 4;
@@ -114,24 +117,22 @@ function mergePageText(pages: PdfPageResult[]): string {
   return pages.map((p) => p.text ?? "").join("\n\f\n");
 }
 
-/**
- * 选定 OCR provider(含 fallback 钉定,只在 page 1 决策)。
- * 返回选定 provider + 是否走了 fallback(供 warning 透传)。
- *
- * 类型:接受 MediaProvider & VisionProvider(用 .name/.notifyUnavailable from MediaProviderBase +
- * .visionTasks/.recognize from VisionProvider)。
- */
-function pinOcrProvider(
-  preferred: MediaProvider & VisionProvider,
-): { provider: MediaProvider & VisionProvider; warnings: string[] } {
-  // 不预先 try/fallback:由 page 1 的 recognize 实际错误驱动。这里仅校验 task 支持。
-  // 跨页 fallback 钉定 = "page 1 失败才 fallback,选定后 N 页不 fallback"。
-  return { provider: preferred, warnings: [] };
+/** text-layer 路径忽略的 hints(审查业务#5:digitOnly/segmentation/ignoreAreas 仅 OCR 路径生效,应告知用户)。 */
+function textLayerHintsWarning(input: PdfPipelineInput, ignoreAreas: IgnoreAreaInput[] | undefined): string | null {
+  const ignored: string[] = [];
+  if (input.digitOnly) ignored.push("digitOnly");
+  if (input.segmentation) ignored.push("segmentation");
+  if (ignoreAreas?.length) ignored.push("ignoreAreas");
+  if (!ignored.length) return null;
+  return `text-layer 路径不应用 ${ignored.join("/")} hints(这些仅 OCR 路径生效)。如需应用,请改用 textStrategy=ocr-only。`;
 }
 
 /**
  * 单页 OCR 路径:render→PNG→recognize→filterIgnoreAreas→applyTbpu。
  * 单页错误不抛:返 failed=true 的 PdfPageResult,任务继续。
+ *
+ * 返回 provider 实例(非 name 字符串)——调用方直接赋值,消除 name→instance 的来回 roundtrip
+ * (审查规范#7/架构#1:原弃实例只回 name,调用方再 resolveProviderByName 二次查表)。
  */
 async function recognizeOnePage(
   dataUri: string,
@@ -143,7 +144,7 @@ async function recognizeOnePage(
   warnings: string[],
   /** 是否允许本页 fallback(provider 失败时换一家,仅 page 1 = true) */
   allowFallback: boolean,
-): Promise<{ result: VisionResult; providerUsed: string }> {
+): Promise<{ result: VisionResult; provider: MediaProvider & VisionProvider }> {
   let activeProvider: MediaProvider & VisionProvider = provider;
   let result: VisionResult;
   try {
@@ -174,7 +175,7 @@ async function recognizeOnePage(
     if (tbpu.warnings?.length) warnings.push(...tbpu.warnings);
     result = { ...result, blocks: tbpu.blocks, text: tbpu.text };
   }
-  return { result, providerUsed: activeProvider.name };
+  return { result, provider: activeProvider };
 }
 
 /**
@@ -210,10 +211,13 @@ export async function runPdfPipeline(
   const pageResults: PdfPageResult[] = [];
   let providerUsed = preferredProvider.name;
   let path: PdfPipelineResult["path"] = "ocr";
+  /** auto 混合模式下,需要 OCR 的页(文本层为空的扫描页);null = 全部目标页走 OCR */
+  let ocrPages: number[] | null = null;
+  /** text-layer 缓存(供 OCR 单页失败时回退到文本层) */
+  let textLayerPages: Map<number, string> | null = null;
 
   // 3. text-layer 快路径(text-layer-only 或 auto 探测)
   const tryTextLayer = textStrategy === "text-layer-only" || textStrategy === "auto";
-  let textLayerPages: Map<number, string> | null = null;
   if (tryTextLayer) {
     try {
       const tl = await extractTextLayer(input.source, targetPages);
@@ -221,14 +225,17 @@ export async function runPdfPipeline(
         // 强制 text-layer 路径:即使部分页空也用(用户显式指定)
         path = "text-layer";
         for (const p of tl.pages) {
-          pageResults.push({
+          const pr: PdfPageResult = {
             page: p.page,
             text: p.text,
             warnings: p.itemCount === 0 ? ["该页文本层为空(扫描页?)。"] : undefined,
-          });
-          emit?.(Math.round((pageResults.length / targetPages.length) * 100), `第 ${p.page}/${targetPages[0]}页(text-layer)`);
+          };
+          pageResults.push(pr);
+          emit?.(Math.round((pageResults.length / targetPages.length) * 100), `第 ${pageResults.length}/${targetPages.length} 页(text-layer)`, pr);
         }
-        const result: PdfPipelineResult = {
+        const hWarn = textLayerHintsWarning(input, ignoreAreas);
+        if (hWarn) warnings.push(hWarn);
+        return {
           providerUsed,
           pages: pageResults,
           path,
@@ -237,21 +244,30 @@ export async function runPdfPipeline(
           totalPages,
           ...(input.mergePages !== false ? { text: mergePageText(pageResults) } : {}),
         };
-        return result;
       }
       if (tl.hasLayer && textStrategy === "auto") {
-        // auto 模式:有文本层就用,但要检测假阳性(平均字数 < 10 视为可疑,告警 + 保留页供 OCR fallback)
-        const avgChars = tl.pages.reduce((s, p) => s + p.text.length, 0) / Math.max(1, tl.pages.length);
-        if (avgChars >= 10) {
+        // auto 模式逐页判定(审查数据#2 修复:原只看平均字数,空页静默丢文本)
+        const textLayerByPage = new Map<number, string>();
+        const emptyPages: number[] = [];
+        for (const p of tl.pages) {
+          if (p.text) textLayerByPage.set(p.page, p.text);
+          else emptyPages.push(p.page);
+        }
+
+        if (emptyPages.length === 0) {
+          // 全部目标页有非空文本层 → 纯 text-layer 快路径
           path = "text-layer";
           for (const p of tl.pages) {
-            pageResults.push({ page: p.page, text: p.text });
+            const pr: PdfPageResult = { page: p.page, text: p.text };
+            pageResults.push(pr);
+            emit?.(Math.round((pageResults.length / targetPages.length) * 100), `第 ${pageResults.length}/${targetPages.length} 页(text-layer)`, pr);
           }
-          const progress = Math.round((pageResults.length / targetPages.length) * 100);
-          emit?.(progress, `text-layer ${pageResults.length}/${targetPages.length} 页`);
+          const avgChars = tl.pages.reduce((s, p) => s + p.text.length, 0) / Math.max(1, tl.pages.length);
           if (avgChars < 50) {
             warnings.push(`文本层平均每页 ${avgChars.toFixed(0)} 字,质量较低;若识别效果不佳,可改用 textStrategy=ocr-only 强制 OCR。`);
           }
+          const hWarn = textLayerHintsWarning(input, ignoreAreas);
+          if (hWarn) warnings.push(hWarn);
           return {
             providerUsed,
             pages: pageResults,
@@ -262,9 +278,19 @@ export async function runPdfPipeline(
             ...(input.mergePages !== false ? { text: mergePageText(pageResults) } : {}),
           };
         }
-        // 假阳性:保留 text-layer 结果作 fallback,但仍走 OCR
-        textLayerPages = new Map(tl.pages.filter((p) => p.text).map((p) => [p.page, p.text]));
-        warnings.push(`文本层平均每页 ${avgChars.toFixed(0)} 字(< 10),疑为扫描件假阳性,改走 OCR 路径。`);
+
+        // 混合:有文本层的页走 text-layer,空页走 OCR
+        path = "mixed";
+        textLayerPages = textLayerByPage;
+        ocrPages = emptyPages;
+        for (const page of textLayerByPage.keys()) {
+          const pr: PdfPageResult = { page, text: textLayerByPage.get(page)! };
+          pageResults.push(pr);
+          emit?.(Math.round((pageResults.length / targetPages.length) * 100), `第 ${pageResults.length}/${targetPages.length} 页(text-layer)`, pr);
+        }
+        warnings.push(`${textLayerByPage.size} 页有文本层(走 text-layer 快路径),${emptyPages.length} 页文本层为空(扫描页?改走 OCR)。`);
+        const hWarn = textLayerHintsWarning(input, ignoreAreas);
+        if (hWarn) warnings.push(hWarn);
       }
     } catch (e: any) {
       // text-layer 失败(text-layer-only 模式抛;auto 模式降级到 OCR)
@@ -274,54 +300,72 @@ export async function runPdfPipeline(
   }
 
   if (textStrategy === "ocr-only" || textStrategy === "auto") {
-    path = textStrategy === "ocr-only" ? "ocr" : (textLayerPages ? "mixed" : "ocr");
-    // 选定 provider(含 page 1 fallback 决策)
-    const pinned = pinOcrProvider(preferredProvider);
-    let activeProvider: MediaProvider & VisionProvider = pinned.provider;
+    if (path !== "mixed") {
+      path = textStrategy === "ocr-only" ? "ocr" : "ocr"; // auto-no-layer → ocr
+    }
+    // 选定 provider(审查规范#2/业务#6/端到端#6:pinOcrProvider 是纯死代码,已删;直接用 preferred)
+    let activeProvider: MediaProvider & VisionProvider = preferredProvider;
     providerUsed = activeProvider.name;
+    const pagesToOcr = ocrPages ?? targetPages;
 
-    // 4. render → per-page recognize + 后处理
+    // 4. render → per-page recognize + 后处理(render 单页失败由 generator yield error 哨兵)
     const pagesGenerator = iterPdfPages({
       source: input.source,
       scale: input.scale,
-      pages: targetPages,
+      pages: pagesToOcr,
     });
     let firstPage = true;
     for await (const rendered of pagesGenerator) {
+      // render 错误哨兵:记 failed 页,继续后续页(审查业务#2:原 render 错逃出 generator → 整任务 failed)
+      if (rendered.error) {
+        const pr: PdfPageResult = {
+          page: rendered.page,
+          text: textLayerPages?.get(rendered.page) ?? "",
+          warnings: [`第 ${rendered.page} 页渲染失败(${rendered.error.slice(0, 100)})。`],
+          failed: !textLayerPages?.has(rendered.page),
+        };
+        pageResults.push(pr);
+        const pct = Math.round((pageResults.length / targetPages.length) * 100);
+        emit?.(pct, `第 ${pageResults.length}/${targetPages.length} 页(渲染失败)`, pr);
+        firstPage = false;
+        continue;
+      }
       try {
-        const { result, providerUsed: pUsed } = await recognizeOnePage(
-          rendered.dataUri,
+        const { result, provider: pUsed } = await recognizeOnePage(
+          rendered.dataUri!,
           rendered.page,
           activeProvider,
           hints,
           ignoreAreas,
           layout,
           warnings,
-          firstPage, // 仅 page 1 允许 fallback
+          firstPage, // 仅首个 OCR 页允许 fallback
         );
-        if (pUsed !== activeProvider.name) {
-          // page 1 fallback 命中:钉定后续页用同家
-          activeProvider = (await resolveProviderByName(pUsed)) ?? activeProvider;
+        if (pUsed !== activeProvider) {
+          // 首页 fallback 命中:钉定后续页用同家(直接用实例,无需 name→provider 查表)
+          activeProvider = pUsed;
           providerUsed = activeProvider.name;
         }
-        pageResults.push({
+        const pr: PdfPageResult = {
           page: rendered.page,
           text: result.text ?? "",
           blocks: result.blocks,
-        });
+        };
+        pageResults.push(pr);
       } catch (e: any) {
-        // 单页失败:若 textLayer 备份有 → 用;否则记 failed
+        // recognize 单页失败:若 textLayer 备份有 → 用;否则记 failed
         const tlText = textLayerPages?.get(rendered.page);
-        pageResults.push({
+        const pr: PdfPageResult = {
           page: rendered.page,
           text: tlText ?? "",
           warnings: [`第 ${rendered.page} 页 OCR 失败(${(e as Error)?.message?.slice(0, 100)})${tlText ? ",已回退到文本层。" : "。"}`],
           failed: !tlText,
-        });
+        };
+        pageResults.push(pr);
       }
       firstPage = false;
       const pct = Math.round((pageResults.length / targetPages.length) * 100);
-      emit?.(pct, `第 ${pageResults.length}/${targetPages.length} 页(ocr)`);
+      emit?.(pct, `第 ${pageResults.length}/${targetPages.length} 页(ocr)`, pageResults[pageResults.length - 1]);
     }
   }
 
@@ -357,28 +401,29 @@ export function runPdfAsync(
     scale: input.scale,
     provider: input.provider,
   }, targetPages);
-  updatePdfJob(id, { status: "in_progress", total: totalPages });
+  // 审查数据#1/端到端#3 修复:不覆写 total(registerPdfJob 已正确设为目标页数;原 total:totalPages 把分母变成文档总页数)
+  updatePdfJob(id, { status: "in_progress" });
 
   // fire-and-forget
   setImmediate(() => {
     (async () => {
       try {
-        const result = await runPdfPipeline(input, preferredProvider, (pct, msg) => {
-          updatePdfJob(id, { progress: pct });
+        const result = await runPdfPipeline(input, preferredProvider, (pct, msg, pageResult) => {
+          // 审查业务#1 修复:逐页 pushPageResult(done/pages 实时可见,get_pdf hint 不再撒谎)
+          if (pageResult) pushPageResult(id, pageResult);
+          else updatePdfJob(id, { progress: pct });
           emit?.(pct, msg);
         });
-        // 把 pages 逐条 push 进 job(保持进度可见,虽然一次性完成也可)
-        for (const p of result.pages) {
-          pushPageResult(id, p);
-        }
         updatePdfJob(id, {
           status: "completed",
           progress: 100,
           providerUsed: result.providerUsed,
           warnings: result.warnings,
+          // 审查数据#6/业务#4/端到端#5 修复:异步 get_pdf 补 path/totalPages/rangeWarnings(与同步 extract_pdf 对齐)
+          path: result.path,
+          totalPagesDoc: result.totalPages,
+          rangeWarnings: result.rangeWarnings,
         });
-        // 全文缓存到 input 字段不合适;get_pdf 读 job.pages 后由 handler 重新拼接
-        // 但我们仍要把 mergePages=true 时的 text 给 handler —— 通过把所有 pages.text 在 get_pdf 时 join
       } catch (e: any) {
         updatePdfJob(id, {
           status: "failed",
@@ -393,29 +438,23 @@ export function runPdfAsync(
   return id;
 }
 
-/** resolveProviderByName 异步包装(用于 fallback 钉定时换 provider)。 */
-async function resolveProviderByName(name: string): Promise<(MediaProvider & VisionProvider) | null> {
-  try {
-    const { getProvider, asVisionProvider } = await import("../providers/registry.js");
-    const p = getProvider(name);
-    // p 是 MediaProvider;asVisionProvider 守卫后返回 MediaProvider & VisionProvider
-    return asVisionProvider(p);
-  } catch {
-    return null;
-  }
-}
-
 /** get_pdf 读取 job 后做最终装配(handler 复用)。 */
 export function buildResultFromJob(job: PdfJob, mergePages: boolean): {
   pages: PdfPageResult[];
   text?: string;
   providerUsed?: string;
+  path?: string;
+  totalPagesDoc?: number;
+  rangeWarnings?: string[];
   warnings: string[];
 } {
   return {
     pages: job.pages,
     ...(mergePages ? { text: mergePageText(job.pages) } : {}),
     providerUsed: job.providerUsed,
+    path: job.path,
+    totalPagesDoc: job.totalPagesDoc,
+    rangeWarnings: job.rangeWarnings,
     warnings: job.warnings ?? [],
   };
 }

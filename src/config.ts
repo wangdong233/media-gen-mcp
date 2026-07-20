@@ -95,13 +95,13 @@ export const config = {
    * 不安装时调 extract_pdf 返清晰错误,不破坏零配置承诺。
    */
   pdf: {
-    /** 单 PDF 最大页数(风险 R5:大 PDF OOM 保护),默认 200。 */
+    /** 单 PDF 最大页数(按【目标页数】判定,pageRange 子集不误拒;风险 R5:OOM 保护),默认 200。 */
     maxPages: num("PDF_MAX_PAGES", 200, userCfg?.pdf?.maxPages),
-    /** 异步 job TTL(ms),默认 30 分钟。 */
+    /** 异步 job TTL(ms),默认 30 分钟;钳制 ≥1s 防 busy-loop。 */
     jobTtlMs: num("PDF_JOB_TTL_MS", 30 * 60 * 1000, userCfg?.pdf?.jobTtlMs),
-    /** 默认渲染 scale(高 DPI),默认 2.0;调用方可覆盖,代码侧钳制到 [0.5, 3.0]。 */
+    /** 默认渲染 scale(高 DPI),默认 2.0;per-call scale 缺省时回落此值(审查架构#4:已接入,非死配置)。代码侧钳制到 [0.5, 3.0]。 */
     scale: num("PDF_SCALE", 2.0, userCfg?.pdf?.scale),
-    /** 默认并发页数,默认 1(串行,内存安全)。v2 可调大。 */
+    /** 默认并发页数,默认 1(串行,内存安全)。v1 实际串行(参数校验但未消费);v2 并行池落地后启用。 */
     concurrency: num("PDF_CONCURRENCY", 1, userCfg?.pdf?.concurrency),
   },
 

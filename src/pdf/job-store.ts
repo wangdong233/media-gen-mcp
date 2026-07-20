@@ -58,7 +58,7 @@ export interface PdfJob {
   status: PdfJobStatus;
   /** 已完成页数(进度推送用) */
   done: number;
-  /** 目标页数(pageRange 解析后) */
+  /** 目标页数(pageRange 解析后;审查数据#1:不再被文档总页数覆写) */
   total: number;
   /** 进度百分比 0-100 */
   progress: number;
@@ -73,14 +73,21 @@ export interface PdfJob {
   updatedAt: number;
   /** provider 实际选用(extract_pdf 异步分支返回的 provider_used,防 get_pdf 时错位) */
   providerUsed?: string;
+  /** 实际走的路径(text-layer/ocr/mixed;审查数据#6:异步 get_pdf 与同步 extract_pdf 对齐) */
+  path?: "text-layer" | "ocr" | "mixed";
+  /** 文档总页数(区别于 total=目标页数;供 get_pdf 诊断信息) */
+  totalPagesDoc?: number;
+  /** pageRange 越界告警(异步路径透传,供 get_pdf 完成响应重现) */
+  rangeWarnings?: string[];
 }
 
 const store = new Map<string, PdfJob>();
 
-/** TTL(默认 30min)。 */
-const TTL_MS = config.pdf?.jobTtlMs ?? 30 * 60 * 1000;
-/** sweeper 间隔(默认 5min)。 */
-const SWEEP_INTERVAL_MS = Math.min(TTL_MS, 5 * 60 * 1000);
+/** TTL(默认 30min)。审查规范#8:TTL_MS 钳制 ≥1s,防 config.pdf.jobTtlMs=0/负数 → SWEEP_INTERVAL_MS=0 busy-loop 卡死 server。 */
+const RAW_TTL_MS = config.pdf?.jobTtlMs ?? 30 * 60 * 1000;
+const TTL_MS = Number.isFinite(RAW_TTL_MS) && RAW_TTL_MS >= 1000 ? RAW_TTL_MS : 30 * 60 * 1000;
+/** sweeper 间隔(钳制 [1s, 5min],防 0 触发无限回调)。 */
+const SWEEP_INTERVAL_MS = Math.min(Math.max(TTL_MS, 1000), 5 * 60 * 1000);
 
 // 后台 sweeper:setInterval 每隔一段时间清理过期任务(无需 unref 也可:MCP server 长驻;
 // 但为防测试脚本 pin 事件循环,加 unref)

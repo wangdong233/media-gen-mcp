@@ -6,17 +6,23 @@
  * 对纯扫描件(图像页)返回空 items —— 调用方据此切换到 OCR 路径。
  *
  * 设计要点(参 doc_v10/pares6/pdf-pipeline.md §3 决策 / 风险 R12):
- * - 与 render.ts 共享 pdfjs 加载(cmaps/standard_fonts/workerSrc);但单独导出以避免不必要渲染。
- * - 空 text layer 判定:items 全空串 → 视为无文本层(返回 hasLayer=false)。
- * - 假阳性(扫描件嵌入 OCR 文本但质量差):由 pipeline.ts 的平均字数阈值告警提示用户切 ocr-only。
+ * - pdfjs 加载 + source 解析 + 类型,统一抽到 src/pdf/pdfjs-loader.ts(审查规范#1:消除与 render.ts 的重复)
+ * - 安装提示只提 pdfjs-dist(审查规范#6:text-layer 路径不碰 canvas,原提示错列 @napi-rs/canvas 误导用户)
+ * - 文本拼接用 hasEOL 行尾标志(审查数据#4:原直接 += 丢换行,多行文本被压成一行)
+ * - 空 text layer 判定:items 全空串 → 视为无文本层(返回 hasLayer=false)
+ * - 假阳性(扫描件嵌入 OCR 文本但质量差):由 pipeline.ts 的平均字数阈值告警提示用户切 ocr-only
  *
  * 坐标空间:pdfjs item.transform 为 PDF 内部坐标系(原点左下,y 向上)。
  * 此处仅拼接 text,不做坐标映射;若需 bbox(用于 ignoreAreas / tbpu),仍走 OCR 路径
  * (provider 返回的 bbox 是图像像素坐标,与 ignoreAreas 坐标空间一致)。
  */
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { readFile } from "node:fs/promises";
+import {
+  loadPdfjs,
+  readPdfBytes,
+  buildPdfDocParams,
+  PDFJS_INSTALL_HINT,
+  type PdfDocument,
+} from "./pdfjs-loader.js";
 
 export interface TextLayerPage {
   page: number;
@@ -31,80 +37,6 @@ export interface TextLayerResult {
   pages: TextLayerPage[];
 }
 
-interface PdfjsTextModule {
-  GlobalWorkerOptions: { workerSrc: string };
-  getDocument: (params: Record<string, unknown>) => { promise: Promise<PdfTextDocument>; destroy?: () => Promise<void> };
-}
-interface PdfTextDocument {
-  numPages: number;
-  getPage: (n: number) => Promise<PdfTextPage>;
-  cleanup: () => Promise<void>;
-  destroy?: () => Promise<void>;
-}
-interface PdfTextPage {
-  getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
-  cleanup: () => Promise<void>;
-}
-
-let workerConfigured = false;
-
-async function loadPdfjsForText(): Promise<{
-  mod: PdfjsTextModule;
-  cmapsDir: string;
-  fontsDir: string;
-}> {
-  let mod: PdfjsTextModule;
-  try {
-    mod = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfjsTextModule;
-  } catch {
-    throw new Error(
-      "PDF 处理依赖 pdfjs-dist 未安装。请运行:npm install pdfjs-dist@^6 @napi-rs/canvas@^1",
-    );
-  }
-  if (!workerConfigured) {
-    const { createRequire } = await import("node:module");
-    const require = createRequire(import.meta.url);
-    const pkgRoot = path.dirname(require.resolve("pdfjs-dist/package.json"));
-    mod.GlobalWorkerOptions.workerSrc = pathToFileURL(
-      path.join(pkgRoot, "build", "pdf.worker.mjs"),
-    ).href;
-    workerConfigured = true;
-    return {
-      mod,
-      cmapsDir: path.join(pkgRoot, "cmaps") + path.sep,
-      fontsDir: path.join(pkgRoot, "standard_fonts") + path.sep,
-    };
-  }
-  // worker 已配但 cmaps/fonts 路径仍要算
-  const { createRequire } = await import("node:module");
-  const require = createRequire(import.meta.url);
-  const pkgRoot = path.dirname(require.resolve("pdfjs-dist/package.json"));
-  return {
-    mod,
-    cmapsDir: path.join(pkgRoot, "cmaps") + path.sep,
-    fontsDir: path.join(pkgRoot, "standard_fonts") + path.sep,
-  };
-}
-
-async function readBytes(source: string, timeoutMs: number): Promise<Uint8Array> {
-  if (/^https?:\/\//i.test(source)) {
-    const res = await fetch(source, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok || !res.body) throw new Error(`下载 PDF 失败:HTTP ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
-  }
-  const m = /^data:application\/pdf;([a-zA-Z0-9!#$&'*+.^_`|~-]*),(.*)$/is.exec(source);
-  if (m) {
-    const enc = m[2] ?? "";
-    const buf = /base64/i.test(m[1] ?? "")
-      ? Buffer.from(enc, "base64")
-      : Buffer.from(decodeURIComponent(enc), "utf-8");
-    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-  }
-  const local = source.startsWith("file://") ? source.slice("file://".length) : source;
-  const b = await readFile(local);
-  return new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
-}
-
 /**
  * 提取 PDF 文本层。
  * @param source PDF URI
@@ -116,18 +48,11 @@ export async function extractTextLayer(
   pages?: number[],
   fetchTimeoutMs?: number,
 ): Promise<TextLayerResult> {
-  const { mod, cmapsDir, fontsDir } = await loadPdfjsForText();
-  const bytes = await readBytes(source, fetchTimeoutMs ?? 60_000);
-  const loadingTask = mod.getDocument({
-    data: bytes,
-    useSystemFonts: false,
-    cMapUrl: cmapsDir,
-    cMapPacked: true,
-    standardFontDataUrl: fontsDir,
-    isEvalSupported: false,
-  });
+  const { mod, cmapsDir, fontsDir } = await loadPdfjs();
+  const bytes = await readPdfBytes(source, fetchTimeoutMs ?? 60_000);
+  const loadingTask = mod.getDocument(buildPdfDocParams(bytes, cmapsDir, fontsDir));
 
-  let doc: PdfTextDocument | null = null;
+  let doc: PdfDocument | null = null;
   try {
     doc = await loadingTask.promise;
     const total = doc.numPages;
@@ -139,13 +64,15 @@ export async function extractTextLayer(
       const page = await doc.getPage(pageNo);
       try {
         const tc = await page.getTextContent();
-        // 每个 item.str 拼接(空字符串自然无贡献);pdfjs 还会塞入空白/换行 item,保留原序
+        // 拼接:用 hasEOL 行尾标志插换行(审查数据#4 修复);pdfjs 还会塞空白/换行 item,保留原序
         let text = "";
         let itemCount = 0;
         for (const it of tc.items) {
-          const s = (it as { str?: string }).str ?? "";
+          const s = it.str ?? "";
           if (s) {
             text += s;
+            // pdfjs TextItem.hasEOL=true 表示该 item 是行尾 → 换行,还原视觉行序
+            if (it.hasEOL) text += "\n";
             itemCount++;
           }
         }
@@ -162,3 +89,6 @@ export async function extractTextLayer(
     await loadingTask.destroy?.().catch(() => {});
   }
 }
+
+/** 仅用于错误消息复用(本文件只用 pdfjs-dist,不用 canvas)。 */
+export { PDFJS_INSTALL_HINT };
