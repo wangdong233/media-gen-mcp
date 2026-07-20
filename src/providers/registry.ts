@@ -42,10 +42,11 @@ const registry: Record<string, MediaProvider> = {
 
 // pares7: glm-vision 多 key 违约警告(智谱 User Agreement §2/§3 禁多账号/共享;Code Plan key 不可用)
 {
-  const glmKeys = (config.providers["glm-vision"]?.apiKeys ?? []).filter(Boolean);
+  // 去重计数(对齐 KeyPool 构造函数 Set 去重,review:免 [k1,k1] 误报)
+  const glmKeys = [...new Set((config.providers["glm-vision"]?.apiKeys ?? []).filter(Boolean))];
   if (glmKeys.length > 1) {
     console.warn(
-      `[media-gen-mcp] ⚠️ glm-vision 配置了 ${glmKeys.length} 个 api_key(多 key 轮换)。智谱 User Agreement §2/§3 禁止多账号/账号共享,多 key 轮换可能违约(平台有权封号且订阅费不退)。请确认:(1) 所有 key 均为合规自有账号;(2) 非 Code Plan key(Code Plan 限 9 个白名单工具,media-gen-mcp 不在内)。`,
+      `[media-gen-mcp] ⚠️ glm-vision 配置了 ${glmKeys.length} 个不重复 api_key(多 key 轮换)。智谱 User Agreement §2/§3 禁止多账号/账号共享,多 key 轮换可能违约(平台有权封号且订阅费不退)。请确认:(1) 所有 key 均为合规自有账号;(2) 非 Code Plan key(Code Plan 限 9 个白名单工具,media-gen-mcp 不在内)。`,
     );
   }
 }
@@ -267,35 +268,23 @@ function buildVisionRoutingGuidance(
   defaultVision: string,
 ): Record<string, string> {
   const guidance: Record<string, string> = {};
+  const tierOf = (n: string) => providers.find((p) => p.name === n)?.tier ?? 0;
   const configuredOf = (task: string) => (taskCoverage[task] ?? []).filter((n) => {
     const p = providers.find((x) => x.name === n);
     return p?.configured !== false;
   });
-  const hasPaddle = providers.some((p) => p.name === "paddle" && p.configured !== false);
 
   for (const task of Object.keys(taskCoverage)) {
-    const configured = configuredOf(task);
-    if (task === "extract-text") {
-      guidance[task] = hasPaddle
-        ? `paddle 中文 SOTA 优先(若 configured);否则 ${defaultVision} 兜底`
-        : `默认 ${defaultVision}(零配置兜底);中文文档建议配 paddle(accuracyTier=high)`;
-    } else if (task === "extract-table") {
-      guidance[task] = configured.length
-        ? "paddle 支持;已 configured"
-        : "仅 paddle 支持;未配置时返回清晰错误,无静默降级到 OCR(请配置 providers.paddle.baseUrl)";
-    } else if (task === "analyze-chart") {
-      guidance[task] = configured.length
-        ? "paddle 主力 + vlm fallback(按 configured 状态)"
-        : "需配置 paddle 或 vlm;未配置时返回清晰错误";
-    } else if (task === "describe-image") {
-      const vlmCfg = providers.some((p) => p.name === "vlm" && p.configured !== false);
-      guidance[task] = vlmCfg
-        ? "需 question(VQA)用 vlm;paddle 仅默认描述(忽略 question)"
-        : "paddle 仅默认描述;完整 VQA(带 question)需配置 vlm provider";
+    const all = taskCoverage[task] ?? [];
+    const cfg = configuredOf(task);
+    if (cfg.length === 0) {
+      // 无 configured:候选列 + 默认兜底(让用户知道配哪些能启用)
+      guidance[task] = `未配置 provider(候选:${all.join("/")});默认走 ${defaultVision}(零配置兜底)`;
     } else {
-      guidance[task] = configured.length
-        ? `可用:${configured.join(", ")}`
-        : "暂无 configured 的 provider";
+      // 按 tier 降序列 configured(fallback 链顺序)—— glm-vision/paddle/vlm 全自动包含,不再硬编码
+      const ordered = cfg.slice().sort((a, b) => tierOf(b) - tierOf(a));
+      const tail = ordered.includes(defaultVision) ? "" : ` → ${defaultVision}(兜底)`;
+      guidance[task] = `fallback 链:${ordered.join(" → ")}${tail}`;
     }
   }
   return guidance;

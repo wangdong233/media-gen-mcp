@@ -43,7 +43,8 @@ function buildProviders(): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [name, raw] of Object.entries(up)) {
     const p = (raw ?? {}) as Record<string, any>;
-    const upper = name.toUpperCase();
+    // env 前缀:连字符→下划线(glm-vision → GLM_VISION_API_KEY,POSIX shell 标识符合法)
+    const upper = name.toUpperCase().replace(/-/g, "_");
     // apiKeys(pares7):config.json `apiKeys: [...]` 或 env `${UPPER}_API_KEYS`(逗号分隔);单 key apiKey 向后兼容
     const apiKeysFromEnv = process.env[`${upper}_API_KEYS`];
     const apiKeys = Array.isArray(p.apiKeys)

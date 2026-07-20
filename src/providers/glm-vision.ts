@@ -30,6 +30,7 @@ import type {
   VisionOptionDescriptors,
   ProviderCapabilities,
   ProviderHealth,
+  ExtractTableHints,
 } from "./types.js";
 import { ZhipuClient } from "./zhipu-client.js";
 import { KeyPool } from "./key-pool.js";
@@ -96,9 +97,12 @@ export class GlmVisionProvider implements MediaProviderBase, VisionProvider {
     };
   }
   health(): ProviderHealth {
+    // review:cooldown 须反映 KeyPool 全不可用(pool.allUnavailable),否则 getFallbackProvider
+    // 仍把 glm-vision 当候选 → 每次首打失败再 fallback(无谓消耗一次调用)
+    const poolDown = this.pool.size > 0 && this.pool.allUnavailable();
     return {
       configured: !!this.client.apiKey,
-      cooldown: this.cooldownUntil > Date.now(),
+      cooldown: this.cooldownUntil > Date.now() || poolDown,
       ...(this.lastErrorAt ? { lastErrorAt: this.lastErrorAt } : {}),
     };
   }
@@ -169,12 +173,12 @@ export class GlmVisionProvider implements MediaProviderBase, VisionProvider {
       }
     }
 
-    // 全 key 耗尽:抛 isFallbackWorthy 错误,让 getFallbackProvider 切下一 provider(vlm/tesseract)
-    if (!lastErr) {
-      lastErr = new Error("glm-vision 所有 key 不可用(全限额/全耗尽)");
-    }
-    (lastErr as any).status = (lastErr as any).status ?? 429;
-    throw lastErr;
+    // 全 key 耗尽/全冷却:强制 status=429(保证 isFallbackWorthy=true,让 getFallbackProvider 切 vlm/tesseract)
+    // review 修复:原 `?? 429` 是死代码(catch 的 lastErr.status 已是数字),若原始 HTTP 是 402(1113 欠费变体)/400,
+    // isFallbackWorthy=false 不触发 fallback。全耗尽语义=provider 不可用,应无条件走 fallback 链
+    const exhaustedErr = lastErr instanceof Error ? lastErr : new Error("glm-vision 所有 key 不可用(全限额/全耗尽)");
+    (exhaustedErr as any).status = 429;
+    throw exhaustedErr;
   }
 
   /** 按 task 把 chat content 解析为 VisionResult(对齐 vlm.ts parse 逻辑)。 */
@@ -191,9 +195,12 @@ export class GlmVisionProvider implements MediaProviderBase, VisionProvider {
       return { task: "analyze-chart", chart, description: content, raw: content };
     }
     if (req.task === "extract-table") {
-      const m = content.match(/<table[\s\S]*?<\/table>/i);
-      const tableContent = m ? m[0] : content;
-      return { task: "extract-table", table: { format: "html", content: tableContent }, raw: content };
+      // review:尊重 hints.format(prompt 已要求对应格式),而非硬编码 html
+      const fmt = (req.hints as ExtractTableHints | undefined)?.format ?? "html";
+      const tableContent = fmt === "html"
+        ? (content.match(/<table[\s\S]*?<\/table>/i)?.[0] ?? content)
+        : content; // markdown/latex/csv/json:用模型原文(prompt 已要求对应格式)
+      return { task: "extract-table", table: { format: fmt, content: tableContent }, raw: content };
     }
     // extract-text
     return { task: "extract-text", text: content, raw: content };
