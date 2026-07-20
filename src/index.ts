@@ -34,6 +34,8 @@ import { renderIcon } from "./icon.js";
 import { renderCard } from "./card.js";
 import { renderSvg } from "./render-svg.js";
 import { renderVideo } from "./render-video.js";
+import { applyTbpu } from "./vision/tbpu.js";
+import { filterIgnoreAreas, parseIgnoreAreas } from "./vision/ignore-area.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -181,6 +183,8 @@ function buildTools() {
           digitOnly: { type: "boolean", description: "Recognize digits only (verification code / digit readout) → whitelist 0-9." },
           segmentation: { type: "string", enum: ["auto", "single-line", "single-char", "sparse-text"], default: "auto", description: "Layout assumption: auto=fully automatic / single-line=one line of text (captcha) / single-char=one character / sparse-text=scattered text." },
           outputFormat: { type: "string", enum: ["text", "json"], default: "text", description: "text=full text only; json=includes blocks (bbox+confidence per line)." },
+          layout: { type: "string", enum: ["none", "natural", "plain", "code"], default: "none", description: "Layout post-processing (provider-agnostic TBPU, Umi-OCR algorithm port): none=no processing (default, join by newline) / natural=multi-column natural paragraphs (best for documents, GapTree+ParagraphParse) / plain=multi-column plain text flow (no hard line breaks) / code=single-column code block (preserve indentation). Apply when document has multi-column layout or paragraph wrapping issues." },
+          ignoreAreas: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, required: ["x", "y", "w", "h"] }, description: "Ignore regions (watermark / red stamp / header-footer) — blocks whose bbox falls fully inside any area are dropped. Coordinates in image pixel space; {x,y,w,h} = origin+size. Filtering runs before layout." },
           provider: { type: "string", description: "Vision provider; default config.defaultVisionProvider (tesseract fallback; paddle/vlm need configuration)." },
           name: { type: "string", description: "Output filename (no extension; saved as .txt when text is extracted)." },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
@@ -718,10 +722,20 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (!activeProvider.visionTasks().includes("extract-text")) {
           return err(`provider "${activeProvider.name}" 不支持 extract-text(支持:${[...activeProvider.visionTasks()].join("/")})。`);
         }
+        // ignoreAreas 严格校验(parseIgnoreAreas 接受 {x,y,w,h} / [[x1,y1],[x2,y2]] 两形态,非法即抛 → isError)
+        let ignoreAreas;
+        try {
+          ignoreAreas = parseIgnoreAreas(a.ignoreAreas);
+        } catch (e: any) {
+          return err(e?.message ?? String(e));
+        }
+        const layout = optString(a.layout) as ExtractTextHints["layout"];
         const hints: ExtractTextHints = {
           languages: toStringArray(a.languages),
           digitOnly: a.digitOnly === true,
           segmentation: optString(a.segmentation) as ExtractTextHints["segmentation"],
+          layout,
+          ignoreAreas: ignoreAreas as ExtractTextHints["ignoreAreas"],
         };
         const outputFormat = optString(a.outputFormat) ?? "text";
         const warnings: string[] = [];
@@ -738,6 +752,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           if (!activeProvider.visionTasks().includes("extract-text")) throw e;
           warnings.push(`provider "${resolved.provider.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${activeProvider.name}"。`);
           result = await activeProvider.recognize({ image, task: "extract-text", hints });
+        }
+        // pares5 TBPU 后处理(provider-agnostic):先 filterIgnoreAreas(去水印/红章)→ 再 applyTbpu(排版重排)。
+        // 铁律:剔除先于排版,避免被剔除块参与 GapTree 干扰列分隔线检测。
+        // 仅在 provider 返回 blocks 时运行;无 blocks(仅 text)时跳过,免空 blocks 覆盖有效 text。
+        if (result.blocks && result.blocks.length) {
+          const filtered = filterIgnoreAreas(result.blocks, ignoreAreas);
+          if (filtered.dropped > 0) {
+            warnings.push(`ignoreAreas 剔除 ${filtered.dropped} 个文本块。`);
+          }
+          if (filtered.noBboxKept > 0) {
+            warnings.push(`${filtered.noBboxKept} 个块无 bbox 无法判定忽略区,已保留。`);
+          }
+          const tbpu = applyTbpu(filtered.blocks, layout);
+          if (tbpu.warnings?.length) warnings.push(...tbpu.warnings);
+          result = { ...result, blocks: tbpu.blocks, text: tbpu.text };
         }
         let localPath: string | null = null;
         if (result.text && a.download !== false) {

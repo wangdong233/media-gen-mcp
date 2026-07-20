@@ -138,6 +138,20 @@ export interface ExtractTextHints {
   digitOnly?: boolean;
   /** 语义级版面假设;provider 翻译为自家 PSM(tesseract 0-13)/版面策略。 */
   segmentation?: "auto" | "single-line" | "single-char" | "sparse-text";
+  /**
+   * 排版后处理策略(provider-agnostic,handler 层 applyTbpu 实施,不进 provider):
+   * - none=不处理(默认,等价 join("\n"))
+   * - natural=多栏-自然段(文档首选,GapTree+ParagraphParse)
+   * - plain=多栏-纯文本流(无硬换行)
+   * - code=单栏-代码段(保缩进)
+   * 完整 8 策略透传口见 LayoutStrategy(multi-para/single-line 等)。
+   */
+  layout?: "none" | "natural" | "plain" | "code";
+  /**
+   * 忽略区域坐标(去水印/红章/页眉页脚)。handler 层 filterIgnoreAreas 先于 layout 执行,
+   * 块 bbox 完全落在任一 AABB 内才剔除。每项为 {x,y,w,h}(原点+尺寸)。
+   */
+  ignoreAreas?: Array<{ x: number; y: number; w: number; h: number }>;
 }
 export interface ExtractTableHints {
   format?: "html" | "markdown" | "json" | "latex";
