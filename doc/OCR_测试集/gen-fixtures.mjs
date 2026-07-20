@@ -222,4 +222,135 @@ greet("World");`;
   writeFix("s7_chat", png, truth);
 }
 
-console.log("\n7 个可控夹具生成完毕 → doc/OCR_测试集/");
+// ── s9 复杂表格(多层表头 + 合并单元格) ──
+// glm-vision 强项维度:多层表头(产品 \ 季度 → Q1/Q2 子列) + 合并单元格(行表头列合并 + 列表头跨两季度)
+// ground-truth = 表格纯文本(去 tag,行内 \t 分隔,与 HTML 表格语义对齐)
+{
+  // 表格语义:第一列=产品(A/B/C 三行合并),表头=「季度」(合并) → Q1 数量/金额 + Q2 数量/金额(子表头)
+  // 数据:产品A Q1 120件 ¥1200 / Q2 150件 ¥1800;产品B Q1 80件 ¥960 / Q2 100件 ¥1400;产品C Q1 60件 ¥900 / Q2 90件 ¥1620
+  const headers = [
+    { text: "产品", sub: [] },                        // 0,0 占两行(rowspan=2)
+    { text: "Q1 第一季度", sub: ["数量(件)", "金额(元)"] }, // 0,1-2 colspan=2
+    { text: "Q2 第二季度", sub: ["数量(件)", "金额(元)"] }, // 0,3-4 colspan=2
+  ];
+  const rows = [
+    { product: "产品 A", cells: ["120", "1200", "150", "1800"] },
+    { product: "产品 B", cells: ["80", "960", "100", "1400"] },
+    { product: "产品 C", cells: ["60", "900", "90", "1620"] },
+  ];
+  const W = 820, H = 360;
+  const png = render(W, H, "#fff", (ctx) => {
+    // 列宽:产品 160 + 4 个数据列 各 165
+    const colX = [40, 200, 365, 530, 695];
+    const colRight = [200, 365, 530, 695, 860];
+    const rowH = 60, headerH1 = 50, headerH2 = 50;
+    const topY = 40;
+    const lineW = 1.5;
+    // 整框
+    ctx.strokeStyle = "#222"; ctx.lineWidth = lineW;
+    ctx.strokeRect(40, topY, 820, headerH1 + headerH2 + rows.length * rowH);
+    // 行表头列竖线(产品列右边界)
+    ctx.beginPath(); ctx.moveTo(colX[1], topY); ctx.lineTo(colX[1], topY + headerH1 + headerH2 + rows.length * rowH); ctx.stroke();
+    // Q1/Q2 横线(表头第一行下界)
+    ctx.beginPath(); ctx.moveTo(40, topY + headerH1); ctx.lineTo(860, topY + headerH1); ctx.stroke();
+    // Q1/Q2 中线(每个季度 → 数量/金额 两子列)
+    ctx.beginPath();
+    ctx.moveTo(colX[2], topY + headerH1); ctx.lineTo(colX[2], topY + headerH1 + headerH2 + rows.length * rowH);
+    ctx.moveTo(colX[3], topY + headerH1); ctx.lineTo(colX[3], topY + headerH1 + headerH2 + rows.length * rowH);
+    ctx.moveTo(colX[4], topY + headerH1); ctx.lineTo(colX[4], topY + headerH1 + headerH2 + rows.length * rowH);
+    ctx.stroke();
+    // 数据行横线
+    for (let i = 1; i < rows.length; i++) {
+      const y = topY + headerH1 + headerH2 + i * rowH;
+      ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(860, y); ctx.stroke();
+    }
+    // 文字:第一行产品(占两行,垂直居中)
+    ctx.fillStyle = "#111"; ctx.font = `bold 22px ${CJK}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("产品", (colX[0] + colRight[0]) / 2, topY + (headerH1 + headerH2) / 2);
+    // 第一行表头 Q1/Q2(各占两列)
+    ctx.fillText("Q1 第一季度", (colX[1] + colRight[2]) / 2, topY + headerH1 / 2);
+    ctx.fillText("Q2 第二季度", (colX[3] + colRight[4]) / 2, topY + headerH1 / 2);
+    // 第二行子表头 数量/金额 × 2
+    ctx.font = `18px ${CJK}`;
+    ctx.fillText("数量(件)", (colX[1] + colRight[1]) / 2, topY + headerH1 + headerH2 / 2);
+    ctx.fillText("金额(元)", (colX[2] + colRight[2]) / 2, topY + headerH1 + headerH2 / 2);
+    ctx.fillText("数量(件)", (colX[3] + colRight[3]) / 2, topY + headerH1 + headerH2 / 2);
+    ctx.fillText("金额(元)", (colX[4] + colRight[4]) / 2, topY + headerH1 + headerH2 / 2);
+    // 数据行
+    ctx.font = `20px ${CJK}`;
+    rows.forEach((r, i) => {
+      const y = topY + headerH1 + headerH2 + (i + 0.5) * rowH;
+      ctx.font = `bold 20px ${CJK}`; ctx.fillText(r.product, (colX[0] + colRight[0]) / 2, y);
+      ctx.font = `20px ${MONO}`;
+      r.cells.forEach((c, j) => {
+        ctx.fillText(c, (colX[1 + j] + colRight[1 + j]) / 2, y);
+      });
+    });
+    // 标题
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.font = `bold 26px ${CJK}`; ctx.fillStyle = "#111";
+    ctx.fillText("2026 上半年季度销售报表(单位:元)", 40, 28);
+  });
+  // ground-truth:语义化纯文本(行内 tab 分隔,合并单元格用「合并标识」清晰化)
+  const truth = [
+    "产品\tQ1 第一季度\t\tQ2 第二季度\t",
+    "\t数量(件)\t金额(元)\t数量(件)\t金额(元)",
+    `${rows[0].product}\t${rows[0].cells.join("\t")}`,
+    `${rows[1].product}\t${rows[1].cells.join("\t")}`,
+    `${rows[2].product}\t${rows[2].cells.join("\t")}`,
+  ].join("\n");
+  writeFix("s9_table", png, truth);
+}
+
+// ── s10 VQA(可数元素图:3 红 + 2 绿苹果) ──
+// glm-vision 强项维度:VQA(看图问答) —— 元素计数 + 颜色识别
+// ground-truth = 预期答案(数字 + 颜色 + 名词,语义化)
+{
+  const W = 700, H = 360;
+  // 3 个红苹果 + 2 个绿苹果,canvas 画圆 + 顶部小叶 + 高光
+  const apples = [
+    { x: 110, y: 200, color: "#e23b3b", dark: "#a01f1f" }, // 红 1
+    { x: 230, y: 200, color: "#e23b3b", dark: "#a01f1f" }, // 红 2
+    { x: 350, y: 200, color: "#e23b3b", dark: "#a01f1f" }, // 红 3
+    { x: 470, y: 200, color: "#7cb342", dark: "#558b2f" }, // 绿 1
+    { x: 590, y: 200, color: "#7cb342", dark: "#558b2f" }, // 绿 2
+  ];
+  const png = render(W, H, "#fafafa", (ctx) => {
+    // 标题
+    ctx.fillStyle = "#333"; ctx.font = `22px ${CJK}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText("数一数图中有几个苹果", 30, 36);
+    for (const a of apples) {
+      // 苹果主体(略压扁的圆)
+      ctx.fillStyle = a.color;
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y, 38, 36, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 暗部(右下)
+      ctx.fillStyle = a.dark;
+      ctx.beginPath();
+      ctx.ellipse(a.x + 12, a.y + 10, 14, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 高光(左上)
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.beginPath();
+      ctx.ellipse(a.x - 12, a.y - 12, 8, 5, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      // 叶子
+      ctx.fillStyle = "#4caf50";
+      ctx.beginPath();
+      ctx.ellipse(a.x + 6, a.y - 36, 10, 5, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+      // 茎
+      ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y - 32); ctx.lineTo(a.x + 2, a.y - 42); ctx.stroke();
+    }
+  });
+  // ground-truth:VQA 答案(question 与 desc 的对齐口径)
+  const question = "图中有几个红苹果?几个绿苹果?";
+  const answer = "3 个红苹果,2 个绿苹果";
+  const truth = `Q: ${question}\nA: ${answer}`;
+  writeFix("s10_vqa", png, truth);
+}
+
+console.log("\n9 个可控夹具生成完毕 → doc/OCR_测试集/");
