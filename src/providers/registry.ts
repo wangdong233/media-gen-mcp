@@ -4,6 +4,7 @@ import { ZhipuProvider } from "./zhipu.js";
 import { TesseractProvider } from "./tesseract.js";
 import { PaddleocrProvider } from "./paddle.js";
 import { VlmProvider } from "./vlm.js";
+import { GlmVisionProvider } from "./glm-vision.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -31,7 +32,23 @@ const registry: Record<string, MediaProvider> = {
     apiKey: config.providers.vlm?.apiKey,
     model: config.providers.vlm?.models?.default,
   }),
+  "glm-vision": new GlmVisionProvider({ // pares7: 智谱 GLM-4.6V-Flash 免费视觉层 + paddle 云端 fallback,tier=9
+    apiKeys: config.providers["glm-vision"]?.apiKeys,
+    apiKey: config.providers["glm-vision"]?.apiKey,
+    baseUrl: config.providers["glm-vision"]?.baseUrl,
+    model: config.providers["glm-vision"]?.models?.default,
+  }),
 };
+
+// pares7: glm-vision 多 key 违约警告(智谱 User Agreement §2/§3 禁多账号/共享;Code Plan key 不可用)
+{
+  const glmKeys = (config.providers["glm-vision"]?.apiKeys ?? []).filter(Boolean);
+  if (glmKeys.length > 1) {
+    console.warn(
+      `[media-gen-mcp] ⚠️ glm-vision 配置了 ${glmKeys.length} 个 api_key(多 key 轮换)。智谱 User Agreement §2/§3 禁止多账号/账号共享,多 key 轮换可能违约(平台有权封号且订阅费不退)。请确认:(1) 所有 key 均为合规自有账号;(2) 非 Code Plan key(Code Plan 限 9 个白名单工具,media-gen-mcp 不在内)。`,
+    );
+  }
+}
 
 export function getProvider(name?: string): MediaProvider {
   const n = (name ?? config.defaultProvider).toLowerCase();

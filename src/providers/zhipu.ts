@@ -12,7 +12,7 @@ import type {
   ProviderHealth,
 } from "./types.js";
 import { persistProviderField } from "../config.js";
-import { withRetry } from "./http.js";
+import { ZhipuClient } from "./zhipu-client.js";
 
 interface ZhipuModelsConfig {
   image?: { default?: string; available?: string[] };
@@ -26,6 +26,8 @@ interface RateLimitEntry {
 
 interface ZhipuProviderConfig {
   apiKey: string;
+  /** 多 key(config.json providers.zhipu.apiKeys);图像/视频取 apiKeys[0](视觉走 glm-vision 独立 KeyPool)。 */
+  apiKeys?: string[];
   baseUrl: string;
   videoMinIntervalMs: number;
   models?: ZhipuModelsConfig;
@@ -134,8 +136,7 @@ function nearestDuration(seconds: number): number {
  */
 export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoProvider {
   readonly name = "zhipu";
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
+  private readonly client: ZhipuClient;
   private readonly videoMinIntervalMs: number;
   private readonly rateLimitTtlMs: number;
   private readonly models?: ZhipuModelsConfig;
@@ -146,8 +147,8 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
   private lastErrorAt: string | undefined; // pares3: 最后一次不可用时刻(诊断)
 
   constructor(c: ZhipuProviderConfig) {
-    this.apiKey = c.apiKey;
-    this.baseUrl = (c.baseUrl || "https://open.bigmodel.cn/api").replace(/\/$/, "");
+    // apiKeys 向后兼容:config 传 apiKeys 时,图像/视频用 apiKeys[0](视觉走独立 KeyPool)
+    this.client = new ZhipuClient({ apiKey: c.apiKey || c.apiKeys?.[0] || "", baseUrl: c.baseUrl });
     this.videoMinIntervalMs = c.videoMinIntervalMs;
     this.rateLimitTtlMs = c.rateLimitTtlMs;
     this.models = c.models;
@@ -188,7 +189,7 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
     };
   }
   health(): ProviderHealth {
-    return { configured: !!this.apiKey, cooldown: this.cooldownUntil > Date.now(), ...(this.lastErrorAt ? { lastErrorAt: this.lastErrorAt } : {}) };
+    return { configured: !!this.client.apiKey, cooldown: this.cooldownUntil > Date.now(), ...(this.lastErrorAt ? { lastErrorAt: this.lastErrorAt } : {}) };
   }
   tier(): number { return 5; } // zhipu 非默认 provider,tier 低
   notifyUnavailable(e: any): void {
@@ -250,34 +251,8 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
   }
 
   private async request(path: string, init: RequestInit = {}): Promise<any> {
-    if (!this.apiKey) throw new Error("ZHIPU_API_KEY is not set");
-    const url = path.startsWith("http") ? path : `${this.baseUrl}${path}`;
-    // 5xx(503/1305 平台过载等)/网络抖动 → 指数退避重试;4xx(含 429/1302 并发超限)立即抛(由 learnRateLimit 学习)。
-    return withRetry(async () => {
-      const res = await fetch(url, {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-          ...(init.headers ?? {}),
-        },
-      });
-      const text = await res.text();
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = { raw: text };
-      }
-      if (!res.ok) {
-        const msg = json?.error?.message ?? json?.message ?? text;
-        const e = new Error(`Zhipu ${res.status}: ${msg}`);
-        (e as any).status = res.status;
-        (e as any).body = json;
-        throw e;
-      }
-      return json;
-    }, { tag: "Zhipu" });
+    // pares7:HTTP/认证下沉到 ZhipuClient(单一真源,zhipu.ts + glm-vision.ts 共用)。图像/视频用默认 apiKey。
+    return this.client.request(path, init);
   }
 
   async generateImage(req: ImageRequest): Promise<ImageResult> {

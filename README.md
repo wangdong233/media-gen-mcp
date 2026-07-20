@@ -236,7 +236,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 ### 二、识别类配置(识图 / OCR / 表格 / 图表 / 视觉理解)
 
-识别能力**分三档**,按需选装,默认就能用第一档。
+识别能力**分四档**,按需选装,默认就能用第一档。
 
 #### 档位 1:默认轻量引擎(零配置,装上即用)
 
@@ -251,9 +251,33 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 - **速度**:单张约 3–5 秒
 - **适合谁**:90% 的轻量 OCR 场景、海外文档、验证码识别
 
-> 大多数用户到这一档就够,下面两档是可选加强。
+> 大多数用户到这一档就够,下面三档是可选加强。
 
-#### 档位 2:PaddleX / PP-StructureV3(中文 SOTA + 表格识别)
+#### 档位 2:智谱 GLM-4.6V-Flash(云端免费,零部署,中文 SOTA + VQA)
+
+- **能干什么**:中文 OCR(SOTA 级)、复杂表格(多层表头 / 合并单元格)、图表分析、看图问答(VQA)—— 全 4 task,云端 GLM-4.6V-Flash
+- **要不要装服务**:**不用**,智谱开放平台云端 API,注册账号拿 api_key 即可
+- **最小资源需求**:**零**(纯 HTTP 调用,无 CPU / GPU / 磁盘开销)
+- **速度**:单张约 1–3 秒(云端,含网络往返)
+- **费用**:**GLM-4.6V-Flash 永久免费**(128K 上下文 + 32K 输出),对标 GLM-4-Flash 文本免费策略
+- **适合谁**:想要中文 SOTA + VQA 但**不想自建 PaddleX / vLLM** 的用户;完美补上档位 3/4 自建服务的部署门槛
+- **怎么配**:到 [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) 注册免费账号 + 申请 api_key(格式 `{id}.{secret}`),在 `config.json` 加:
+
+  ```json
+  {
+    "providers": {
+      "glm-vision": { "apiKey": "你的{id}.{secret}" }
+    }
+  }
+  ```
+
+  默认模型 `glm-4.6v-flash`,可经 `providers["glm-vision"].model` 改为 `glm-4v-flash`(免费轻量)或付费视觉模型(`glm-4.6v` / `glm-ocr` 等)。配置后 MCP 自动纳入 fallback 链:**paddle(10)→ glm-vision(9)→ vlm(8)→ tesseract(1)**。
+
+- ⚠️ **合规说明**(重要):
+  - 仅接受 **open.bigmodel.cn 标准 api_key**;**Code Plan key(ZAI_API_KEY)不可用** —— 绑定 Z.ai 专用端点 + 限 9 个白名单工具(Claude Code / Cline / Cursor 等,media-gen-mcp 不在内),违规调用 3 次封号且订阅费不退
+  - 多 key 轮换(`apiKeys: ["k1", "k2", ...]`)技术上支持,但**智谱 User Agreement §2/§3 禁止多账号 / 账号共享** —— 多 key 轮换可能违约,平台有权封号。请确认所有 key 均为合规自有账号
+
+#### 档位 3:PaddleX / PP-StructureV3(中文 SOTA + 表格识别)
 
 - **能干什么**:中文 OCR(效果显著强于默认引擎)、版面分析、**发票 / 报表 / 扫描件 → HTML/Markdown 表格**、图表读数
 - **要不要装服务**:**要**,自托管 PaddleX REST 服务,MCP 通过 `baseUrl` 调用
@@ -284,7 +308,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
   }
   ```
 
-#### 档位 3:vLLM + Qwen2.5-VL(通用视觉理解 VLM)
+#### 档位 4:vLLM + Qwen2.5-VL(通用视觉理解 VLM)
 
 - **能干什么**:看图问答、手写识别、公式识别、复杂场景自然语言描述 —— PaddleX 搞不定的"理解类"任务
 - **要不要装服务**:**要**,自建 vLLM 推理服务
@@ -316,15 +340,16 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
   }
   ```
 
-#### 三档对比速查
+#### 四档对比速查
 
-| 档位 | 装不装服务 | 资源门槛 | 中文 | 表格 | 看图问答 | License |
+| 档位 | 装不装服务 | 资源门槛 | 中文 | 表格 | 看图问答 | License / 来源 |
 |---|---|---|---|---|---|---|
-| **默认**(tesseract) | 不装 | 零(纯 CPU WASM) | 一般 | ❌ | ❌ | Apache 2.0 |
-| **PaddleX** | 装 | GPU 12GB 或 CPU 4 核 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 |
-| **vLLM Qwen2.5-VL** | 装 | **GPU 16–24GB**(CPU 不可用) | ✅ | 一般 | ✅ | Apache 2.0 |
+| **1 默认**(tesseract) | 不装 | 零(纯 CPU WASM) | 一般 | ❌ | ❌ | Apache 2.0(自建) |
+| **2 智谱 GLM-4.6V-Flash** | 不装(云端 API) | 零(纯 HTTP) | ✅ SOTA | ✅ | ✅ | 用户自备智谱 key(永久免费) |
+| **3 PaddleX** | 装 | GPU 12GB 或 CPU 4 核 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0(自建) |
+| **4 vLLM Qwen2.5-VL** | 装 | **GPU 16–24GB**(CPU 不可用) | ✅ | 一般 | ✅ | Apache 2.0(自建) |
 
-> 识别侧刻意只选 Apache 2.0 引擎(tesseract.js + PaddleOCR + Qwen2.5-VL),避开 AGPL / GPL / 商用申请陷阱,**企业可直接商用**。
+> 自建三档(1/3/4)刻意只选 **Apache 2.0** 引擎(tesseract.js + PaddleOCR + Qwen2.5-VL),避开 AGPL / GPL / 商用申请陷阱,**企业可直接商用**。档位 2 智谱是云端 API(GLM-4.6V-Flash 永久免费,用户自备 key),非自建 —— 适合不想部署服务器的用户补齐中文 SOTA + VQA 能力。
 
 ---
 

@@ -12,6 +12,7 @@
  * DashScope 云 API 是付费姿势,不进默认(文档说明边界)。
  */
 import { withRetry } from "./http.js";
+import { promptFor } from "./vision-prompt.js";
 import type {
   MediaProviderBase,
   VisionProvider,
@@ -22,7 +23,6 @@ import type {
   VisionOptionDescriptors,
   ProviderCapabilities,
   ProviderHealth,
-  DescribeImageHints,
 } from "./types.js";
 
 interface VlmConfig {
@@ -31,17 +31,7 @@ interface VlmConfig {
   model?: string;
 }
 
-/** 按 task 构造 prompt(describe 支持用户 question=VQA;chart 要 JSON 数据)。 */
-function promptFor(req: VisionRequest): string {
-  if (req.task === "describe-image") {
-    const q = (req.hints as DescribeImageHints | undefined)?.question;
-    return q ? q : "Describe this image in detail (scene, objects, any text, layout).";
-  }
-  if (req.task === "analyze-chart") {
-    return 'Extract all data points from this chart. Return ONLY valid JSON: {"type":"bar|line|pie|scatter","axes":{"x":"...","y":"..."},"series":[{"name":"...","points":[{"x":"...","y":0}]}]}.';
-  }
-  return "Analyze this image.";
-}
+/** 按 task 构造 prompt(pares7 抽到 vision-prompt.ts 共用,见 promptFor import)。 */
 
 export class VlmProvider implements MediaProviderBase, VisionProvider {
   readonly name = "vlm";

@@ -44,8 +44,14 @@ function buildProviders(): Record<string, any> {
   for (const [name, raw] of Object.entries(up)) {
     const p = (raw ?? {}) as Record<string, any>;
     const upper = name.toUpperCase();
+    // apiKeys(pares7):config.json `apiKeys: [...]` 或 env `${UPPER}_API_KEYS`(逗号分隔);单 key apiKey 向后兼容
+    const apiKeysFromEnv = process.env[`${upper}_API_KEYS`];
+    const apiKeys = Array.isArray(p.apiKeys)
+      ? p.apiKeys.filter((k) => typeof k === "string" && k.trim()).map((k: string) => k.trim())
+      : (apiKeysFromEnv ? String(apiKeysFromEnv).split(",").map((s) => s.trim()).filter(Boolean) : []);
     out[name] = {
       apiKey: p.apiKey ?? process.env[`${upper}_API_KEY`] ?? "",
+      apiKeys,
       baseUrl: p.baseUrl ?? process.env[`${upper}_BASE_URL`] ?? "",
       videoMinIntervalMs: num(`${upper}_VIDEO_MIN_INTERVAL_MS`, 62_000, p.videoMinIntervalMs),
       models: p.models,
@@ -128,6 +134,8 @@ export async function persistProviderField(
     const tmp = CONFIG_FILE + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2));
     fs.renameSync(tmp, CONFIG_FILE);
+    // pares7 review:含 key 字段强制 0600 权限(防多 key 泄露;每次写都重设,免被 tmp 重置)
+    try { fs.chmodSync(CONFIG_FILE, 0o600); } catch { /* Windows/非 POSIX 忽略 */ }
   } catch (e: any) {
     console.error(`[media-gen-mcp] 回写 ${CONFIG_FILE} 失败:${e?.message}`);
   }
