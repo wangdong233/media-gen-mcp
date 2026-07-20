@@ -46,6 +46,8 @@ Tired of producing images a few times a week and juggling N tools with N sets of
 | "Read this bar chart into data points" | Structured CSV/JSON data (new in 0.11.0) |
 | "Describe what's in this image" | A natural-language answer (new in 0.11.0) |
 | "Extract all the text from this 20-page PDF report" | Full text / Markdown / JSON (digital PDFs instant; scanned PDFs auto-OCR'd page by page) (new in pares6) |
+| "Extract text from this scanned contract, ignoring the watermark and red stamps" | Clean text (auto-strips watermark / red-stamp / header-footer regions) (new in pares6) |
+| "Merge this two-column paper into a single paragraph in reading order" | Single-column continuous text (multi-column reading order auto-restored, no more scrambled serialization) (new in pares6) |
 | "Can I do table recognition right now? Is Chinese OCR configured?" | A live capability list + routing advice (what's ready / unconfigured / cooling down) (new in pares6) |
 
 > No need to learn tool names or install system dependencies — **Claude automatically picks the best way to get it done**.
@@ -82,6 +84,28 @@ The following also produce output instantly, with zero Key and zero network:
 - "Draw an architecture diagram: client → gateway → order service + payment service → database, dark tech style"
 - "Read the digits in this captcha image" (OCR, in-process by default, nothing to install)
 - "Extract the English text from this screenshot"
+
+### Want Chinese SOTA Recognition / Visual QA? Configure One Line of Zhipu GLM Key (Zero Deployment, Optional)
+
+The default lightweight engine is fine for English and digits, but Chinese accuracy is mediocre. **Don't want to self-host PaddleX / vLLM, but still want Chinese SOTA + complex tables + visual QA?** Configure one line of Zhipu GLM Key — **GLM-4.6V-Flash is permanently free on the cloud**, with zero deployment and zero local resources:
+
+```bash
+# ① Sign up for a free account at https://open.bigmodel.cn/console/apikey and apply for an api_key (format: {id}.{secret})
+#    Note: only standard open.bigmodel.cn keys are accepted; Code Plan keys (ZAI_API_KEY) do NOT work —
+#    they are bound to the Z.ai endpoint + a whitelisted tool set, and using them here will get your account banned
+
+# ② Write it to ~/.media-gen-mcp/config.json
+{
+  "providers": {
+    "glm-vision": { "apiKey": "your-{id}.{secret}" }
+  }
+}
+
+# ③ Back in Claude Code, say: "Recognize the table in this Chinese invoice screenshot" / "How many people are in this image? What are they doing?"
+#    → Chinese SOTA recognition + visual QA, saved to disk / answered directly
+```
+
+> Once configured, the MCP auto-includes it in the fallback chain: **paddle → glm-vision → vlm → tesseract**; if any tier temporarily goes down, it auto-degrades without you noticing. See [Configuration Deep Dive · Tier 2](#tier-2-zhipu-glm-46v-flash-cloud-free-zero-deployment--chinese-sota--vqa).
 
 ### Want AI Photorealistic Images / Video? Add a Free API Key (Optional)
 
@@ -145,9 +169,15 @@ The following also produce output instantly, with zero Key and zero network:
 > You: "Extract all the text from this 20-page PDF report and export it as Markdown"
 > Get: full text / Markdown / JSON — digital PDFs pull the embedded text layer instantly, scanned PDFs are rendered and OCR'd page by page; supports page ranges (`3` / `1-10` / `odd` / `last`), ignoring watermark / header-footer regions, and merged or per-page output; long documents run in the background and notify you when done (invoices / contracts / financial reports / papers / scanned books all work)
 
+**Make Recognition / PDF Results Cleaner and More Sequential** (new in pares6)
+> You: "Extract text from this scanned contract, **ignoring the watermark and red stamps**" / "Merge this **two-column paper into reading order** as one paragraph"
+> Get: clean, continuous text — two switches available across all recognition / PDF extraction tools:
+> - **Ignore regions**: circle watermark / red-stamp / header-footer / table-header regions and they're auto-stripped from the result — contracts / certificates / scanned documents are no longer corrupted by overlapping marks
+> - **Multi-column reading order**: papers / newspapers / resumes / two- or three-column layouts are auto-merged into single-column continuous text following human reading order, with no more scrambled serialization
+
 **Ask First: "What Can My Recognition Stack Do Right Now?"** (new in pares6)
 > You: "Can I do table recognition right now? Is Chinese OCR configured? What about handwriting?"
-> Get: a live capability list — which of the three recognition tiers is configured / unconfigured / cooling down or errored, plus routing advice on "use X for tables, Y for handwriting"; **ask before you act, so you don't hit a runtime error mid-call**
+> Get: a live capability list — which of the four recognition tiers is configured / unconfigured / cooling down or errored, plus routing advice on "use X for tables, Y for handwriting"; **ask before you act, so you don't hit a runtime error mid-call**
 
 ### Draw Your Ideas Clearly (No Key Needed, Works on Install)
 
@@ -198,8 +228,9 @@ The following also produce output instantly, with zero Key and zero network:
 | Draw architecture diagrams / data charts / cards / QR codes / formulas | **Nothing** | Local engine, works on install |
 | AI photorealistic images / AI video (text-to-image, text-to-video) | One free API Key (Agnes or Zhipu, pick one) | Online generation, saved to `output/` |
 | OCR text recognition (English / captchas / digits / simple documents) | **Nothing** | Falls back to the in-process lightweight engine by default, works on install |
-| Chinese OCR / invoice tables / chart reading / visual QA / handwriting / formulas | Self-hosted understanding engine (PaddleX or vLLM, see resource requirements below) | After the self-hosted service is running, fill in one line of baseUrl |
+| Chinese OCR / invoice tables / chart reading / visual QA / handwriting / formulas | **Configure one line of Zhipu GLM Key** (zero deployment, permanently free on the cloud) **OR** self-host PaddleX / vLLM | GLM Key works immediately; for self-hosting, fill in one line of baseUrl once the service is running |
 | **PDF text extraction** (digital / scanned / multi-page) | Two deps: `npm i pdfjs-dist @napi-rs/canvas` (install on first PDF use) | Digital PDFs instant; scanned PDFs follow the OCR tiers above (default zero-config also works) |
+| **Strip watermarks / red stamps / header-footers, restore multi-column reading order** | **Nothing** | Just say "ignore the watermark" or "merge in reading order" when calling a recognition / PDF tool — it's applied automatically |
 | **Look up current recognition capabilities** (what's ready / unconfigured) | **Nothing** | Just ask; Claude returns a live capability list + routing advice |
 
 ---
@@ -236,7 +267,7 @@ The following also produce output instantly, with zero Key and zero network:
 
 ### 2. Recognition Config (Image Understanding / OCR / Tables / Charts / Vision)
 
-Recognition capabilities come in **three tiers** — install on demand; the first tier works by default.
+Recognition capabilities come in **four tiers** — install on demand; the first tier works by default.
 
 #### Tier 1: Default Lightweight Engine (Zero Config, Works on Install)
 
@@ -251,9 +282,33 @@ Recognition capabilities come in **three tiers** — install on demand; the firs
 - **Speed**: ~3–5 seconds per image
 - **Who it's for**: 90% of lightweight OCR scenarios, overseas documents, captcha recognition
 
-> For most users, this tier is enough; the next two are optional upgrades.
+> For most users, this tier is enough; the next three are optional upgrades.
 
-#### Tier 2: PaddleX / PP-StructureV3 (Chinese SOTA + Table Recognition)
+#### Tier 2: Zhipu GLM-4.6V-Flash (Cloud Free, Zero Deployment, Chinese SOTA + VQA)
+
+- **What it can do**: Chinese OCR (SOTA-level), complex tables (multi-level headers / merged cells), chart analysis, visual QA (VQA) — all 4 tasks, via the cloud GLM-4.6V-Flash
+- **Need to run a service?**: **No**, Zhipu Open Platform cloud API — register an account and get an api_key
+- **Minimum Resource Requirements**: **Zero** (pure HTTP calls, no CPU / GPU / disk overhead)
+- **Speed**: ~1–3 seconds per image (cloud, including network round-trip)
+- **Cost**: **GLM-4.6V-Flash is permanently free** (128K context + 32K output), mirroring the GLM-4-Flash text free-policy
+- **Who it's for**: users who want Chinese SOTA + VQA but **don't want to self-host PaddleX / vLLM**; perfectly fills the deployment gap left by the self-hosted tiers 3/4
+- **How to Configure**: register a free account at [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) and apply for an api_key (format `{id}.{secret}`), then add this to `config.json`:
+
+  ```json
+  {
+    "providers": {
+      "glm-vision": { "apiKey": "your-{id}.{secret}" }
+    }
+  }
+  ```
+
+  The default model is `glm-4.6v-flash`; you can switch it to `glm-4v-flash` (free, lightweight) or paid vision models (`glm-4.6v` / `glm-ocr`, etc.) via `providers["glm-vision"].model`. Once configured, the MCP auto-includes it in the fallback chain: **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
+
+- ⚠️ **Compliance Notes** (important):
+  - Only standard **open.bigmodel.cn api_keys** are accepted; **Code Plan keys (ZAI_API_KEY) do NOT work** — they're bound to the dedicated Z.ai endpoint + limited to 9 whitelisted tools (Claude Code / Cline / Cursor, etc. — media-gen-mcp is not on the list). Three violation-triggered calls get the account banned, with the subscription fee non-refundable
+  - Multi-key rotation (`apiKeys: ["k1", "k2", ...]`) is technically supported, but **Zhipu's User Agreement §2/§3 prohibits multi-account usage / account sharing** — rotating multiple keys may violate the agreement and the platform reserves the right to ban the account. Make sure every key comes from a compliant account you legitimately own
+
+#### Tier 3: PaddleX / PP-StructureV3 (Chinese SOTA + Table Recognition)
 
 - **What it can do**: Chinese OCR (significantly better than the default engine), layout analysis, **invoices / reports / scanned documents → HTML/Markdown tables**, chart reading
 - **Need to run a service?**: **Yes**, self-host a PaddleX REST service; the MCP calls it via `baseUrl`
@@ -284,7 +339,7 @@ Recognition capabilities come in **three tiers** — install on demand; the firs
   }
   ```
 
-#### Tier 3: vLLM + Qwen2.5-VL (General Vision-Understanding VLM)
+#### Tier 4: vLLM + Qwen2.5-VL (General Vision-Understanding VLM)
 
 - **What it can do**: visual QA, handwriting recognition, formula recognition, natural-language description of complex scenes — the "understanding" tasks PaddleX can't handle
 - **Need to run a service?**: **Yes**, self-host a vLLM inference service
@@ -316,15 +371,16 @@ Recognition capabilities come in **three tiers** — install on demand; the firs
   }
   ```
 
-#### Three-Tier Cheat Sheet
+#### Four-Tier Cheat Sheet
 
-| Tier | Run a Service? | Resource Threshold | Chinese | Tables | Visual QA | License |
+| Tier | Run a Service? | Resource Threshold | Chinese | Tables | Visual QA | License / Source |
 |---|---|---|---|---|---|---|
-| **Default** (tesseract) | No | Zero (pure CPU WASM) | Mediocre | ❌ | ❌ | Apache 2.0 |
-| **PaddleX** | Yes | GPU 12GB or CPU 4-core 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 |
-| **vLLM Qwen2.5-VL** | Yes | **GPU 16–24GB** (CPU not viable) | ✅ | Mediocre | ✅ | Apache 2.0 |
+| **1 Default** (tesseract) | No | Zero (pure CPU WASM) | Mediocre | ❌ | ❌ | Apache 2.0 (self-hosted) |
+| **2 Zhipu GLM-4.6V-Flash** | No (cloud API) | Zero (pure HTTP) | ✅ SOTA | ✅ | ✅ | User-supplied Zhipu key (permanently free) |
+| **3 PaddleX** | Yes | GPU 12GB or CPU 4-core 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 (self-hosted) |
+| **4 vLLM Qwen2.5-VL** | Yes | **GPU 16–24GB** (CPU not viable) | ✅ | Mediocre | ✅ | Apache 2.0 (self-hosted) |
 
-> The recognition side deliberately picks only Apache 2.0 engines (tesseract.js + PaddleOCR + Qwen2.5-VL), avoiding AGPL / GPL / commercial-use application traps — **enterprises can use it commercially with no concerns**.
+> The three self-hosted tiers (1/3/4) deliberately pick only **Apache 2.0** engines (tesseract.js + PaddleOCR + Qwen2.5-VL), avoiding AGPL / GPL / commercial-use application traps — **enterprises can use them commercially with no concerns**. Tier 2 Zhipu is a cloud API (GLM-4.6V-Flash permanently free, user-supplied key), not self-hosted — suited for users who don't want to deploy a server but still need Chinese SOTA + VQA.
 
 ---
 
@@ -378,7 +434,8 @@ A: Real-weapon terms trigger content filters. Swap in sci-fi setting words (e.g.
 - **Heavy Claude Code users** — anyone producing image tasks a few times a week, who doesn't want to install a separate MCP and memorize a new parameter set for every task.
 - **Developers writing technical docs / blogs** — who constantly need architecture diagrams, sequence diagrams, ER diagrams, data charts, formulas, and don't want to leave their workflow.
 - **Individual developers / indie products** — cost-conscious (100% free) and reproducibility-minded (same input → same output); don't want to build a separate backend just for image tasks.
-- **Data / Finance / Legal** — two-way scenarios: plot data as charts, and reverse-extract data points from screenshots / invoices / **PDF reports / contracts**.
+- **Data / Finance / Legal** — two-way scenarios: plot data as charts, and reverse-extract data points from screenshots / invoices / **PDF reports / contracts** (watermarks / red stamps can be ignored; two-column papers merge in reading order).
+- **Education / Academic** — students extract text from lecture screenshots / scanned handouts / paper PDFs, merge two-column papers into continuous text, and ask questions about data read out of charts; teachers turn scanned paper exams into editable text.
 - **Operations / content creators / newsletter authors** — share cards / OG images / posters / QR codes, with Chinese + color emoji + gradients working out of the box.
 
 > **Probably not for**: users who don't use Claude Code; engineering teams that want only a single capability and already have a pipeline set up; scenarios that require paid commercial models / training/fine-tuning / real-time video OCR (these exceed the scope of a free MCP).

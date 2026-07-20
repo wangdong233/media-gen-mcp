@@ -45,6 +45,10 @@ Cansado de produzir imagens algumas vezes por semana e lidar com N ferramentas e
 | «Reconheça a tabela nesta captura de fatura» | Uma tabela HTML/Markdown colável (novo em 0.11.0) |
 | «Leia este gráfico de barras como pontos de dados» | Dados estruturados em CSV/JSON (novo em 0.11.0) |
 | «Descreva o que está nesta imagem» | Uma resposta em linguagem natural (novo em 0.11.0) |
+| «Extraia todo o texto deste relatório PDF de 20 páginas» | Texto integral / Markdown / JSON (PDFs digitais saem num instante, digitalizações fazem OCR página a página automaticamente) (novo em pares6) |
+| «Extraia texto deste contrato digitalizado, ignorando marcas d'água e carimbos vermelhos» | Texto limpo (remove automaticamente marcas d'água / carimbos vermelhos / cabeçalhos e rodapés) (novo em pares6) |
+| «Junte este artigo em duas colunas por ordem de leitura num parágrafo» | Texto contínuo de coluna única (ordem de leitura multicoluna restaurada automaticamente, sem mais alinhamento errado em série) (novo em pares6) |
+| «Já consigo reconhecer tabelas? O OCR chinês está configurado?» | Lista de capacidades atuais + sugestões de roteamento (qual está disponível / qual falta configurar / qual usar) (novo em pares6) |
 
 > Não é preciso aprender nomes de ferramentas nem instalar dependências de sistema — **o Claude escolhe automaticamente a melhor forma de fazer.**
 
@@ -80,6 +84,28 @@ Estes também saem num instante, sem Key e sem internet:
 - «Desenhe um diagrama de arquitetura: cliente → gateway → serviço de pedidos + serviço de pagamentos → base de dados, estilo tech escuro»
 - «Reconheça os números nesta imagem de captcha» (OCR, dentro do processo por padrão, sem instalar nada)
 - «Extraia o texto inglês desta captura de ecrã»
+
+### Quer OCR chinês SOTA / QA visual? Configure uma linha de GLM Key da Zhipu (zero deploy, opcional)
+
+O motor leve padrão dá conta de inglês / números, mas a precisão em chinês é apenas razoável. **Não quer auto-hospedar PaddleX / vLLM e ainda assim quer chinês SOTA + tabelas complexas + QA visual?** Basta configurar uma linha de GLM Key da Zhipu — o **GLM-4.6V-Flash na nuvem é gratuito para sempre**, com zero deploy e zero recursos locais:
+
+```bash
+# ① Registe uma conta gratuita em https://open.bigmodel.cn/console/apikey e peça a api_key (formato {id}.{secret})
+#    Atenção: só são aceites chaves padrão open.bigmodel.cn; Code Plan key (ZAI_API_KEY) não funciona —
+#    está vinculada ao endpoint Z.ai + lista de ferramentas permitidas, e chamadas em violação levam a banimento da conta
+
+# ② Escreva em ~/.media-gen-mcp/config.json
+{
+  "providers": {
+    "glm-vision": { "apiKey": "seu-{id}.{secret}" }
+  }
+}
+
+# ③ Volte ao Claude Code e diga: "Reconheça a tabela nesta captura de fatura em chinês" / "Quantas pessoas há nesta imagem? O que estão a fazer?"
+#    → Reconhecimento chinês SOTA + QA visual, guardado em ficheiro / resposta direta
+```
+
+> Depois de configurado, o MCP inclui-o automaticamente na cadeia de fallback: **paddle → glm-vision → vlm → tesseract**; se um nível cair temporariamente, há degradação automática, sem você dar por isso. Veja [Mergulho na configuração · Nível 2](#nível-2-glm-46v-flash-zhipu-nuvem-gratuito-zero-deploy-chinês-sota--vqa).
 
 ### Quer imagens/vídeos fotorrealistas por IA? Adicione uma API Key gratuita (opcional)
 
@@ -121,7 +147,7 @@ Estes também saem num instante, sem Key e sem internet:
 > Você: «Capture o Logo do GitHub, 128 píxeis»
 > Recebe: Logo vetorial de uma biblioteca com mais de 200 mil ícones, pronto a usar (GitHub / Twitter / Material / Lucide / Font Awesome, etc.)
 
-### Entender uma imagem (transformar imagem em dados · novo em 0.11.0)
+### Entender uma imagem / um PDF (transformar imagem e documento em dados)
 
 **Extrair texto de uma captura de ecrã**
 > Você: «Leia os números deste captcha»
@@ -138,6 +164,20 @@ Estes também saem num instante, sem Key e sem internet:
 **Pedir para explicar a imagem em linguagem simples**
 > Você: «Quantas pessoas há nesta imagem? O que estão a fazer?»
 > Recebe: resposta em linguagem natural (QA visual / manuscrito / fórmula / compreensão de cenários complexos)
+
+**Extrair todo o texto de um PDF inteiro** (novo em pares6)
+> Você: «Extraia todo o texto deste relatório PDF de 20 páginas e exporte como Markdown»
+> Recebe: texto integral / Markdown / JSON — PDFs digitais extraem a camada de texto num instante, digitalizações fazem renderização página a página + OCR automaticamente; pode especificar intervalo de páginas (`3` / `1-10` / `odd` / `last`), ignorar marcas d'água / cabeçalhos e rodapés, e juntar ou manter páginas separadas; documentos longos correm em background, com notificação ao terminar (faturas / contratos / relatórios financeiros / artigos / livros digitalizados — todos funcionam)
+
+**Resultados de reconhecimento / leitura de PDF mais limpos e fluidos** (novo em pares6)
+> Você: «Extraia texto deste contrato digitalizado, **ignorando marcas d'água e carimbos vermelhos**» / «Junte este artigo em duas colunas **por ordem de leitura** num parágrafo»
+> Recebe: texto limpo e contínuo — dois interruptores disponíveis em todas as ferramentas de reconhecimento / extração de PDF:
+> - **Ignorar regiões**: marque regiões de marcas d'água / carimbos vermelhos / cabeçalhos e rodapés / cabeçalhos de tabela, e o resultado exclui-as automaticamente — contratos / certificados / digitalizações já não ficcam obscurecidos por marcas d'água
+> - **Ordem de leitura multicoluna**: artigos / jornais / currículos / duas ou três colunas são automaticamente fundidos por ordem de leitura humana num texto contínuo de coluna única, sem mais alinhamento errado em série
+
+**Pergunte primeiro «o que os meus serviços de reconhecimento conseguem fazer»** (novo em pares6)
+> Você: «Já consigo reconhecer tabelas agora? O OCR chinês está configurado? E o reconhecimento de manuscrito?»
+> Recebe: a lista de capacidades atuais — qual dos níveis de reconhecimento já está configurado / qual falta / qual está em arrefecimento ou com erro, e ainda sugestões de roteamento («para tabelas use X, para manuscrito use Y»); **pergunte antes de avançar, para evitar descobrir o erro só na altura da chamada**
 
 ### Desenhar ideias com clareza (sem Key, funciona ao instalar)
 
@@ -188,7 +228,10 @@ Estes também saem num instante, sem Key e sem internet:
 | Desenhar arquiteturas / gráficos de dados / cards / QR codes / fórmulas | **Nada** | Motor local, instala e usa |
 | Imagens / vídeos fotorrealistas por IA (texto-para-imagem, texto-para-vídeo) | Uma API Key gratuita (Agnes ou Zhipu, uma das duas) | Geração online, guardada em `output/` |
 | OCR de texto (inglês / captcha / números / documentos simples) | **Nada** | Motor leve dentro do processo por padrão, instala e usa |
-| OCR chinês / tabelas de faturas / leitura de gráficos / QA visual / manuscrito / fórmulas | Auto-hospedar motor de compreensão (PaddleX ou vLLM, ver recursos abaixo) | Preencher uma linha de baseUrl depois de o serviço auto-hospedado estar a correr |
+| OCR chinês / tabelas de faturas / leitura de gráficos / QA visual / manuscrito / fórmulas | **Configurar uma linha de GLM Key da Zhipu** (zero deploy, gratuita na nuvem para sempre) **OU** auto-hospedar PaddleX / vLLM | Com GLM Key, fica a funcionar imediatamente; para auto-hospedar, preencha uma linha de baseUrl depois de o serviço estar a correr |
+| **Extração de texto de PDF** (PDF digital / digitalização / várias páginas) | Instalar duas dependências `npm i pdfjs-dist @napi-rs/canvas` (na primeira utilização de PDF) | PDF digital sai num instante; digitalizações seguem o nível de OCR acima (também funciona com zero config) |
+| **Remover marcas d'água / carimbos / cabeçalhos e rodapés, restaurar ordem de leitura multicoluna** | **Nada** | Ao chamar as ferramentas de reconhecimento / PDF, basta dizer «Claude, ignora marcas d'água» ou «junta por ordem de leitura», e é aplicado automaticamente |
+| **Consultar as capacidades de reconhecimento atuais** (qual funciona / qual falta) | **Nada** | Basta perguntar; o Claude devolve a lista de capacidades atuais + sugestões de roteamento |
 
 ---
 
@@ -224,7 +267,7 @@ Estes também saem num instante, sem Key e sem internet:
 
 ### 2. Configuração de reconhecimento (imagem / OCR / tabela / gráfico / compreensão visual)
 
-As capacidades de reconhecimento vêm em **três níveis** — escolha conforme a necessidade, o primeiro já funciona por padrão.
+As capacidades de reconhecimento vêm em **quatro níveis** — escolha conforme a necessidade, o primeiro já funciona por padrão.
 
 #### Nível 1: Motor leve padrão (zero config, funciona ao instalar)
 
@@ -239,9 +282,33 @@ As capacidades de reconhecimento vêm em **três níveis** — escolha conforme 
 - **Velocidade**: ~3–5 segundos por imagem
 - **Para quem**: 90% dos cenários leves de OCR, documentos internacionais, reconhecimento de captchas
 
-> A maioria dos utilizadores fica por aqui. Os dois níveis seguintes são melhorias opcionais.
+> A maioria dos utilizadores fica por aqui. Os três níveis seguintes são melhorias opcionais.
 
-#### Nível 2: PaddleX / PP-StructureV3 (chinês SOTA + reconhecimento de tabelas)
+#### Nível 2: GLM-4.6V-Flash da Zhipu (nuvem gratuito, zero deploy, chinês SOTA + VQA)
+
+- **O que faz**: OCR chinês (nível SOTA), tabelas complexas (cabeçalhos multinível / células fundidas), análise de gráficos, QA visual (VQA) — cobre todas as 4 tarefas na nuvem com GLM-4.6V-Flash
+- **Precisa de serviço**: **Não**, é API cloud da plataforma aberta da Zhipu — basta registar uma conta e obter a api_key
+- **Recursos mínimos**: **Zero** (chamada HTTP simples, sem CPU / GPU / disco)
+- **Velocidade**: ~1–3 segundos por imagem (nuvem, incluindo ida e volta de rede)
+- **Custo**: **GLM-4.6V-Flash gratuito para sempre** (contexto de 128K + 32K de saída), alinhado com a estratégia de gratuidade do GLM-4-Flash em texto
+- **Para quem**: quer chinês SOTA + VQA mas **não quer auto-hospedar PaddleX / vLLM**; complementa perfeitamente a barreira de deploy dos níveis 3/4 auto-hospedados
+- **Como configurar**: registe uma conta gratuita em [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) e peça a api_key (formato `{id}.{secret}`); adicione ao `config.json`:
+
+  ```json
+  {
+    "providers": {
+      "glm-vision": { "apiKey": "seu-{id}.{secret}" }
+    }
+  }
+  ```
+
+  O modelo padrão é `glm-4.6v-flash`; pode trocar para `glm-4v-flash` (gratuito, leve) ou modelos visuais pagos (`glm-4.6v` / `glm-ocr`, etc.) via `providers["glm-vision"].model`. Depois de configurado, o MCP inclui-o automaticamente na cadeia de fallback: **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
+
+- ⚠️ **Notas de conformidade** (importante):
+  - Apenas são aceites **api_keys padrão open.bigmodel.cn**; **Code Plan key (ZAI_API_KEY) não funciona** — está vinculada ao endpoint dedicado Z.ai + limitada a 9 ferramentas na lista de permissões (Claude Code / Cline / Cursor, etc.; o media-gen-mcp não está incluído). Chamadas em violação levam a banimento da conta após 3 tentativas, sem reembolso da subscrição
+  - Rotação com múltiplas keys (`apiKeys: ["k1", "k2", ...]`) é tecnicamente suportada, mas o **User Agreement da Zhipu §2/§3 proíbe múltiplas contas / partilha de contas** — rotação de várias keys pode violar o contrato, e a plataforma pode banir a conta. Confirme que todas as keys são suas e de contas em conformidade
+
+#### Nível 3: PaddleX / PP-StructureV3 (chinês SOTA + reconhecimento de tabelas)
 
 - **O que faz**: OCR em chinês (qualidade significativamente superior ao motor padrão), análise de layout, **faturas / relatórios / digitalizações → tabelas HTML/Markdown**, leitura de gráficos
 - **Precisa de serviço**: **Sim**, auto-hospedar um serviço REST PaddleX; o MCP chama-o via `baseUrl`
@@ -272,7 +339,7 @@ As capacidades de reconhecimento vêm em **três níveis** — escolha conforme 
   }
   ```
 
-#### Nível 3: vLLM + Qwen2.5-VL (VLM de compreensão visual geral)
+#### Nível 4: vLLM + Qwen2.5-VL (VLM de compreensão visual geral)
 
 - **O que faz**: QA visual, reconhecimento de manuscrito, reconhecimento de fórmulas, descrição em linguagem natural de cenários complexos — as tarefas de «compreensão» que o PaddleX não cobre
 - **Precisa de serviço**: **Sim**, auto-hospede um serviço de inferência vLLM
@@ -304,15 +371,16 @@ As capacidades de reconhecimento vêm em **três níveis** — escolha conforme 
   }
   ```
 
-#### Comparação rápida dos três níveis
+#### Comparação rápida dos quatro níveis
 
-| Nível | Instala serviço? | Barreira de recursos | Chinês | Tabela | QA visual | License |
+| Nível | Instala serviço? | Barreira de recursos | Chinês | Tabela | QA visual | License / Origem |
 |---|---|---|---|---|---|---|
-| **Padrão** (tesseract) | Não | Zero (WASM em CPU) | Razoável | ❌ | ❌ | Apache 2.0 |
-| **PaddleX** | Sim | GPU 12GB ou CPU 4 núcleos 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 |
-| **vLLM Qwen2.5-VL** | Sim | **GPU 16–24GB** (CPU indisponível) | ✅ | Razoável | ✅ | Apache 2.0 |
+| **1 Padrão** (tesseract) | Não | Zero (WASM em CPU) | Razoável | ❌ | ❌ | Apache 2.0 (auto-hospedado) |
+| **2 GLM-4.6V-Flash da Zhipu** | Não (API na nuvem) | Zero (HTTP simples) | ✅ SOTA | ✅ | ✅ | Key da Zhipu, fornecida pelo utilizador (gratuita para sempre) |
+| **3 PaddleX** | Sim | GPU 12GB ou CPU 4 núcleos 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 (auto-hospedado) |
+| **4 vLLM Qwen2.5-VL** | Sim | **GPU 16–24GB** (CPU indisponível) | ✅ | Razoável | ✅ | Apache 2.0 (auto-hospedado) |
 
-> O lado do reconhecimento escolhe deliberadamente só motores Apache 2.0 (tesseract.js + PaddleOCR + Qwen2.5-VL), evitando armadilhas AGPL / GPL / de aprovação comercial — **as empresas podem usar comercialmente sem preocupações**.
+> Os três níveis auto-hospedados (1/3/4) escolhem deliberadamente só motores **Apache 2.0** (tesseract.js + PaddleOCR + Qwen2.5-VL), evitando armadilhas AGPL / GPL / de aprovação comercial — **as empresas podem usar comercialmente sem preocupações**. O nível 2 (Zhipu) é uma API na nuvem (GLM-4.6V-Flash gratuito para sempre, key fornecida pelo utilizador), não auto-hospedada — ideal para quem não quer montar um servidor e ainda assim obter chinês SOTA + VQA.
 
 ---
 
@@ -366,7 +434,8 @@ R: Palavras reais de armas disparam o filtro de conteúdo. Use termos de configu
 - **Utilizadores intensivos do Claude Code** — fazem tarefas de imagem várias vezes por semana e não querem instalar um MCP diferente para cada uma, com conjuntos de parâmetros próprios.
 - **Devs que escrevem documentação técnica / blogs** — precisam repetidamente de diagramas de arquitetura, sequência, ER, gráficos de dados e fórmulas sem sair do fluxo de trabalho.
 - **Devs independentes / produtos solo** — atentos ao custo (tudo gratuito) e à previsibilidade (mesma entrada, mesma saída), sem querer montar backend só para tarefas de imagem.
-- **Dados / finanças / jurídico** — cenários nos dois sentidos: transformar dados em gráficos e, a partir de capturas / faturas, extrair pontos de dados de volta.
+- **Dados / finanças / jurídico** — cenários nos dois sentidos: transformar dados em gráficos e, a partir de capturas / faturas / **relatórios PDF / contratos**, extrair pontos de dados de volta (marcas d'água / carimbos vermelhos ignoráveis, artigos em duas colunas fundidos por ordem de leitura).
+- **Educação / acadêmico** — alunos extraem texto de capturas de slides / apontamentos digitalizados / PDFs de artigos, fundem artigos em duas colunas em texto contínuo, perguntam sobre dados lidos de gráficos; professores transformam digitalizações de provas em papel em texto editável.
 - **Marketing / criadores de conteúdo / autores de blogues** — cards de partilha / OG / cartazes / QR codes, com chinês + emoji colorido + gradiente prontos a usar.
 
 > **Não é tão adequado para**: quem não usa Claude Code; equipas de engenharia que precisam de uma só capacidade e já têm pipeline montado; cenários que exigem modelos comerciais pagos / fine-tuning / OCR de vídeo em tempo real (estes ultrapassam o âmbito de um MCP gratuito).
