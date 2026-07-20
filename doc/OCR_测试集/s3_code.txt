@@ -1,0 +1,7 @@
+function greet(name) {
+  const msg = "Hello, " + name;
+  console.log(msg);
+  return msg;
+}
+
+greet("World");

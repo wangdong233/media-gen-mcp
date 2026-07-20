@@ -1,0 +1,4 @@
+E = mc^2
+a^2 + b^2 = c^2
+x = (-b +- sqrt(b^2 - 4ac)) / 2a
+sum(i=1..n) i = n(n+1)/2

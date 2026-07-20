@@ -1,0 +1,9 @@
+电源适配器使用说明书
+请使用原装电源适配器。
+Use only the original power adapter.
+输入: AC 100-240V 50/60Hz
+Input: AC 100-240V 50/60Hz
+输出: DC 5V 2A
+Output: DC 5V 2A
+警告: 请勿短路
+Warning: Do not short circuit
