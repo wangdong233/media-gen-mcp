@@ -8,16 +8,16 @@
 
 ## 摘要
 
-- **一句话结论**:在默认 tesseract 兜底下,我们的 `extract_text` 在「英文/数字/清晰印刷」单语场景接近智谱 VLM,但在「多语/代码/公式/复杂排版/小字号密集列/气泡背景」场景明显劣于智谱,7 个有 truth 场景平均字符准确率落后约 **28 个百分点(0.584 vs 0.866)**;同时暴露一个真实 bug:`digitOnly:true + segmentation:"single-line"` 对多行数字图返回空文本。
+- **一句话结论**:在默认 tesseract 兜底下,我们的 `extract_text` 在「英文/数字/清晰印刷」单语场景接近智谱 VLM,但在「多语/代码/公式/复杂排版/小字号密集列/气泡背景」场景明显劣于智谱,7 个有 truth 场景平均字符准确率落后约 **14 个百分点(0.727 vs 0.866)**;测试中发现的 `digitOnly + segmentation:"single-line"` 多行图返空 bug **已修复**(s2 ourAcc 0.000→1.000)。
 - **平均字符准确率(7 个有 truth 场景:s1/s2/s3/s4/s6/s7/s8)**:
-  - 我们的(tesseract 兜底):**0.584**
+  - 我们的(tesseract 兜底):**0.727**
   - 智谱(VLM):**0.866**
 - **8 场景逐项对照**:
 
 | 场景 | 类型 | truth | ourAcc | zhipuAcc | agreement | 备注 |
 |---|---|---|---|---|---|---|
 | s1_manual | 中英说明书 | ✅ | **1.000** | 0.987 | 0.987 | 字符级我们满分,但中文分词空格 + 排版坍缩 |
-| s2_digits | 身份证/银行卡/手机号 | ✅ | **0.000** | 0.800 | 0.000 | 🔴 真实 bug:`single-line` PSM 多行图吐空 |
+| s2_digits | 身份证/银行卡/手机号 | ✅ | **1.000** | 0.800 | 1.000 | ✅ 原 single-line 返空 bug 已修(auto 回退) |
 | s3_code | JS 代码 | ✅ | 0.965 | **1.000** | 0.965 | 漏等号、缺闭合括号 → 代码无法运行 |
 | s4_receipt | 中文超市小票 | ✅ | 0.244 | 0.495 | — | 密集列对齐 + 小字号中文商品名,两家都弱 |
 | s5_menu | 港式两栏繁体菜单 | ❌ | — | — | 0.268 | 单栏坍缩 + 形近字误判 + 价格噪声 |
@@ -128,16 +128,22 @@ Warning: Do not short circuit
 
 ---
 
-### s2_digits — 身份证/银行卡/手机号 🔴 真实 bug
+### s2_digits — 身份证/银行卡/手机号 ✅ bug 已修复
 
 ![s2](s2_digits.png)
 
-**`extract_text` 参数**:`{ languages: ["zh-Hans"], digitOnly: true, segmentation: "single-line" }`  
+**`extract_text` 参数**:`{ digitOnly: true, segmentation: "single-line" }`  
 **provider**:`tesseract`(blocks=0)
 
-我们的:
+我们的(修复后):
 ```
-(空字符串)
+110101199003078888
+6222020012345678901
+13800138000
+```
+附带 warning(透传到调用方):
+```
+segmentation="single-line" 未识别到文本(图片可能非单行/单字符版式),已自动回退 auto 模式重试。
 ```
 
 智谱:
@@ -159,20 +165,15 @@ ground-truth:
 
 | 指标 | 值 |
 |---|---|
-| ourAcc | **0.000** 🔴 |
+| ourAcc | **1.000**(修复前 0.000) |
 | zhipuAcc | 0.800 |
-| agreement | 0.000 |
+| agreement | 1.000 |
 
-**分析(关键 bug)**:
-- `digitOnly:true + segmentation:"single-line"` 让 tesseract **直接返回空文本**。`single-line` 对应 PSM 7(单行模式),整图实际是「3 行数字 + 3 行中文标签」共 6 行,单行模式无法处理多行整图 → 完美命中预设参数预测的失败模式。
-- **诊断验证**:去掉 `single-line` 用默认参数重跑,得到 `BHI / 110101199003078888 / RITES / 6222020012345678901 / FSH / 13800138000`,三个长数字 18/19/11 位 **全部正确识别**(LCS vs truth = 48/48),仅三个中文标签被误识为拉丁噪声 `BHI/RITES/FSH`(`chi_sim` 没启用)。
-- 证明 OCR 引擎本身能读这些数字,问题 100% 在 `segmentation:"single-line"` 这档参数对该图错误。
-- 智谱基线提取了全部 48 位数字 + 3 个中文标签,顺序正确,仅多带了 12 个非数字字符导致 `zhipuAcc=0.8`。
-
-**改进建议(真实 bug,应修)**:
-1. **多行数字图片禁用 `segmentation:"single-line"`**,handler 层在 `single-line` 返回空时自动 fallback 重试(auto / multi-line)。
-2. `digitOnly` 场景默认 `chi_sim+eng` 双语,避免中文标签被误识为拉丁噪声。
-3. `extract_text` 收到空结果且非 `digitOnly` 时,可考虑自动尝试 `eng + 多脚本` 回退,或返回 `warning` 字段。
+**分析(原 bug + 修复)**:
+- **原 bug**:`digitOnly:true + segmentation:"single-line"`(PSM 7 单行模式)对 6 行多行图整页返空 → ourAcc 0.000。诊断:OCR 引擎本身能读(去 single-line 后 18/19/11 位数字全对),问题在 PSM 7 假设整页单行。
+- **修复(`src/providers/tesseract.ts`)**:recognize 抽 `recognizeWithPsm` helper,当限制性 PSM(single-line/single-char/sparse-text)返回空文本且无 blocks 时,自动回退 `PSM.AUTO` 重试一次(保留 digitOnly 白名单 → 干净数字);有结果则采用并经 `VisionResult.warnings` 告知「已自动回退 auto」。extract_text handler + runVisionTask 同步透传 `result.warnings`。
+- **修复后**:ourAcc 0.000 → **1.000**(48 位数字精确匹配 truth),warning 正确透传到调用方。digitOnly 白名单在回退时保留 → 三个中文标签即便被误识也被 0-9 白名单过滤掉,输出纯净数字。
+- 智谱 0.800(多带 3 个中文标签非数字字符,digitOnly 场景反成噪声)—— 此场景修复后我们反超。
 
 ---
 
@@ -526,7 +527,7 @@ sum(i=1..n) i = n(n+1)/2
 | 弱项 | 体现场景 | 严重程度 |
 |---|---|---|
 | **CJK 分词空格 artifact** | s1/s4/s5/s6/s7 中文每字之间插空格 | 视觉不友好,拉低 LCS |
-| **`digitOnly + single-line` PSM bug** | s2 多行数字图吐空 | 🔴 真实 bug,应修 |
+| **`digitOnly + single-line` PSM bug** | s2 多行数字图吐空 | ✅ 已修(限制性 PSM 空结果自动回退 auto) |
 | **代码符号解析** | s3 漏等号 `=`、缺闭合 `}` | 代码无法运行 |
 | **公式上标 `^`** | s8 4 处 `^2` 全变 `"2` | 语义完全丢失 |
 | **`1/l`、`0/O` 混淆** | s3/s8 等宽字体 | 字符级误读 |
@@ -538,7 +539,7 @@ sum(i=1..n) i = n(n+1)/2
 
 ### 3. 智谱 VLM 基线的表现
 
-- **7 个有 truth 场景平均 0.866**(我们 0.584),整体明显胜出,优势在中文/复杂版面/气泡/公式/代码。
+- **7 个有 truth 场景平均 0.866**(我们 0.727,修复 s2 后),整体仍胜出,优势在中文/复杂版面/气泡/公式/代码。
 - **强项**:中英混排(s1 字符级 0.987 且排版完整)、代码(s3 完美)、公式(s8 完美)、中文聊天(s7 完美,气泡背景无碍)、多语中英日(s6 前 3 行完美)。
 - **弱项**:
   - s1 把 ASCII hyphen `-` 写成 en-dash `–`(U+2013,2 处)—— VLM 输出标点不规范的小问题。

@@ -131,26 +131,25 @@ export class TesseractProvider implements MediaProviderBase, VisionProvider {
     // 进程内 WASM 恒可用,no-op(保留接口对称)
   }
 
-  async recognize(req: VisionRequest): Promise<VisionResult> {
-    if (req.task !== "extract-text") {
-      throw new Error(
-        `tesseract 仅支持 extract-text(task="${req.task}" 不支持)。表格/图表/描述请配置 paddleocr 或 vlm provider。`,
-      );
-    }
-    const h = (req.hints as ExtractTextHints | undefined) ?? {};
-    const bcpLangs = h.languages?.length ? h.languages : ["en"];
-    const tessLangs = bcpLangs.map(bcp47ToTesseract);
-    const psm = SEG_TO_PSM[h.segmentation ?? "auto"] ?? PSM.AUTO;
-
+  /**
+   * 单次识别(给定 PSM)。抽成 helper 供 recognize 主流程 + 限制性 PSM 空结果回退复用。
+   *
+   * blocks 提取:tesseract.js Page 无 lines 字段,走 data.blocks[].paragraphs[].lines[]。
+   */
+  private async recognizeWithPsm(
+    image: string,
+    tessLangs: string[],
+    psm: PSM,
+    digitOnly: boolean,
+  ): Promise<{ text: string; blocks: TextBlock[]; raw: unknown }> {
     const w = await getWorker(tessLangs);
     // whitelist 显式清空(非 digitOnly→""):setParameters 是合并语义,不清则跨调用残留
     await w.setParameters({
       tessedit_pageseg_mode: psm,
-      tessedit_char_whitelist: h.digitOnly ? "0123456789" : "",
+      tessedit_char_whitelist: digitOnly ? "0123456789" : "",
     });
-
     // 显式开启 blocks 输出(默认 blocks=false);Page.blocks[].paragraphs[].lines[] 是真实层级
-    const { data } = await w.recognize(req.image, {}, { blocks: true });
+    const { data } = await w.recognize(image, {}, { blocks: true });
     const text = (data?.text ?? "").trim();
     const lines = (data?.blocks ?? [])
       .flatMap((b: any) => (b?.paragraphs ?? []).flatMap((p: any) => p?.lines ?? []));
@@ -162,7 +161,46 @@ export class TesseractProvider implements MediaProviderBase, VisionProvider {
         level: "line" as const,
       }))
       .filter((b: TextBlock) => b.text);
+    return { text, blocks, raw: data };
+  }
 
-    return { task: "extract-text", text, blocks, raw: data };
+  async recognize(req: VisionRequest): Promise<VisionResult> {
+    if (req.task !== "extract-text") {
+      throw new Error(
+        `tesseract 仅支持 extract-text(task="${req.task}" 不支持)。表格/图表/描述请配置 paddleocr 或 vlm provider。`,
+      );
+    }
+    const h = (req.hints as ExtractTextHints | undefined) ?? {};
+    const bcpLangs = h.languages?.length ? h.languages : ["en"];
+    const tessLangs = bcpLangs.map(bcp47ToTesseract);
+    const requestedPsm = SEG_TO_PSM[h.segmentation ?? "auto"] ?? PSM.AUTO;
+
+    let { text, blocks, raw } = await this.recognizeWithPsm(
+      req.image, tessLangs, requestedPsm, h.digitOnly ?? false,
+    );
+    const warnings: string[] = [];
+
+    // 🔧 bug 修复(OCR 测试集 s2 发现):限制性 PSM(single-line/single-char/sparse-text)
+    // 对多行/复杂版面图会整页返空 —— PSM 7 假设整页单行,多行图版面分析失败直接吐空。
+    // 自动回退 PSM.AUTO 重试一次(保留 digitOnly 白名单 → 干净数字);有结果则用并 warning 告知调用方。
+    if (requestedPsm !== PSM.AUTO && !text && blocks.length === 0) {
+      const fb = await this.recognizeWithPsm(req.image, tessLangs, PSM.AUTO, h.digitOnly ?? false);
+      if (fb.text || fb.blocks.length) {
+        warnings.push(
+          `segmentation="${h.segmentation}" 未识别到文本(图片可能非单行/单字符版式),已自动回退 auto 模式重试。`,
+        );
+        text = fb.text;
+        blocks = fb.blocks;
+        raw = fb.raw;
+      }
+    }
+
+    return {
+      task: "extract-text",
+      text,
+      blocks,
+      raw,
+      ...(warnings.length ? { warnings } : {}),
+    };
   }
 }

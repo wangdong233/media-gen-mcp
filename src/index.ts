@@ -106,6 +106,8 @@ async function runVisionTask(
     if (!activeProvider.visionTasks().includes(task)) throw e;
     result = await activeProvider.recognize({ image, task, hints });
   }
+  // 透传 provider 返回的 warnings(对称 extract_text handler)
+  if (result.warnings?.length) warnings.push(...result.warnings);
   return { result, providerUsed: activeProvider.name, warnings };
 }
 
@@ -825,6 +827,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           warnings.push(`provider "${resolved.provider.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${activeProvider.name}"。`);
           result = await activeProvider.recognize({ image, task: "extract-text", hints });
         }
+        // 透传 provider 返回的 warnings(tesseract 限制性 PSM 空结果回退告警等)
+        if (result.warnings?.length) warnings.push(...result.warnings);
         // pares5 TBPU 后处理(provider-agnostic):先 filterIgnoreAreas(去水印/红章)→ 再 applyTbpu(排版重排)。
         // 铁律:剔除先于排版,避免被剔除块参与 GapTree 干扰列分隔线检测。
         // 仅在 provider 返回 blocks 时运行;无 blocks(仅 text)时跳过,免空 blocks 覆盖有效 text。
