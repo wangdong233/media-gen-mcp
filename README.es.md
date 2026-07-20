@@ -12,7 +12,7 @@
 
 ¿Te cansa hacer imágenes varias veces por semana y tener que instalar N herramientas y recordar N configuraciones? Aquí instalas una sola vez y le tiras todo a Claude.
 
-🌐 Languages: [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · **Español** · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Português](README.pt.md)
+🌐 Languages: [简体中文](README.md) | [English](README.en.md) | [Deutsch](README.de.md) | **Español** | [Français](README.fr.md) | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
 
 ## Tabla de contenidos
 

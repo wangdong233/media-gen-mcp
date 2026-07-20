@@ -12,7 +12,7 @@
 
 每周做几次图、装 N 个工具记 N 套参数很烦?这里只装一次,所有图像场景都丢给 Claude。
 
-🌐 Languages: **简体中文** · [English](README.en.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Português](README.pt.md)
+🌐 Languages: **简体中文** | [English](README.en.md) | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
 
 ## 目录
 
