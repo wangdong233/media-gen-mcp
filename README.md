@@ -370,6 +370,83 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
   }
   ```
 
+##### 进阶:Unlimited-OCR 长文档解析(SGLang/vLLM 自托管)
+
+档位 4 默认 Qwen2.5-VL 是通用 VLM(看图问答 / 场景描述强)。如果你要的是**长文档 OCR / 复杂表格 / 多页 PDF 一次性解析**(单图几千~上万字),切到 [baidu/Unlimited-OCR](https://github.com/baidu/Unlimited-OCR)(MIT,Deepseek-OCR 路线推进一步)。它**训练分布只用 2 词 prompt** `document parsing.`,长输出靠 `custom_logit_processor`(DeepseekOCRNoRepeatNGram)防退化,与 Qwen2.5-VL 是不同档位的工具。
+
+**配 Unlimited-OCR 时,`vlm` provider 自动通放全 4 task**(extract-text/extract-table/describe-image/analyze-chart),且 `extract-text` / `extract-table` 走 README 单图契约短 prompt;`describe-image`(VQA)与 `analyze-chart`(JSON 抽取)仍走原长 prompt —— 你不用手写 prompt override,MCP 按模型自动选。
+
+**部署(SGLang,推荐 — 支持 `custom_logit_processor` 全特性)**:
+
+```bash
+# 拉镜像(详见 Unlimited-OCR README)
+docker pull vllm/vllm-openai:unlimited-ocr          # 默认 CUDA 13.0
+# Hopper GPU 用 cu129:
+# docker pull vllm/vllm-openai:unlimited-ocr-cu129
+
+# 启动 SGLang server(关键参数解释见 Unlimited-OCR README「SGLang」节)
+python -m sglang.launch_server \
+  --model baidu/Unlimited-OCR \
+  --served-model-name Unlimited-OCR \
+  --attention-backend fa3 --page-size 1 \
+  --mem-fraction-static 0.8 --context-length 32768 \
+  --enable-custom-logit-processor \
+  --host 0.0.0.0 --port 10000
+```
+
+`custom_logit_processor` 是 Python 端 `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` 的字符串化产物(SGLang 私有序列化格式,TS 侧无法合成)。**部署期跑一次**取串,粘进 `config.json`:
+
+```bash
+# 在装了 sglang 的 Python 环境里跑一行:
+python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoRepeatNGramLogitProcessor as P; print(P.to_str())"
+# 输出一行长字符串,复制到下面 config.json 的 custom_logit_processor 字段
+```
+
+**config.json 示例**(把 `vlm` 切到 Unlimited-OCR + 配置 `extra_body` 扩展字段):
+
+```json
+{
+  "providers": {
+    "vlm": {
+      "baseUrl": "http://127.0.0.1:10000",
+      "models": { "default": "Unlimited-OCR" },
+      "extra_body": {
+        "images_config": { "image_mode": "gundam" },
+        "custom_params": { "ngram_size": 35, "window_size": 128 },
+        "custom_logit_processor": "<上一步 python -c 打印的串>",
+        "skip_special_tokens": false
+      }
+    }
+  }
+}
+```
+
+字段含义(全部顶层,SGLang OpenAI 兼容 API 接受;MCP 直接 `Object.assign` 摊平进 fetch body):
+
+| 字段 | 取值 | 说明 |
+|---|---|---|
+| `images_config.image_mode` | `gundam` / `base` | 单图高精度选 `gundam`(base_size=1024, image_size=640, crop_mode=true);多页 PDF 选 `base`(image_size=1024, crop_mode=false)。media-gen-mcp 是**单图契约**,默认 `gundam` 最优 |
+| `custom_params.ngram_size` | `35`(推荐) | NoRepeatNGram 长度,35 是 README 推荐值 |
+| `custom_params.window_size` | `128`(单图) / `1024`(多页) | 单图走 128;media-gen-mcp 单图契约建议 128 |
+| `custom_logit_processor` | Python 端 `.to_str()` 输出 | 必填(否则长输出会重复退化);TS 无法合成,须 Python 跑一次取串 |
+| `skip_special_tokens` | `false` | OCR 任务须保留特殊 token,不要 skip |
+
+> ⚠️ **task 门控(重要)**:`extra_body`(含 `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`)只在 `extract-text` / `extract-table`(OCR 路径)上摊入 fetch body —— `describe-image`(VQA)和 `analyze-chart`(JSON 抽取)**不带这些字段**。原因:NoRepeatNGram(ngram_size=35)会压制 VQA 描述里合理重复词;`skip_special_tokens:false` 会把 OCR 结构 token 泄漏进 description / 污染 `analyze-chart` 的 `JSON.parse`;`image_mode:gundam`(crop_mode=true)切片整图会破坏场景级 VQA 整体理解。这是 model-aware 短 prompt 门控(`promptForUnlimited`)的对称设计 —— `describe-image` / `analyze-chart` 仍走原长 prompt,也仍走干净 body。若你需要对 `describe-image` / `analyze-chart` 强制传扩展字段,用 per-call `extra`(在 `extract_text` / `extract_table` / `describe_image` / `analyze_chart` 工具的 `extra` 参数里传),它不受 task 门控约束。
+
+**调用**:`extract_text` 工具显式传 `provider=vlm`(否则走 defaultVisionProvider=tesseract):
+
+```
+extract_text(image="data:image/png;base64,...", provider="vlm")
+```
+
+**重要限制**:
+
+- **非 stream 模式**:media-gen-mcp 走 vLLM/SGLang 的**非 stream** `/v1/chat/completions`(JSON 一次性返回),适合单页 / 中短文档。Unlimited-OCR 的 `infer.py` 默认 `stream:true`,**不要把 `stream:true` 抄进 `extra_body`** —— MCP 检测到会 reject 并提示「请移除 extra.stream」。超长 PDF 建议先用 [PyMuPDF 拆页](https://github.com/baidu/Unlimited-OCR#transformers)(README 给了 `pdf_to_images` snippet)再逐页调 `extract_text`,每页独立请求天然规避超长输出。
+- **server 超时**:长文档生成耗时高,vLLM 默认 60s 不够时改 SGLang `REQUEST_TIMEOUT` 或 vLLM `--timeout-keepalive`。
+- **GPU 门槛**:16–24GB VRAM(同档位 4);跑不动者继续用 paddle(10)/glm-vision(9) 链。
+
+**License**:[MIT](https://github.com/baidu/Unlimited-OCR/blob/main/LICENSE)(对齐纯免费立场,与 Qwen Apache-2.0 同档,企业可商用)。
+
 #### 四档对比速查
 
 | 档位 | 装不装服务 | 资源门槛 | 中文 | 表格 | 看图问答 | License / 来源 |

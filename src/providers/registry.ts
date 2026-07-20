@@ -31,6 +31,9 @@ const registry: Record<string, MediaProvider> = {
     baseUrl: config.providers.vlm?.baseUrl,
     apiKey: config.providers.vlm?.apiKey,
     model: config.providers.vlm?.models?.default,
+    // pares7: extra_body 显式注入(review fix high 架构 R-DEP-03:对齐 agnes/zhipu/glm-vision 的
+    // 「provider 配置统一由 registry 注入」约定,移除 vlm.ts 构造器直读全局 config 的 fallback 通道)。
+    extra_body: config.providers.vlm?.extraBody,
   }),
   "glm-vision": new GlmVisionProvider({ // pares7: 智谱 GLM-4.6V-Flash 免费视觉层 + paddle 云端 fallback,tier=9
     apiKeys: config.providers["glm-vision"]?.apiKeys,
