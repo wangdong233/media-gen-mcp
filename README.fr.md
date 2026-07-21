@@ -42,13 +42,13 @@ Fatigué de produire des images plusieurs fois par semaine et d'installer N outi
 | « Fais un QR code pointant vers github.com » | QR code vectoriel |
 | « Génère la formule E=mc² en haute définition » | Formule vectorielle |
 | « Fais une carte de partage sombre à dégradé, titre : Nouveautés de juillet 🚀 » | Carte de partage composée (chinois + emoji automatique) |
-| « Reconnais le tableau dans cette capture de facture » | Tableau HTML/Markdown collable (nouveau en 0.11.0) |
-| « Lis cet histogramme en points de données » | Données structurées CSV/JSON (nouveau en 0.11.0) |
-| « Décris ce qu'il y a sur cette image » | Réponse en langage naturel (nouveau en 0.11.0) |
-| « Extrais tout le texte de ce rapport PDF de 20 pages » | Texte intégral / Markdown / JSON (PDF numérique en secondes, PDF scanné OCR page par page automatique) (pares6 nouveau) |
-| « Extrais le texte de ce contrat scanné en ignorant filigrane et tampons rouges » | Texte propre (suppression automatique des zones filigrane / tampons / en-tête et pied de page) (pares6 nouveau) |
-| « Fusionne cet article sur deux colonnes en un seul bloc selon l'ordre de lecture » | Texte continu sur une colonne (ordre de lecture multi-colonnes restauré, fini l'entrelacement) (pares6 nouveau) |
-| « Suis-je capable de reconnaître les tableaux ? Mon OCR chinois est-il configuré ? » | Liste des capacités actuelles + recommandation de routage (qui fonctionne / qui manque / que faire) (pares6 nouveau) |
+| « Reconnais le tableau dans cette capture de facture » | Tableau HTML/Markdown collable |
+| « Lis cet histogramme en points de données » | Données structurées CSV/JSON |
+| « Décris ce qu'il y a sur cette image » | Réponse en langage naturel |
+| « Extrais tout le texte de ce rapport PDF de 20 pages » | Texte intégral / Markdown / JSON (PDF numérique en secondes, PDF scanné OCR page par page automatique) |
+| « Extrais le texte de ce contrat scanné en ignorant filigrane et tampons rouges » | Texte propre (suppression automatique des zones filigrane / tampons / en-tête et pied de page) |
+| « Fusionne cet article sur deux colonnes en un seul bloc selon l'ordre de lecture » | Texte continu sur une colonne (ordre de lecture multi-colonnes restauré, fini l'entrelacement) |
+| « Suis-je capable de reconnaître les tableaux ? Mon OCR chinois est-il configuré ? » | Liste des capacités actuelles + recommandation de routage (qui fonctionne / qui manque / que faire) |
 
 > Pas besoin d'apprendre les noms d'outils ni d'installer des dépendances système — **Claude choisit automatiquement la meilleure façon de faire**.
 
@@ -166,17 +166,17 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 > Vous : « Combien de personnes sur cette image ? Que font-elles ? »
 > Obtenu : réponse en langage naturel (Q&R visuelle / manuscrit / formules / compréhension de scènes complexes)
 
-**Extraire tout le texte d'un PDF** (pares6 nouveau)
+**Extraire tout le texte d'un PDF**
 > Vous : « Extrais tout le texte de ce rapport PDF de 20 pages, exporte en Markdown »
 > Obtenu : texte intégral / Markdown / JSON — un PDF numérique sort en secondes via la couche de texte, un PDF scanné passe automatiquement par OCR page par page ; plage de pages au choix (`3` / `1-10` / `odd` / `last`), zones filigrane / en-tête et pied de page ignorées, sortie multi-pages fusionnée ou paginée ; les documents longs tournent en arrière-plan, notification à la fin pour récupérer le résultat (factures / contrats / rapports financiers / articles / livres scannés, tout passe)
 
-**Rendre les résultats de reconnaissance / de lecture PDF plus propres et plus fluides** (pares6 nouveau)
+**Rendre les résultats de reconnaissance / de lecture PDF plus propres et plus fluides**
 > Vous : « Extrais le texte de ce contrat scanné, **ignore le filigrane et les tampons rouges** » / « Fusionne cet article sur deux colonnes **selon l'ordre de lecture** en un seul bloc »
 > Obtenu : texte propre et continu — deux commutateurs disponibles dans tous les outils de reconnaissance / d'extraction PDF :
 > - **Zones à ignorer** : délimitez le filigrane / les tampons rouges / l'en-tête et le pied de page / la zone de titre du tableau, automatiquement supprimées du résultat — contrats / certificats / documents scannés ne sont plus masqués par le filigrane
 > - **Ordre de lecture multi-colonnes** : articles / presse / CV / mises en page à deux ou trois colonnes, automatiquement fusionnées en un texte continu sur une colonne selon l'ordre de lecture humain, fini l'entrelacement erroné
 
-**Demander d'abord « que peut faire mon service de reconnaissance ? »** (pares6 nouveau)
+**Demander d'abord « que peut faire mon service de reconnaissance ? »**
 > Vous : « Suis-je actuellement capable de reconnaître les tableaux ? Mon OCR chinois est-il configuré ? La reconnaissance de manuscrit fonctionne-t-elle ? »
 > Obtenu : la liste des capacités actuelles — quel niveau sur les quatre est configuré / lequel manque / lequel est en refroidissement ou en erreur, ainsi que la recommandation de routage « pour les tableaux passez par X, pour le manuscrit par Y » ; **demandez d'abord avant de lancer l'appel, pour éviter de tomber sur une erreur**
 

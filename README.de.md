@@ -42,13 +42,13 @@ Satt, mehrmals pro Woche Bilder zu erstellen und N Tools mit N Parametersätzen 
 | «Erstelle einen QR-Code auf github.com» | Ein Vektor-QR-Code |
 | «Rendere E=mc² als hochauflösende Formel» | Eine Vektor-Formel |
 | «Erstelle eine dunkle Share-Karte mit Verlauf, Titel: Juli-Neuheiten 🚀» | Eine sauber gesetzte Share-Karte (Chinesisch + Emoji automatisch) |
-| «Erkenne die Tabelle in diesem Rechnungs-Screenshot» | Eine einfügbare HTML-/Markdown-Tabelle (neu in 0.11.0) |
-| «Lies dieses Balkendiagramm in Datenpunkte ein» | Strukturierte CSV-/JSON-Daten (neu in 0.11.0) |
-| «Beschreibe, was in diesem Bild zu sehen ist» | Eine Antwort in natürlicher Sprache (neu in 0.11.0) |
-| «Extrahiere den gesamten Text aus diesem 20-Seiten-PDF-Bericht» | Vollständiger Text / Markdown / JSON (digitale PDFs in Sekunden, gescannte automatisch Seite für Seite per OCR) (pares6 neu) |
-| «Erkenne den Text aus diesem gescannten Vertrag, Wasserzeichen und rote Stempel ignorieren» | Sauberer Text (Wasserzeichen-/Stempel-/Kopf-/Fußzeilen-Bereiche werden automatisch entfernt) (pares6 neu) |
-| «Führe dieses zweispaltige Paper in Lesereihenfolge zu einem Absatz zusammen» | Einspaltiger, fortlaufender Text (mehrspaltige Lesereihenfolge wird automatisch wiederhergestellt, keine verketteten Fehl-Zeilen mehr) (pares6 neu) |
-| «Kann ich aktuell Tabellen erkennen? Ist chinesisches OCR konfiguriert?» | Aktuelle Fähigkeitsliste + Routing-Empfehlung (was verfügbar ist / was fehlt / was verwendet werden sollte) (pares6 neu) |
+| «Erkenne die Tabelle in diesem Rechnungs-Screenshot» | Eine einfügbare HTML-/Markdown-Tabelle |
+| «Lies dieses Balkendiagramm in Datenpunkte ein» | Strukturierte CSV-/JSON-Daten |
+| «Beschreibe, was in diesem Bild zu sehen ist» | Eine Antwort in natürlicher Sprache |
+| «Extrahiere den gesamten Text aus diesem 20-Seiten-PDF-Bericht» | Vollständiger Text / Markdown / JSON (digitale PDFs in Sekunden, gescannte automatisch Seite für Seite per OCR) |
+| «Erkenne den Text aus diesem gescannten Vertrag, Wasserzeichen und rote Stempel ignorieren» | Sauberer Text (Wasserzeichen-/Stempel-/Kopf-/Fußzeilen-Bereiche werden automatisch entfernt) |
+| «Führe dieses zweispaltige Paper in Lesereihenfolge zu einem Absatz zusammen» | Einspaltiger, fortlaufender Text (mehrspaltige Lesereihenfolge wird automatisch wiederhergestellt, keine verketteten Fehl-Zeilen mehr) |
+| «Kann ich aktuell Tabellen erkennen? Ist chinesisches OCR konfiguriert?» | Aktuelle Fähigkeitsliste + Routing-Empfehlung (was verfügbar ist / was fehlt / was verwendet werden sollte) |
 
 > Kein Werkzeugnamen-Lernen, keine Systemabhängigkeiten – **Claude wählt automatisch den besten Weg**.
 
@@ -165,17 +165,17 @@ Die Standard-Leichtgewicht-Engine reicht für Englisch / Ziffern, hat aber nur m
 > Du: «Wie viele Menschen sind auf diesem Bild? Was tun sie?»
 > Erhalten: eine Antwort in natürlicher Sprache (visuelle Q&A / Handschrift / Formeln / komplexe Szenen)
 
-**Den gesamten Text aus einem PDF extrahieren** (pares6 neu)
+**Den gesamten Text aus einem PDF extrahieren**
 > Du: «Extrahiere den gesamten Text aus diesem 20-Seiten-PDF-Bericht und exportiere als Markdown»
 > Erhalten: vollständiger Text / Markdown / JSON – digitale PDFs liefern die Textebene in Sekunden, gescannte werden automatisch Seite für Seite gerendert + OCR-erkennbar; unterstützt Seitenbereiche (`3` / `1-10` / `odd` / `last`), das Ignorieren von Wasserzeichen-/Kopf-/Fußzeilen-Bereichen sowie Zusammenfassen oder Seit-für-Seite-Ausgabe; lange Dokumente laufen im Hintergrund, bei Fertigstellung wirst du benachrichtigt (Rechnungen / Verträge / Finanzberichte / Paper / gescannte Bücher – alles möglich)
 
-**Erkennungs- / PDF-Ergebnisse sauberer und im Lesefluss** (pares6 neu)
+**Erkennungs- / PDF-Ergebnisse sauberer und im Lesefluss**
 > Du: «Extrahiere den Text aus diesem gescannten Vertrag, **Wasserzeichen und rote Stempel ignorieren**» / «Führe dieses **zweispaltige Paper in Lesereihenfolge** zusammen»
 > Erhalten: sauberer, fortlaufender Text – zwei Schalter, die in jeder Erkennungs- / PDF-Extraktion verfügbar sind:
 > - **Bereiche ignorieren**: Markiere Wasserzeichen-/Stempel-/Kopf-/Fußzeilen-/Tabellenkopf-Bereiche, sie werden aus dem Ergebnis automatisch entfernt – Verträge / Zertifikate / gescannte Dokumente sind nicht mehr durch Wasserzeichen verdeckt
 > - **Mehrspaltige Lesereihenfolge**: Paper / Zeitschriften / Lebensläufe / zwei- oder dreispaltiger Satz werden automatisch in der menschlichen Lesereihenfolge zu einspaltigem, fortlaufendem Text zusammengeführt – keine verketteten Fehl-Zeilen mehr
 
-**Vorab fragen: «Was kann mein aktuell konfigurierter Erkennungsdienst?»** (pares6 neu)
+**Vorab fragen: «Was kann mein aktuell konfigurierter Erkennungsdienst?»**
 > Du: «Kann ich aktuell Tabellen erkennen? Ist chinesisches OCR konfiguriert? Funktioniert Handschrifterkennung?»
 > Erhalten: aktuelle Fähigkeitsliste – welche der Erkennungs-Stufen konfiguriert / nicht konfiguriert / in Abkühlung oder fehlerhaft sind, plus Routing-Empfehlung («für Tabellen nimm X, für Handschrift nimm Y»); **frag einmal an, bevor du aufrufst – so vermeidest du Fehler zur Laufzeit**
 

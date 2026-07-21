@@ -42,13 +42,13 @@ Tired of producing images a few times a week and juggling N tools with N sets of
 | "Make a QR code pointing to github.com" | A vector QR code |
 | "Render E=mc² as a high-res formula" | A vector formula |
 | "Make a dark-gradient share card with the title 'July New Releases 🚀'" | A polished share card (CJK + emoji auto-supported) |
-| "Recognize the table in this invoice screenshot" | A paste-able HTML/Markdown table (new in 0.11.0) |
-| "Read this bar chart into data points" | Structured CSV/JSON data (new in 0.11.0) |
-| "Describe what's in this image" | A natural-language answer (new in 0.11.0) |
-| "Extract all the text from this 20-page PDF report" | Full text / Markdown / JSON (digital PDFs instant; scanned PDFs auto-OCR'd page by page) (new in pares6) |
-| "Extract text from this scanned contract, ignoring the watermark and red stamps" | Clean text (auto-strips watermark / red-stamp / header-footer regions) (new in pares6) |
-| "Merge this two-column paper into a single paragraph in reading order" | Single-column continuous text (multi-column reading order auto-restored, no more scrambled serialization) (new in pares6) |
-| "Can I do table recognition right now? Is Chinese OCR configured?" | A live capability list + routing advice (what's ready / unconfigured / cooling down) (new in pares6) |
+| "Recognize the table in this invoice screenshot" | A paste-able HTML/Markdown table |
+| "Read this bar chart into data points" | Structured CSV/JSON data |
+| "Describe what's in this image" | A natural-language answer |
+| "Extract all the text from this 20-page PDF report" | Full text / Markdown / JSON (digital PDFs instant; scanned PDFs auto-OCR'd page by page) |
+| "Extract text from this scanned contract, ignoring the watermark and red stamps" | Clean text (auto-strips watermark / red-stamp / header-footer regions) |
+| "Merge this two-column paper into a single paragraph in reading order" | Single-column continuous text (multi-column reading order auto-restored, no more scrambled serialization) |
+| "Can I do table recognition right now? Is Chinese OCR configured?" | A live capability list + routing advice (what's ready / unconfigured / cooling down) |
 
 > No need to learn tool names or install system dependencies — **Claude automatically picks the best way to get it done**.
 
@@ -165,17 +165,17 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "How many people are in this image? What are they doing?"
 > Get: a natural-language answer (visual QA / handwriting / formulas / complex scene understanding)
 
-**Extract Text From a Whole PDF** (new in pares6)
+**Extract Text From a Whole PDF**
 > You: "Extract all the text from this 20-page PDF report and export it as Markdown"
 > Get: full text / Markdown / JSON — digital PDFs pull the embedded text layer instantly, scanned PDFs are rendered and OCR'd page by page; supports page ranges (`3` / `1-10` / `odd` / `last`), ignoring watermark / header-footer regions, and merged or per-page output; long documents run in the background and notify you when done (invoices / contracts / financial reports / papers / scanned books all work)
 
-**Make Recognition / PDF Results Cleaner and More Sequential** (new in pares6)
+**Make Recognition / PDF Results Cleaner and More Sequential**
 > You: "Extract text from this scanned contract, **ignoring the watermark and red stamps**" / "Merge this **two-column paper into reading order** as one paragraph"
 > Get: clean, continuous text — two switches available across all recognition / PDF extraction tools:
 > - **Ignore regions**: circle watermark / red-stamp / header-footer / table-header regions and they're auto-stripped from the result — contracts / certificates / scanned documents are no longer corrupted by overlapping marks
 > - **Multi-column reading order**: papers / newspapers / resumes / two- or three-column layouts are auto-merged into single-column continuous text following human reading order, with no more scrambled serialization
 
-**Ask First: "What Can My Recognition Stack Do Right Now?"** (new in pares6)
+**Ask First: "What Can My Recognition Stack Do Right Now?"**
 > You: "Can I do table recognition right now? Is Chinese OCR configured? What about handwriting?"
 > Get: a live capability list — which of the four recognition tiers is configured / unconfigured / cooling down or errored, plus routing advice on "use X for tables, Y for handwriting"; **ask before you act, so you don't hit a runtime error mid-call**
 

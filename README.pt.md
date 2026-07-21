@@ -42,13 +42,13 @@ Cansado de produzir imagens algumas vezes por semana e lidar com N ferramentas e
 | «Faça um QR code a apontar para github.com» | Um QR code vetorial |
 | «Renderize E=mc² como fórmula em alta resolução» | Uma fórmula vetorial |
 | «Crie um card de partilha com gradiente escuro, título: Novidades de Julho 🚀» | Um card de partilha impecável (chinês + emoji automáticos) |
-| «Reconheça a tabela nesta captura de fatura» | Uma tabela HTML/Markdown colável (novo em 0.11.0) |
-| «Leia este gráfico de barras como pontos de dados» | Dados estruturados em CSV/JSON (novo em 0.11.0) |
-| «Descreva o que está nesta imagem» | Uma resposta em linguagem natural (novo em 0.11.0) |
-| «Extraia todo o texto deste relatório PDF de 20 páginas» | Texto integral / Markdown / JSON (PDFs digitais saem num instante, digitalizações fazem OCR página a página automaticamente) (novo em pares6) |
-| «Extraia texto deste contrato digitalizado, ignorando marcas d'água e carimbos vermelhos» | Texto limpo (remove automaticamente marcas d'água / carimbos vermelhos / cabeçalhos e rodapés) (novo em pares6) |
-| «Junte este artigo em duas colunas por ordem de leitura num parágrafo» | Texto contínuo de coluna única (ordem de leitura multicoluna restaurada automaticamente, sem mais alinhamento errado em série) (novo em pares6) |
-| «Já consigo reconhecer tabelas? O OCR chinês está configurado?» | Lista de capacidades atuais + sugestões de roteamento (qual está disponível / qual falta configurar / qual usar) (novo em pares6) |
+| «Reconheça a tabela nesta captura de fatura» | Uma tabela HTML/Markdown colável |
+| «Leia este gráfico de barras como pontos de dados» | Dados estruturados em CSV/JSON |
+| «Descreva o que está nesta imagem» | Uma resposta em linguagem natural |
+| «Extraia todo o texto deste relatório PDF de 20 páginas» | Texto integral / Markdown / JSON (PDFs digitais saem num instante, digitalizações fazem OCR página a página automaticamente) |
+| «Extraia texto deste contrato digitalizado, ignorando marcas d'água e carimbos vermelhos» | Texto limpo (remove automaticamente marcas d'água / carimbos vermelhos / cabeçalhos e rodapés) |
+| «Junte este artigo em duas colunas por ordem de leitura num parágrafo» | Texto contínuo de coluna única (ordem de leitura multicoluna restaurada automaticamente, sem mais alinhamento errado em série) |
+| «Já consigo reconhecer tabelas? O OCR chinês está configurado?» | Lista de capacidades atuais + sugestões de roteamento (qual está disponível / qual falta configurar / qual usar) |
 
 > Não é preciso aprender nomes de ferramentas nem instalar dependências de sistema — **o Claude escolhe automaticamente a melhor forma de fazer.**
 
@@ -165,17 +165,17 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 > Você: «Quantas pessoas há nesta imagem? O que estão a fazer?»
 > Recebe: resposta em linguagem natural (QA visual / manuscrito / fórmula / compreensão de cenários complexos)
 
-**Extrair todo o texto de um PDF inteiro** (novo em pares6)
+**Extrair todo o texto de um PDF inteiro**
 > Você: «Extraia todo o texto deste relatório PDF de 20 páginas e exporte como Markdown»
 > Recebe: texto integral / Markdown / JSON — PDFs digitais extraem a camada de texto num instante, digitalizações fazem renderização página a página + OCR automaticamente; pode especificar intervalo de páginas (`3` / `1-10` / `odd` / `last`), ignorar marcas d'água / cabeçalhos e rodapés, e juntar ou manter páginas separadas; documentos longos correm em background, com notificação ao terminar (faturas / contratos / relatórios financeiros / artigos / livros digitalizados — todos funcionam)
 
-**Resultados de reconhecimento / leitura de PDF mais limpos e fluidos** (novo em pares6)
+**Resultados de reconhecimento / leitura de PDF mais limpos e fluidos**
 > Você: «Extraia texto deste contrato digitalizado, **ignorando marcas d'água e carimbos vermelhos**» / «Junte este artigo em duas colunas **por ordem de leitura** num parágrafo»
 > Recebe: texto limpo e contínuo — dois interruptores disponíveis em todas as ferramentas de reconhecimento / extração de PDF:
 > - **Ignorar regiões**: marque regiões de marcas d'água / carimbos vermelhos / cabeçalhos e rodapés / cabeçalhos de tabela, e o resultado exclui-as automaticamente — contratos / certificados / digitalizações já não ficcam obscurecidos por marcas d'água
 > - **Ordem de leitura multicoluna**: artigos / jornais / currículos / duas ou três colunas são automaticamente fundidos por ordem de leitura humana num texto contínuo de coluna única, sem mais alinhamento errado em série
 
-**Pergunte primeiro «o que os meus serviços de reconhecimento conseguem fazer»** (novo em pares6)
+**Pergunte primeiro «o que os meus serviços de reconhecimento conseguem fazer»**
 > Você: «Já consigo reconhecer tabelas agora? O OCR chinês está configurado? E o reconhecimento de manuscrito?»
 > Recebe: a lista de capacidades atuais — qual dos níveis de reconhecimento já está configurado / qual falta / qual está em arrefecimento ou com erro, e ainda sugestões de roteamento («para tabelas use X, para manuscrito use Y»); **pergunte antes de avançar, para evitar descobrir o erro só na altura da chamada**
 

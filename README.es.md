@@ -42,13 +42,13 @@
 | «Haz un código QR que apunte a github.com» | Código QR vectorial |
 | «Renderiza E=mc² como una fórmula en alta resolución» | Fórmula vectorial |
 | «Haz una tarjeta para compartir con gradiente oscuro, título "Novedades de julio 🚀"» | Tarjeta maquetada con esmero (chino + emoji automáticos) |
-| «Reconoce la tabla en esta captura de factura» | Tabla HTML/Markdown pegable (nuevo en 0.11.0) |
-| «Lee este gráfico de barras como puntos de datos» | Datos estructurados CSV/JSON (nuevo en 0.11.0) |
-| «Describe qué hay en esta imagen» | Respuesta en lenguaje natural (nuevo en 0.11.0) |
-| «Extrae todo el texto de este PDF de 20 páginas» | Texto completo / Markdown / JSON (PDF digital en segundos, escaneado se procesa página a página con OCR) (pares6 nuevo) |
-| «Extrae el texto de este contrato escaneado, ignora la marca de agua y el sello rojo» | Texto limpio (elimina automáticamente marca de agua / sello rojo / encabezado / pie de página) (pares6 nuevo) |
-| «Combina este artículo a doble columna por orden de lectura» | Texto continuo de una sola columna (reconstruye el orden de lectura multicolumna, sin saltos de línea erróneos) (pares6 nuevo) |
-| «¿Puedo reconocer tablas ahora? ¿Tengo OCR en chino configurado?» | Lista de capacidades actuales + recomendación de enrutamiento (qué sirve / qué falta / qué usar) (pares6 nuevo) |
+| «Reconoce la tabla en esta captura de factura» | Tabla HTML/Markdown pegable |
+| «Lee este gráfico de barras como puntos de datos» | Datos estructurados CSV/JSON |
+| «Describe qué hay en esta imagen» | Respuesta en lenguaje natural |
+| «Extrae todo el texto de este PDF de 20 páginas» | Texto completo / Markdown / JSON (PDF digital en segundos, escaneado se procesa página a página con OCR) |
+| «Extrae el texto de este contrato escaneado, ignora la marca de agua y el sello rojo» | Texto limpio (elimina automáticamente marca de agua / sello rojo / encabezado / pie de página) |
+| «Combina este artículo a doble columna por orden de lectura» | Texto continuo de una sola columna (reconstruye el orden de lectura multicolumna, sin saltos de línea erróneos) |
+| «¿Puedo reconocer tablas ahora? ¿Tengo OCR en chino configurado?» | Lista de capacidades actuales + recomendación de enrutamiento (qué sirve / qué falta / qué usar) |
 
 > Sin aprender nombres de herramientas, sin instalar dependencias del sistema: **Claude elige automáticamente la mejor manera de hacerlo.**
 
@@ -166,17 +166,17 @@ El motor ligero por defecto es suficiente para inglés / números / captcha; la 
 > Tú: «¿Cuántas personas hay en esta imagen? ¿Qué están haciendo?»
 > Obtienes: respuesta en lenguaje natural (preguntas sobre imágenes / escritura a mano / fórmulas / comprensión de escenas complejas)
 
-**Extrae el texto completo de un PDF** (pares6 nuevo)
+**Extrae el texto completo de un PDF**
 > Tú: «Extrae todo el texto de este PDF de 20 páginas, exporta a Markdown»
 > Obtienes: texto completo / Markdown / JSON — los PDF digitales extraen la capa de texto en segundos, los escaneados se renderizan y procesan con OCR página a página; soporta rangos de páginas (`3` / `1-10` / `odd` / `last`), ignorar marca de agua / encabezado / pie de página, y salida combinada o por páginas; los documentos largos corren en segundo plano y te avisan al terminar (facturas / contratos / informes financieros / artículos / libros escaneados, todo vale)
 
-**Haz que el resultado del OCR / PDF sea más limpio y fluido de leer** (pares6 nuevo)
+**Haz que el resultado del OCR / PDF sea más limpio y fluido de leer**
 > Tú: «Extrae el texto de este contrato escaneado, **ignora la marca de agua y el sello rojo**» / «Combina este artículo a doble columna **por orden de lectura** en un solo bloque»
 > Obtienes: texto limpio y continuo — dos interruptores disponibles en todas las herramientas de OCR / PDF:
 > - **Ignorar áreas**: delimita marca de agua / sello rojo / encabezado / pie de página / título de tabla y se eliminan automáticamente del resultado; contratos / certificados / documentos escaneados ya no salen manchados
 > - **Orden de lectura multicolumna**: artículos / prensa / currículums / doble o triple columna se combinan automáticamente en el orden de lectura humano como texto continuo de una sola columna, sin saltos de línea erróneos
 
-**Pregunta primero «qué puedo hacer con los servicios que tengo»** (pares6 nuevo)
+**Pregunta primero «qué puedo hacer con los servicios que tengo»**
 > Tú: «¿Puedo reconocer tablas ahora? ¿Tengo OCR en chino configurado? ¿Funciona la escritura a mano?»
 > Obtienes: lista de capacidades actuales — cuál de los cuatro niveles está configurado / cuál falta / cuál está en cooldown o con errores, junto con recomendaciones de enrutamiento «para tablas usa X, para escritura a mano usa Y»; **pregunta antes de actuar para evitar errores en la llamada directa**
 
