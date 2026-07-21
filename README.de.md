@@ -504,6 +504,9 @@ A: Eine globale Installation klappt auch: zuerst `npm i -g media-gen-mcp-server`
 **F: Kann ich sensible Begriffe / Waffen / Kriegsmotive verwenden?**
 A: Begriffe zu echten Waffen lösen den Inhaltsfilter aus. Tausche sie durch Begriffe aus einem Sci-Fi-Setting aus (z. B. «futuristische Kampfrüstung», «Mecha») – visuell gleichwertiges Ergebnis.
 
+**F: Wählt Claude das falsche Werkzeug? (z. B. Bildgenerierung statt einer Share-Karte)**
+A: Das Routing für solche mehrdeutigen Anfragen wurde abgestimmt — «Karte / Poster / OG-Bild erstellen», «Daten aus diesem Diagramm auslesen», «Produkt-Intro-Animation erstellen», «Architektur-/Flussdiagramm zeichnen», «diese Daten als Diagramm visualisieren» u. ä. geht jetzt automatisch an das richtige Spezialwerkzeug, ohne manuellen Eingriff. Du kannst ein Werkzeug in der Anfrage auch direkt nennen.
+
 ---
 
 ## Für wen ist das?

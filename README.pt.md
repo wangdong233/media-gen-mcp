@@ -504,6 +504,9 @@ R: Instale globalmente: primeiro `npm i -g media-gen-mcp-server`, depois `claude
 **P: Posso usar temas com palavras sensíveis / armas / guerra?**
 R: Palavras reais de armas disparam o filtro de conteúdo. Use termos de configuração sci-fi (como «armadura futurista», «mecha») para contornar, com efeito equivalente.
 
+**P: O Claude vai escolher a ferramenta errada? (p. ex., gerar uma imagem quando você pede um cartão)**
+R: O roteamento para esses pedidos ambíguos já foi ajustado — «faça um cartão / pôster / imagem OG», «leia os dados deste gráfico», «faça uma animação de introdução de produto», «desenhe um diagrama de arquitetura / fluxograma», «visualize estes dados» e afins vão agora automaticamente para a ferramenta especializada certa, sem necessidade de correção manual. Você também pode nomear uma ferramenta explicitamente no seu pedido.
+
 ---
 
 ## Para quem é isto

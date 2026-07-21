@@ -505,6 +505,9 @@ R: También puedes instalar global: primero `npm i -g media-gen-mcp-server`, lue
 **P: ¿Puedo usar palabras sensibles / armas / temas de guerra?**
 R: Las palabras de armas reales activan el filtro de contenido. Usa términos de ciencia ficción (p. ej. «armadura futurista», «mecha») para evitarlo; el efecto es equivalente.
 
+**P: ¿Claude elegirá la herramienta equivocada? (p. ej., generar una imagen cuando pides una tarjeta)**
+R: El enrutamiento de estas solicitudes ambiguas ya está calibrado — «haz una tarjeta / póster / imagen OG», «lee los datos de este gráfico», «haz una animación de intro de producto», «dibuja un diagrama de arquitectura / flujo», «visualiza estos datos» y similares van ahora automáticamente a la herramienta especializada correcta, sin necesidad de corregir manualmente. También puedes nombrar una herramienta explícitamente en tu solicitud.
+
 ---
 
 ## Para quién es esto

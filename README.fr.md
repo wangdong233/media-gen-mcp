@@ -505,6 +505,9 @@ R : L'installation globale fonctionne aussi : commencez par `npm i -g media-gen-
 **Q : Puis-je utiliser des mots sensibles / armes / thèmes de guerre ?**
 R : Les mots d'armes réelles déclenchent le filtre de contenu. Utilisez des termes de réglage sci-fi (comme « armure future », « mecha ») pour contourner, à effet équivalent.
 
+**Q : Claude va-t-il choisir le mauvais outil ? (p. ex. générer une image quand vous demandez une carte de partage)**
+R : Le routage de ces requêtes ambiguës a été affiné — « faire une carte / poster / image OG », « lire les données de ce graphique », « faire une animation d'intro produit », « dessiner un schéma d'architecture / organigramme », « visualiser ces données » et similaires vont désormais automatiquement au bon outil spécialisé, sans correction manuelle. Vous pouvez aussi nommer un outil explicitement dans votre requête.
+
 ---
 
 ## Pour qui c'est

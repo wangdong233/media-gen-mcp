@@ -504,6 +504,9 @@ A: A global install works too: run `npm i -g media-gen-mcp-server` first, then `
 **Q: Can I use sensitive words / weapons / war themes?**
 A: Real-weapon terms trigger content filters. Swap in sci-fi setting words (e.g. "future battle armor", "mecha") to bypass — equivalent visual result.
 
+**Q: Will Claude pick the wrong tool? (e.g. call image generation when you ask for a share card)**
+A: Routing for these ambiguous requests has been tuned — "make a card / poster / OG image", "read the data out of this chart", "make a product-intro animation", "draw an architecture / flowchart diagram", "chart this data" and the like now go to the right specialized tool automatically, no manual correction needed. You can also name a tool explicitly in your request.
+
 ---
 
 ## Who Is This For

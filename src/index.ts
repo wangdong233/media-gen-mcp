@@ -120,7 +120,7 @@ function buildTools() {
     {
       name: "generate_image",
       description:
-        "Generate or edit an AI image — text-to-image (文生图/AI画图) or image-to-image (图生图, pass `images`) — via free models (Agnes AI default, or Zhipu). Use this for photographic or illustrated subjects (写实图/插画/概念图/Logo 设计图). Output downloads locally and the path is returned. No local rendering libs needed; this calls the AI model for you. Multilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
+        "Generate or edit an AI image (text-to-image 文生图/AI画图; or image-to-image 图生图 via `images`) using free models (Agnes AI default, or Zhipu). Output downloads locally and the path is returned; no local rendering libs needed.\n\nWHEN: subject is photographic or illustrated (写实图/插画/概念图/original logo artwork / 原创品牌主视觉); user says 'AI画图 / 文生图 / generate an image of ...' and wants AI-generated pixels.\n\nAVOID:\n- Text-heavy cards / OG images / posters / quote cards / cover images → use `generate_card` instead (deterministic Satori render, no AI variability, same input → same output).\n- An existing brand logo (Iconify 200k+ vector set) → use `generate_icon` instead; this tool only draws ORIGINAL logo artwork.\n\nNEXT: call `list_models` first to discover available model names and size constraints per provider.\n\nMultilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -148,7 +148,7 @@ function buildTools() {
     {
       name: "create_video",
       description:
-        "Create an AI video — text-to-video, image-to-video, or keyframe animation (文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) — via free models (Agnes AI default, or Zhipu). Use this for any '生成视频/做动画' request; no local video tools needed. Smart async: long videos return a handle to poll with get_video; short ones block until done. Multilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
+        "Create an AI video (text-to-video / image-to-video / keyframe animation; 文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) via free models (Agnes AI default, or Zhipu). Smart async: long videos return a handle to poll with `get_video`; short ones block until done.\n\nWHEN: user wants photorealistic or AI-generated video (写实视频 / AI 合成画面 / 让这张图动起来). AVOID when the user wants deterministic motion graphics — see below.\n\nAVOID:\n- HTML/CSS/GSAP motion graphics / kinetic typography / animated charts / brand intros (deterministic, same input → same output, no AI) → use `render_video` instead.\n\nNEXT: if the call returns a handle (async mode), poll with `get_video` until status=done. Call `list_models` first to verify allowed numFrames per provider (Agnes constraints vary by resolution).\n\nMultilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -194,7 +194,7 @@ function buildTools() {
     {
       name: "extract_text",
       description:
-        "Extract/recognize text from an image (OCR / 文字识别 / 文字提取 / 画像からの文字起こし) — verification codes, digits, license plates, printed Latin, or Chinese documents. Zero-config: tesseract runs in-process (WASM, bundled). Chinese accuracy is weak by default; configure a `paddleocr` provider for Chinese SOTA. The reverse operation is generate_image (text→image). Multilingual triggers: 文字识别 · OCR · 文字提取 · 文字起こし · texto · textoerkennung (ja/es/de).",
+        "Extract/recognize text from an image (OCR / 文字识别 / 文字提取 / 画像からの文字起こし) — verification codes, digits, license plates, printed Latin, or Chinese documents. Zero-config: tesseract runs in-process (WASM, bundled). Chinese accuracy is weak by default; configure a `paddleocr` provider for Chinese SOTA. The reverse operation is generate_image (text→image).\n\nNEXT: for multi-page PDFs use `extract_pdf`; for tables use `extract_table`; for charts use `analyze_chart`; for handwriting/scene/formula use `describe_image`.\n\nMultilingual triggers: 文字识别 · OCR · 文字提取 · 文字起こし · texto · textoerkennung (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -216,7 +216,7 @@ function buildTools() {
     {
       name: "extract_table",
       description:
-        "Recognize a table from an image → HTML/Markdown/JSON (表格识别/表格提取/tabla): invoices, receipts, financial statements, academic paper tables. Requires a `paddleocr` provider (PaddleX serving, Chinese SOTA); no pure-JS fallback (tesseract cannot parse table structure — a clear error is returned, not a silent OCR downgrade). Multilingual triggers: 表格识别 · 表格提取 · tabla · 表 (ja/es/de).",
+        "Recognize a table from an image → HTML/Markdown/JSON (表格识别/表格提取/tabla): invoices, receipts, financial statements, academic paper tables. Requires a `paddleocr` provider (PaddleX serving, Chinese SOTA); no pure-JS fallback (tesseract cannot parse table structure — a clear error is returned, not a silent OCR downgrade).\n\nNEXT: for plain text in the same image use `extract_text`; for chart data use `analyze_chart`; for a natural-language description of the image use `describe_image`.\n\nMultilingual triggers: 表格识别 · 表格提取 · tabla · 表 (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -233,7 +233,7 @@ function buildTools() {
     {
       name: "analyze_chart",
       description:
-        "Extract data points from a chart image (图表识别/图表数据提取/Chart OCR): reverse-engineer bar/line/pie/scatter charts into structured data series. Requires a `paddleocr` provider (PP-Chart2Table via useChartRecognition). Multilingual triggers: 图表识别 · 图表数据 · gráfico (ja/es/de).",
+        "Extract data points FROM an existing chart IMAGE (图表识别/图表数据提取/Chart OCR): reverse-engineer bar/line/pie/scatter charts into structured data series. Requires a `paddleocr` provider (PP-Chart2Table via useChartRecognition); if paddle is unconfigured, call `list_vision_capabilities` first to warn the user instead of hitting a 503.\n\nWHEN: user says '识别这张图表的数据 / extract data from this chart / chart OCR / 读出图里的数值' and provides a chart image.\n\nAVOID:\n- Rendering a chart FROM data → use `generate_chart` instead (the inverse operation).\n\nNEXT: companion to `extract_table` for tabular data in the same image (try extract_table if the chart has an underlying data table).\n\nMultilingual triggers: 图表识别 · 图表数据 · gráfico · Chart-Daten · Graphik (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -250,7 +250,7 @@ function buildTools() {
     {
       name: "describe_image",
       description:
-        "VLM image understanding — natural-language description or visual QA (图像描述/看图说话/VQA/describir imagen): handwritten text, complex layouts, scenes, formulas→LaTeX. Requires `paddleocr` provider (PaddleOCR-VL); M3+ adds `vlm` provider for enhanced VQA. Leave `question` empty for a default description. Multilingual triggers: 图像描述 · 看图说话 · 描述图片 (ja/es/de).",
+        "VLM image understanding — natural-language description or visual QA (图像描述/看图说话/VQA/describir imagen): handwritten text, complex layouts, scenes, formulas→LaTeX. Requires `paddleocr` provider (PaddleOCR-VL); M3+ adds `vlm` provider for enhanced VQA. Leave `question` empty for a default description.\n\nAVOID: clean printed text/digits/captchas → use `extract_text` instead (faster, structured output). This tool is for handwriting / complex layouts / scene understanding / formula→LaTeX.\n\nMultilingual triggers: 图像描述 · 看图说话 · 描述图片 (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -275,7 +275,7 @@ function buildTools() {
     {
       name: "list_vision_capabilities",
       description:
-        "Introspect vision (image recognition) provider capabilities BEFORE calling extract_text/extract_table/analyze_chart/describe_image — shows which providers are configured, what each supports (tasks/languages/latency/accuracy), per-task caveats, and routing guidance. Use this to avoid runtime errors (e.g. extract_table needs paddle; if paddle is unconfigured you can warn the user upfront instead of hitting a 503). Output is dynamic: reflects configured/cooldown/lastErrorAt at call time. Pure local, no network. Multilingual triggers: 能力自省 · 能力 introspect · capacités · Fähigkeiten (zh/en/fr/de).",
+        "Introspect vision (image recognition) provider capabilities BEFORE calling extract_text/extract_table/analyze_chart/describe_image — shows which providers are configured, what each supports (tasks/languages/latency/accuracy), per-task caveats, and routing guidance. Use this to avoid runtime errors (e.g. extract_table needs paddle; if paddle is unconfigured you can warn the user upfront instead of hitting a 503). Output is dynamic: reflects configured/cooldown/lastErrorAt at call time. Pure local, no network.\n\nNEXT: this is the recommended first call BEFORE `extract_text`/`extract_table`/`analyze_chart`/`describe_image` to avoid runtime 503 (call it once, then route to the right vision tool).\n\nMultilingual triggers: 能力自省 · 能力 introspect · capacités · Fähigkeiten (zh/en/fr/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -286,7 +286,7 @@ function buildTools() {
     {
       name: "generate_diagram",
       description:
-        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, hand-writing SVG is appropriate. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).",
+        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, use `render_svg` (hand-written SVG with feGaussianBlur) instead. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -303,7 +303,7 @@ function buildTools() {
     },
     {
       name: "generate_qrcode",
-      description: "Generate a QR code (二维码) as SVG or PNG from text/URL. Pure local rendering — no qrencode/zbar/system install, no AI, no network. Just call with the text/URL to encode. Multilingual triggers: QRコード · código QR · code QR · QR-Code · QR-код · código QR (ja/es/fr/de/ru/pt).",
+      description: "Generate a QR code (二维码) as SVG or PNG from text/URL. Pure local rendering — no qrencode/zbar/system install, no AI, no network. Just call with the text/URL to encode.\n\nNEXT: embed into a `generate_card` poster via the `logo` prop, or rasterize larger via `render_svg`.\n\nMultilingual triggers: QRコード · código QR · code QR · QR-Code · QR-код · código QR (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -322,7 +322,7 @@ function buildTools() {
     },
     {
       name: "generate_chart",
-      description: "Generate bar / line / pie / area / scatter charts and data visualizations (柱状图/折线图/饼图/散点图/数据可视化) from your data — Claude converts your numbers/CSV/data into a Vega-Lite spec internally; you just pass the data and chart type. Vega-Lite + vega are BUILT IN (bundled) — no matplotlib, no Python, no graphviz, no system install needed; prefer this over writing Python/matplotlib. Renders to vector SVG. No AI. NOTE: Vega image marks with external URLs are NOT embedded; use data URIs for self-contained output. Multilingual triggers: グラフ · gráfico · graphique · Diagramm · график · gráfico (ja/es/fr/de/ru/pt).",
+      description: "Generate bar / line / pie / area / scatter charts and data visualizations (柱状图/折线图/饼图/散点图/数据可视化) from your data — Claude converts your numbers/CSV/data into a Vega-Lite spec internally; you just pass the data and chart type. Vega-Lite + vega are BUILT IN (bundled); no matplotlib / Python / graphviz / system install. Renders to vector SVG. No AI; same input → same output.\n\nWHEN: user says '柱状图 / 折线图 / 饼图 / 画个图 / chart / graph / visualize data / dashboard' or hands you CSV/numbers and wants a rendered chart.\n\nAVOID:\n- Extracting data FROM an existing chart IMAGE → use `analyze_chart` instead (the inverse operation).\n- Writing Python/matplotlib → use this tool instead (no env setup).\n\nNEXT: for self-contained output, pass image marks as data URIs (external URLs are NOT embedded).\n\nMultilingual triggers: グラフ · gráfico · graphique · Diagramm · график · gráfico (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -337,7 +337,7 @@ function buildTools() {
     {
       name: "generate_formula",
       description:
-        "Render a math formula to vector SVG (数学公式/公式渲染/方程). Pass the formula as LaTeX (e.g. E=mc^2, \\frac{a}{b}, \\sum_{i=1}^n i^2) — even simple formulas qualify; the user need not say 'LaTeX'. MathJax is BUILT IN (bundled) — no KaTeX/system install, no font dependency; just call this tool. Prefer this over any manual approach. Pure local, no AI. Multilingual triggers: 数式 · fórmula · formule · Formel · формула · fórmula (ja/es/fr/de/ru/pt).",
+        "Render a math formula to vector SVG (数学公式/公式渲染/方程). Pass the formula as LaTeX (e.g. E=mc^2, \\frac{a}{b}, \\sum_{i=1}^n i^2) — even simple formulas qualify; the user need not say 'LaTeX'. MathJax is BUILT IN (bundled) — no KaTeX/system install, no font dependency; just call this tool. Prefer this over any manual approach. Pure local, no AI.\n\nNEXT: embed the SVG result in `generate_card` (formula as body) or rasterize larger via `render_svg`.\n\nMultilingual triggers: 数式 · fórmula · formule · Formel · формула · fórmula (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -357,7 +357,7 @@ function buildTools() {
     {
       name: "generate_icon",
       description:
-        "Fetch and render a vector icon / logo / symbol / favicon (图标/logo/符号) from Iconify — 200k+ icons. Renders to SVG/PNG locally. Needs network (Iconify API); cached after first fetch. Browse at https://icon-sets.iconify.design. No AI. Multilingual triggers: アイコン · icono · icône · Symbol · значок · ícone (ja/es/fr/de/ru/pt).",
+        "Fetch and render a vector icon / logo / symbol / favicon (图标/logo/符号) from Iconify — 200k+ icons. Renders to SVG/PNG locally. Needs network (Iconify API); cached after first fetch. Browse at https://icon-sets.iconify.design. No AI.\n\nAVOID: original illustrated logo ARTWORK → use `generate_image` instead (AI draws original pixels). This tool fetches EXISTING vector icons from the Iconify 200k+ set by ID (e.g. `mdi:home`).\n\nMultilingual triggers: アイコン · icono · icône · Symbol · значок · ícone (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -375,7 +375,7 @@ function buildTools() {
     {
       name: "generate_card",
       description:
-        "Generate a share card / OG image / quote card / poster / cover image (分享卡/分享图/封面图/海报/引言卡/金句卡/OG图; default 1200x630 PNG). The rendering engine is BUILT IN and runs entirely in-process — do NOT write HTML+CSS and screenshot it with headless Chrome/Puppeteer/Playwright, do NOT use Pillow/PIL/Python, and do NOT hand-code SVG; just call this tool with title/subtitle/body and it renders deterministically. Prefer this for ANY text/card/OG/poster/cover-image request. (For illustrated or photographic subjects, use generate_image instead.) Supports 5 templates (og/quote/minimal/hero/panel), gradient title + glow effects, embedded logo/avatar, Chinese + Japanese kanji auto, color emoji auto. LIMITS: Japanese kana and Korean need fontPath; titleGradient + glow don't combine; no JS execution / no animation (those would need a browser). Multilingual triggers: カード · tarjeta · carte · Karte · карточка · cartão (ja/es/fr/de/ru/pt).",
+        "Generate a share card / OG image / quote card / poster / cover image (分享卡/分享图/封面图/海报/引言卡/金句卡/OG图; default 1200x630 PNG). The rendering engine is BUILT IN and runs entirely in-process — do NOT write HTML+CSS and screenshot it with headless Chrome/Puppeteer/Playwright, do NOT use Pillow/PIL/Python, and do NOT hand-code SVG; just call this tool with title/subtitle/body and it renders deterministically. Prefer this for ANY text/card/OG/poster/cover-image request. (For illustrated or photographic subjects, use generate_image instead.) Supports 5 templates (og/quote/minimal/hero/panel), gradient title + glow effects, embedded logo/avatar, Chinese + Japanese kanji auto, color emoji auto. LIMITS: Japanese kana and Korean need fontPath; titleGradient + glow don't combine; no JS execution / no animation (those would need a browser).\n\nNEXT: pair with `generate_image` for illustrated artwork (Logos/插画) that this card layout can embed via the `logo` prop.\n\nMultilingual triggers: カード · tarjeta · carte · Karte · карточка · cartão (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -408,7 +408,7 @@ function buildTools() {
     {
       name: "render_svg",
       description:
-        "Render SVG source to high-quality PNG or SVG. Dual backend: resvg (92% filter fidelity, in-process, lightweight) or Chrome (100% filter fidelity, needs system Chrome/Edge). AUTO-selects: if SVG contains <filter>/<feGaussianBlur>/<feTurbulence> AND Chrome is available → Chrome; else resvg. Use this for '酷炫/霓虹/科技感' graphics with glow/blur/depth that D2 cannot produce — write the SVG (with feGaussianBlur, radial gradients, etc.) and this tool renders it. No AI.",
+        "Render SVG source to high-quality PNG or SVG. Dual backend: resvg (92% filter fidelity, in-process) or Chrome (100% filter fidelity, needs system Chrome/Edge). AUTO-selects: SVG contains <filter>/<feGaussianBlur>/<feTurbulence> AND Chrome available → Chrome; else resvg. No AI; same input → same output.\n\nWHEN: '酷炫/霓虹/科技感' graphics with glow/blur/depth that `generate_diagram` cannot produce — write the SVG (feGaussianBlur, radial gradients, feTurbulence, etc.) and this tool rasterizes it.\n\nAVOID:\n- Structured technical diagrams (architecture / flowchart / sequence / ER / class / mindmap) → use `generate_diagram` instead (auto-layout via D2/Graphviz, no hand-written SVG needed).\n- Text-heavy cards / OG / posters → use `generate_card` instead (deterministic layout).\n\nNEXT: pair with `generate_diagram` for hybrid flows (D2 for structure, render_svg for stylized overlays).\n\nMultilingual triggers: SVG 渲染 · render SVG · SVG-Nebeneffekte (zh/en/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -426,7 +426,7 @@ function buildTools() {
     {
       name: "render_video",
       description:
-        "Render HTML/CSS/GSAP animation to a deterministic MP4/GIF/WebM video. Input: HTML source (with CSS animations or GSAP timeline) + fps + duration. Engine: headless Chrome (seek-based frame capture, HyperFrames-style) + ffmpeg (frame stitching). No AI, deterministic (same input → same output). Use for: product intros, animated charts/text motion graphics, brand intros, slideshows, kinetic typography. NOT for: photorealistic video (use create_video/AI for that). Needs: system Chrome/Edge + ffmpeg (bundled via ffmpeg-static).",
+        "Render HTML/CSS/GSAP animation to a deterministic MP4/GIF/WebM video. Input: HTML source (with CSS animations or GSAP timeline) + fps + duration. Engine: headless Chrome (seek-based frame capture, HyperFrames-style) + ffmpeg (frame stitching). No AI, deterministic (same input → same output).\n\nWHEN: product intros, animated charts/text motion graphics, brand intros, slideshows, kinetic typography (Animation · animación · animation · Animation · анимация).\n\nAVOID: photorealistic or AI-generated video (写实视频) → use `create_video` instead.\n\nNEXT: pair with `create_video` when a project needs both AI photorealistic clips and deterministic motion graphics. Needs: system Chrome/Edge + ffmpeg (bundled via ffmpeg-static).\n\nMultilingual triggers: Animation · animación · animation · Animation · анимация (ja/es/fr/de/ru).",
       inputSchema: {
         type: "object",
         properties: {
@@ -447,7 +447,7 @@ function buildTools() {
     {
       name: "extract_pdf",
       description:
-        "Extract text from a PDF document (PDF识别/多页OCR/财务报表/发票/扫描件文字提取): supports both digital PDFs (with embedded text layer → instant text extraction) and scanned PDFs (rendered to images → OCR via configured vision provider). Smart async: long PDFs return a handle to poll with get_pdf; short ones block until done. Requires `pdfjs-dist` + `@napi-rs/canvas` (run `npm install pdfjs-dist @napi-rs/canvas` in the media-gen-mcp install dir if missing). Companion to extract_text (which is single-image). Multilingual triggers: PDF识别 · PDF文字提取 · PDF OCR · 多页OCR · tabla PDF (zh/es/de).",
+        "Extract text from a PDF document (PDF识别/多页OCR/财务报表/发票/扫描件文字提取): supports both digital PDFs (with embedded text layer → instant text extraction) and scanned PDFs (rendered to images → OCR via configured vision provider). Smart async: long PDFs return a handle to poll with get_pdf; short ones block until done. Requires `pdfjs-dist` + `@napi-rs/canvas` (run `npm install pdfjs-dist @napi-rs/canvas` in the media-gen-mcp install dir if missing). Companion to extract_text (which is single-image).\n\nNEXT: for single images use `extract_text`; poll async jobs with `get_pdf`.\n\nMultilingual triggers: PDF识别 · PDF文字提取 · PDF OCR · 多页OCR · tabla PDF (zh/es/de).",
       inputSchema: {
         type: "object",
         properties: {
