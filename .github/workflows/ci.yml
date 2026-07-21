@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 20(LTS)与 22(current);Node 18 已 EOL,不在矩阵
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # 先 build dist/(check-schema + 测试都 import dist/)
+      - run: npm run build
+      # 四段式:build:tests → node --test(dist-test/ + P0-2 的 .mjs)→ check-error-text → check-schema(G1/G2/G3)
+      - run: npm test

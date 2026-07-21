@@ -12,8 +12,10 @@
  * 形态:`node --test test/user-journey.error-format.mjs`(node 18+ 内置,零依赖)。
  * 引用编译后 dist/index.js(MCP server 入口),跑前必须 `npm run build`。
  *
- * 注:D2 WASM 加载首次 ~2.5s,每个 case spawn 新 server,4 类错输入 + happy + tools/list
- * 共 6 case 串行总耗时 ~20s。单 case 默认 60s 超时。
+ * 注:D2 WASM 加载首次 ~2.5s(本地),每个 case spawn 新 server,4 类错输入 + happy + tools/list
+ * 共 6 case 串行总耗时 ~20s(本地)。单 case 默认 120s 超时 —— 给 D2 WASM 首次编译在慢 /
+ * 高负载 CI runner(实测可 >60s)留余量,避免 callTool 内置超时杀掉 happy/error 路径卡死 npm test
+ * (经 prepublishOnly 链会影响 npm publish)。本地快机仍 ~2s 返回,不受影响。
  */
 
 import { test } from "node:test";
@@ -30,7 +32,7 @@ const SERVER_PATH = fileURLToPath(new URL("../dist/index.js", import.meta.url));
  * 协议:JSON-RPC over stdio(line-delimited)。
  * 流程:initialize → notifications/initialized → tools/call
  */
-async function callTool(name, args, method = "tools/call", timeoutMs = 60000) {
+async function callTool(name, args, method = "tools/call", timeoutMs = 120000) {
   const child = spawn("node", [SERVER_PATH], {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, MCP_TEST_MODE: "1" },

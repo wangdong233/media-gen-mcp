@@ -1,0 +1,13 @@
+{
+  "title": "测试卡片",
+  "subtitle": "Subtitle",
+  "body": "这是 card CJK 用例的正文,验证 fontFamily:Noto Sans SC 时 0 fetch 离线渲染(byte-stable)。",
+  "footer": "footer · 2026",
+  "template": "og",
+  "width": 800,
+  "height": 420,
+  "fontFamily": "Noto Sans SC",
+  "accent": "#6366f1",
+  "bg": "#0f172a",
+  "color": "#f8fafc"
+}

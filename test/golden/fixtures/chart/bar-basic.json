@@ -1,0 +1,19 @@
+{
+  "mark": "bar",
+  "encoding": {
+    "x": { "field": "a", "type": "nominal" },
+    "y": { "field": "v", "type": "quantitative" }
+  },
+  "data": {
+    "values": [
+      { "a": "A", "v": 28 },
+      { "a": "B", "v": 55 },
+      { "a": "C", "v": 43 },
+      { "a": "D", "v": 91 },
+      { "a": "E", "v": 81 },
+      { "a": "F", "v": 53 },
+      { "a": "G", "v": 19 },
+      { "a": "H", "v": 87 }
+    ]
+  }
+}

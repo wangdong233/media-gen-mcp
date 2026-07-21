@@ -1,0 +1,9 @@
+{
+  "text": "https://example.com/path?query=1&other=2",
+  "format": "png",
+  "margin": 4,
+  "errorCorrectionLevel": "M",
+  "dark": "#000000",
+  "light": "#ffffff",
+  "width": 256
+}

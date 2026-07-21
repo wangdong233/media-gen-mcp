@@ -508,6 +508,31 @@ A:这类模糊请求的路由已经做过校准 —— 「做卡片 / 海报 / O
 
 ---
 
+## 测试:守护「同输入同输出」的承诺
+
+「同输入同输出可入 git」是本项目的核心立场。仓库自带一套 **golden byte-compare 套件**,把这条立场从口号变成 CI 门:
+
+- **三段式测试链**(`npm test`):
+  1. `tsc -p tsconfig.test.json` —— 把 `test/**/*.ts` 编译到 `dist-test/`
+  2. `node --test dist-test/*.test.js test/*.mjs` —— node:test 内置 runner,跑 golden byte-compare + 确定性自检 + P0-2 的 LLM 错误契约
+  3. `node scripts/check-error-text.mjs && node scripts/check-schema.mjs` —— 文本/契约级断言(G1/G2/G3 守工具数与 schema enum 单一真源)
+- **golden 覆盖 6 个本地确定性工具**:QR(SVG/PNG 双校验 + jsQR 解码)、formula(R-01 抹 MathJax 自增 ID)、chart(Vega)、card(强制 CJK family,0 fetch 离线)、render_svg passthrough、diagram(D2/Graphviz)。`generate_icon` 因依赖 Iconify API 显式 skip,留待 P0-4 mock 框架。
+- **一键刷新器**:`npm run render:golden` 重生成 `test/golden/expected/` 下所有 golden。引擎升级后跑此命令,人工 `git diff test/golden/expected/` review 后 commit,CI 二次校验。
+- **失败信息含刷新命令**:任何 byte 漂移都会让 CI 红屏并提示 `run \`npm run render:golden\` and commit`,杜绝「不知道怎么修」。
+- **CI**:`.github/workflows/ci.yml` 在 push/PR 时跑 Node 20 + 22 双矩阵,跨平台 byte 一致性在 Linux CI 上验证(macOS 本地刷新 → Linux CI 校验)。
+
+### 如何加一条新 golden 用例(5 步)
+
+1. **写 fixture**:在 `test/golden/fixtures/<tool>/` 加 `.txt` / `.json` / `.tex` / `.svg` / `.d2` / `.dot`。
+2. **入 GOLDEN 数组**:在 `test/golden/golden.config.ts` 追加一条 `{ id, tool, fixturePath, expectedPath, compareStrategy }`(`svg-byte` / `png-byte` / `qr-png-verify`)。formula 类用例需设 `preNormalize: (s) => s.replace(/MJX-\d+-/g, "MJX-N-")` 抹 MathJax 自增 ID。
+3. **跑 `npm test`** —— 必红(fresh render 与 `expected/` 不存在或不一致)。
+4. **跑 `npm run render:golden`** —— 刷新 `test/golden/expected/<expectedPath>`。
+5. **`git diff test/golden/expected/`** 人工 review 每个 byte 变化(确认是预期的引擎输出变化、而非回归),`git commit`。
+
+> **License**:`pngjs` ^5.0.0(MIT)+ `jsqr` ^1.4.0(Apache-2.0)为本套件新增 devDependency,均为企业可商用;helpers / config / render / 测试文件全部自研,不引用任何第三方测试范式源码。
+
+---
+
 ## 这是给谁的
 
 - **Claude Code 重度用户** —— 每周都要做几次图像任务,不想为每件事装一个 MCP、记一套参数。
