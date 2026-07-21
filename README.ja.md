@@ -3,7 +3,7 @@
 > Claude Code の「画像スイスアーミーナイフ」—— 作画、アイデアの図解、画像の読み取りまで、一言で完了。全部無料。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -185,6 +185,10 @@ Claude に一言だけ伝えます:
 **構造化ダイアグラムを描く**
 > あなた:「アーキテクチャ図を描いて:クライアント → API ゲートウェイ → 注文サービス + 決済サービス → データベース」
 > 手に入るもの:ベクタのアーキテクチャ図(フローチャート / シーケンス図 / クラス図 / ER 図 / マインドマップも対応)
+
+**インタラクティブ HTML 図を描く**(GitHub README に埋め込み、システム主题に自動追従、JS 不要)
+> あなた:「README に埋め込んで、ダーク/ライト閲覧者それぞれに自動対応するアーキテクチャ図を描いて」
+> 手に入るもの:単一 HTML ファイル(D2 デュアルパレット + ビューア、パン / ズーム / テーマ切替 / SVG 書き出し)
 
 **データをチャートに可視化**
 > あなた:「この売上データを棒グラフにして」

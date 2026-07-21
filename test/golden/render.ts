@@ -80,5 +80,14 @@ export async function render(tool: string, fixturePath: string): Promise<RenderR
     const out = await engine.render({ code, engine: engineName, format: "svg" });
     return { input: code, ...out };
   }
+  if (tool === "interactive_html") {
+    // P0-5 golden:调 buildInteractiveHtml(不落盘纯函数)拿 HTML 字符串,
+    // 复用 RenderResult.svg 字段装 HTML 字符串(避免扩接口)。
+    // darkTheme=default 触发 D2 darkThemeID 双调色板注入(守 S4)。
+    const code = readFileSync(abs, "utf8");
+    const { buildInteractiveHtml } = await import("../../dist/interactive-html/index.js");
+    const built = await buildInteractiveHtml({ code, darkTheme: "default" });
+    return { input: code, svg: built.html };
+  }
   throw new Error(`unknown tool: ${tool}`);
 }

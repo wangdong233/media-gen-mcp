@@ -216,16 +216,16 @@ test("user journey happy Graphviz: 合法 DOT → 成功返回 svg", async () =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// 用户旅程 7:19 工具枚举不变(向后兼容)
+// 用户旅程 7:20 工具枚举(P0-5 加入 generate_interactive_diagram 后 19→20;向后兼容)
 // ═══════════════════════════════════════════════════════════════════════
 
-test("user journey 工具枚举: tools/list 仍返回 19 个工具", async () => {
+test("user journey 工具枚举: tools/list 返回 20 个工具(P0-5 后)", async () => {
   const resp = await callTool(null, null, "tools/list");
   const tools = resp.result.tools;
-  assert.equal(tools.length, 19, `19 工具枚举破:${tools.length} 个`);
+  assert.equal(tools.length, 20, `20 工具枚举破:${tools.length} 个`);
   // 关键工具名仍在
   const names = tools.map((t) => t.name).sort();
-  for (const required of ["generate_diagram", "generate_chart", "render_svg"]) {
+  for (const required of ["generate_diagram", "generate_chart", "render_svg", "generate_interactive_diagram"]) {
     assert.ok(names.includes(required), `${required} 工具消失`);
   }
 });

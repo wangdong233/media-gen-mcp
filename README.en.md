@@ -3,7 +3,7 @@
 > The all-in-one image toolkit for Claude Code — generate, draw, and understand images in a single sentence. Free.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -184,6 +184,10 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 **Draw a Structural Diagram**
 > You: "Draw an architecture diagram: client → API gateway → order service + payment service → database"
 > Get: a vector architecture diagram (flowcharts / sequence diagrams / class diagrams / ER diagrams / mind maps also supported)
+
+**Draw an Interactive HTML Diagram** (embed in GitHub README, auto-follows system theme, zero JS)
+> You: "Draw an architecture diagram for a README that follows dark/light readers automatically"
+> Get: a single-file HTML (D2 dual palette + viewer; pan / zoom / theme toggle / export SVG)
 
 **Plot Data as a Chart**
 > You: "Plot this sales data as a bar chart"

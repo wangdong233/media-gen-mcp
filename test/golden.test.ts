@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { render } from "./golden/render.js";
 import { GOLDEN } from "./golden/golden.config.js";
-import { compareSvg, comparePng, verifyQrPng, assertNoNaNOrUndefined } from "./golden/helpers.js";
+import { compareSvg, comparePng, compareHtml, verifyQrPng, assertNoNaNOrUndefined } from "./golden/helpers.js";
 
 const EXPECTED = path.resolve("test/golden/expected");
 
@@ -42,6 +42,15 @@ describe("golden byte-compare", () => {
         assert.ok(
           r.ok,
           `${c.id}: fresh render differs from test/golden/expected/${c.expectedPath}; if the change is intentional, run \`npm run render:golden\` and commit. ${r.diff ?? ""}`,
+        );
+      } else if (c.compareStrategy === "html-byte") {
+        // P0-5:interactive_html 用 svg 字段装 HTML 字符串(render.ts 复用 RenderResult.svg)。
+        if (!svg) throw new Error(`${c.id}: renderer 未返 html(in svg slot)`);
+        const checked = expected.toString("utf8");
+        const r = compareHtml(svg, checked);
+        assert.ok(
+          r.ok,
+          `${c.id}: fresh HTML differs from test/golden/expected/${c.expectedPath}; if the change is intentional, run \`npm run render:golden\` and commit. ${r.diff ?? ""}`,
         );
       } else if (c.compareStrategy === "png-byte") {
         if (!png) throw new Error(`${c.id}: renderer 未返 png`);

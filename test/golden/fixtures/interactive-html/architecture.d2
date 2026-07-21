@@ -1,0 +1,25 @@
+direction: right
+client: {
+  shape: person
+  style.bold: true
+}
+gateway: {
+  shape: hexagon
+  style.fill: "#dbeafe"
+}
+api: {
+  shape: rectangle
+  style.fill: "#f5f3ff"
+}
+cache: {
+  shape: cylinder
+  style.fill: "#fef3c7"
+}
+db: {
+  shape: cylinder
+  style.fill: "#dcfce7"
+}
+client -> gateway: HTTPS
+gateway -> api: route
+api -> cache: read
+api -> db: query

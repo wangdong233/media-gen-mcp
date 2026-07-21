@@ -45,8 +45,8 @@ for (const c of GOLDEN) {
     const { svg, png } = await render(c.tool, c.fixturePath);
     const out = path.join(EXPECTED, c.expectedPath);
     await mkdir(path.dirname(out), { recursive: true });
-    if (c.compareStrategy === "svg-byte") {
-      if (!svg) throw new Error("renderer 未返 svg");
+    if (c.compareStrategy === "svg-byte" || c.compareStrategy === "html-byte") {
+      if (!svg) throw new Error("renderer 未返 svg/html");
       await writeFile(out, svg, "utf8");
     } else if (c.compareStrategy === "png-byte" || c.compareStrategy === "qr-png-verify") {
       if (!png) throw new Error("renderer 未返 png");

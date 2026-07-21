@@ -3,7 +3,7 @@
 > O «canivete suíço de imagens» do Claude Code — crie, desenhe e entenda imagens numa única frase. Tudo de graça.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -184,6 +184,10 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 **Desenhar diagramas estruturados**
 > Você: «Desenhe um diagrama de arquitetura: cliente → API gateway → serviço de pedidos + serviço de pagamentos → base de dados»
 > Recebe: diagrama de arquitetura vetorial (também suporta fluxogramas / diagramas de sequência / diagramas de classes / diagramas ER / mapas mentais)
+
+**Desenhar um diagrama HTML interativo** (incorporar no README do GitHub, segue automaticamente o tema do sistema, zero JS)
+> Você: «Desenhe uma arquitetura para um README que siga automaticamente leitores em claro/escuro»
+> Recebe: um único arquivo HTML (paleta dupla D2 + visualizador; pan / zoom / troca de tema / exportar SVG)
 
 **Transformar dados em gráficos**
 > Você: «Transforme estes dados de vendas num gráfico de barras»

@@ -134,10 +134,19 @@ export class D2Engine implements DiagramEngine {
       }
 
       // CQ-2:theme → themeID(D2 接受数字 ID)
+      // P0-5A §3.2:最小加性方案 —— 三杠杆(darkThemeID/noXMLTag/salt)条件展开合并。
+      //   generate_diagram 路径不传这三字段 → 三展开项全 false → renderOpts 退化为
+      //   { ...compiled.renderOptions, ...(themeID != null && { themeID }) } → 与改造前 byte-identical。
+      //   darkThemeID 必须严格全大写(Go 反序列化大小写敏感,驼峰 darkThemeId 会静默不生效)。
       const themeID = resolveD2Theme(req.theme);
-      const renderOpts = themeID != null
-        ? { ...compiled.renderOptions, themeID }
-        : compiled.renderOptions;
+      const darkThemeID = req.darkTheme != null ? resolveD2Theme(req.darkTheme) : null;
+      const renderOpts = {
+        ...compiled.renderOptions,
+        ...(themeID != null ? { themeID } : {}),
+        ...(darkThemeID != null ? { darkThemeID } : {}),        // C1: 大写 ID
+        ...(req.noXMLTag === true ? { noXMLTag: true } : {}),   // C2: HTML 内联必去 <?xml?>
+        ...(req.salt ? { salt: req.salt } : {}),                // C3: 固定 salt(多图防 ID 冲突)
+      };
 
       const svg = await d2.render(compiled.diagram, renderOpts);
       const resolved = await resolveD2Icons(svg); // 修复 icon: 碎图(解析 Iconify → 嵌 data URI)

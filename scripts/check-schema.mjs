@@ -45,8 +45,8 @@ try {
     eq(cv.inputSchema.properties.frameRate.enum, vc.allowedFrameRates, `frameRate.enum === ${effProvider} allowedFrameRates`);
   }
 
-  console.log("[G2] 19 工具齐全(pares5 M2 +extract_table/analyze_chart/describe_image;pares6 +list_vision_capabilities/extract_pdf/get_pdf)");
-  eq(tools.map((t) => t.name).sort(), ["analyze_chart", "create_video", "describe_image", "extract_pdf", "extract_table", "extract_text", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_qrcode", "get_pdf", "get_video", "list_models", "list_vision_capabilities", "render_svg", "render_video"], "19 工具齐全");
+  console.log("[G2] 20 工具齐全(pares5 M2 +extract_table/analyze_chart/describe_image;pares6 +list_vision_capabilities/extract_pdf/get_pdf;P0-5 +generate_interactive_diagram)");
+  eq(tools.map((t) => t.name).sort(), ["analyze_chart", "create_video", "describe_image", "extract_pdf", "extract_table", "extract_text", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_interactive_diagram", "generate_qrcode", "get_pdf", "get_video", "list_models", "list_vision_capabilities", "render_svg", "render_video"], "20 工具齐全");
 
   console.log("[G3] mode/resolution schema enum 与共享常量一致(0.8.1 单一真源)");
   if (cv) {

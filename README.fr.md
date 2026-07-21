@@ -3,7 +3,7 @@
 > Le « couteau suisse de l'image » pour Claude Code — créer des images, donner vie à vos idées, comprendre l'image, en une seule phrase, totalement gratuit.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -185,6 +185,10 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 **Dessiner des schémas structurels**
 > Vous : « Dessine un schéma d'architecture : client → passerelle API → service commande + service paiement → base de données »
 > Obtenu : schéma d'architecture vectoriel (prend aussi en charge organigrammes / diagrammes de séquence / diagrammes de classes / schémas ER / cartes mentales)
+
+**Dessiner un schéma HTML interactif** (intégrable dans un README GitHub, suit automatiquement le thème système, zéro JS)
+> Vous : « Dessine un schéma d'architecture pour un README qui suit automatiquement les lecteurs clair/sombre »
+> Obtenu : un fichier HTML unique (palette double D2 + visionneuse ; pan / zoom / bascule de thème / export SVG)
 
 **Transformer les données en graphiques**
 > Vous : « Mets ces données de vente en histogramme »

@@ -16,8 +16,8 @@
  * License:本文件为 P0-3 自研(数据结构 + 配置,无第三方源码引用)。
  */
 
-export type CompareStrategy = "svg-byte" | "png-byte" | "qr-png-verify";
-export type GoldenTool = "qrcode" | "formula" | "chart" | "card" | "render_svg" | "diagram";
+export type CompareStrategy = "svg-byte" | "png-byte" | "qr-png-verify" | "html-byte";
+export type GoldenTool = "qrcode" | "formula" | "chart" | "card" | "render_svg" | "diagram" | "interactive_html";
 
 export interface GoldenCase {
   /** 唯一 id,用于 describe/test name。 */
@@ -71,6 +71,10 @@ export const GOLDEN: GoldenCase[] = [
   //    若 CI 红 → 加 skipReason,延后 P0-4 pHash;绝不宽容 diff)──
   { id: "diagram-d2-svg", tool: "diagram", fixturePath: "diagram/d2-basic.d2", expectedPath: "diagram/d2-basic.svg", compareStrategy: "svg-byte" },
   { id: "diagram-graphviz-svg", tool: "diagram", fixturePath: "diagram/graphviz-basic.dot", expectedPath: "diagram/graphviz-basic.svg", compareStrategy: "svg-byte" },
+
+  // ── interactive_html(P0-5:D2 darkThemeID 双调色板 + 三杠杆 + HTML 包装;实测 byte-stable)
+  //    Step 1.2.5 确定性审计 10 次 diff 全 byte-identical;HTML 内容确定性,文件名非产物内容)──
+  { id: "interactive-html-architecture", tool: "interactive_html", fixturePath: "interactive-html/architecture.d2", expectedPath: "interactive-html/architecture.golden.html", compareStrategy: "html-byte" },
 
   // ── icon:网络依赖(Iconify API),P0-3 skip;待 P0-4 mock fetch 后覆盖 ──
   // 注:fixturePath/expectedPath 留空(skipReason case 不渲染、不读盘);tool 用 render_svg 占位。

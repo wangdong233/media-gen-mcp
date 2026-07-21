@@ -3,7 +3,7 @@
 > Das «All-in-One-Bild-Toolkit» für Claude Code – Bilder erzeugen, Ideen zeichnen, Bilder verstehen, in einem einzigen Satz. Komplett kostenlos.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -184,6 +184,10 @@ Die Standard-Leichtgewicht-Engine reicht für Englisch / Ziffern, hat aber nur m
 **Ein Strukturdiagramm zeichnen**
 > Du: «Zeichne ein Architekturdiagramm: Client → API-Gateway → Bestelldienst + Zahlungsdienst → Datenbank»
 > Erhalten: ein Vektor-Architekturdiagramm (auch Fluss-/Sequenz-/Klassen-/ER-Diagramme / Mindmaps)
+
+**Interaktives HTML-Diagramm zeichnen** (in GitHub-README einbettbar, folgt dem System-Theme automatisch, null JS)
+> Du: «Zeichne eine Architektur für ein README, die hell/dunkel-Lesern automatisch folgt»
+> Erhalten: eine einzelne HTML-Datei (D2-Doppel-Palette + Viewer; Pan / Zoom / Theme-Umschaltung / SVG-Export)
 
 **Daten als Chart darstellen**
 > Du: «Stelle diese Verkaufsdaten als Balkendiagramm dar»

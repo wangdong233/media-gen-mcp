@@ -63,6 +63,29 @@ export function compareSvg(
 }
 
 /**
+ * P0-5:HTML byte-compare。归一化 CRLF 后全文 ===。
+ *
+ * 实测 D2 默认渲染已 byte-identical(P0-5A §0.6 / open_point #2 实证);固定 salt
+ * + noXMLTag + viewer 模板确定性 → 同输入两次 byte-identical。
+ *
+ * 与 compareSvg 区别:不抹 MathJax MJX-N-(HTML 无 MathJax),仅 normalize CRLF。
+ * 若未来 HTML 内出现自增计数器(类似 MJX-N-),在此加 normalize 钩子。
+ */
+export function compareHtml(
+  fresh: string,
+  checked: string,
+): { ok: boolean; diff?: string } {
+  const a = normalizeNewlines(fresh);
+  const b = normalizeNewlines(checked);
+  if (a === b) return { ok: true };
+  const i = [...a].findIndex((c, idx) => c !== b[idx]);
+  return {
+    ok: false,
+    diff: `first diff at char ${i}: fresh=${JSON.stringify(a.slice(Math.max(0, i - 40), i + 40))} checked=${JSON.stringify(b.slice(Math.max(0, i - 40), i + 40))}`,
+  };
+}
+
+/**
  * PNG 元数据 strip:丢弃 tEXt/zTXt/iTXt/tIME/eXIf/pHYs/sBIT/cHRM/gAMA/iCCP 等,
  * 只保留 IHDR+PLTE+tRNS+IDAT+IEND。等价 pngcrush -ow -rem allb。
  *

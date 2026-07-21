@@ -23,6 +23,22 @@ export interface DiagramRequest {
   outDir?: string;
   /** 文件名(不含扩展名);省略自动命名。 */
   name?: string;
+  /**
+   * 深色主题(d2 专属;interactive-html 用,graphviz 忽略)。
+   * 传了才触发 D2 SVG 内联 @media (prefers-color-scheme: dark) 双调色板,
+   * GitHub README 嵌入时浏览器自动跟随系统主题。
+   */
+  darkTheme?: string;
+  /**
+   * 去 <?xml?> 声明(interactive-html 专属;HTML 内联 SVG 必传 true,否则浏览器解析错乱)。
+   * 传到 D2 RenderOptions.noXMLTag。
+   */
+  noXMLTag?: boolean;
+  /**
+   * 固定 salt(interactive-html 专属;多图嵌入同 HTML 防 SVG ID 冲突,作零成本确定性防御)。
+   * 传到 D2 RenderOptions.salt,会附加到 SVG 内部 ID 后缀。
+   */
+  salt?: string;
 }
 
 export interface DiagramRenderOutput {

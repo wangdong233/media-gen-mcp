@@ -27,6 +27,7 @@ import { waitVideo } from "./poll.js";
 import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
 import { getDiagramEngine, MERMAID_UNSUPPORTED_MSG } from "./diagram/render.js";
+import { renderInteractiveHtml } from "./interactive-html/index.js";
 import { renderQR } from "./qr.js";
 import { renderChart } from "./chart.js";
 import { renderFormula } from "./formula.js";
@@ -288,7 +289,7 @@ function buildTools() {
     {
       name: "generate_diagram",
       description:
-        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, use `render_svg` (hand-written SVG with feGaussianBlur) instead. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).",
+        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, use `render_svg` (hand-written SVG with feGaussianBlur) instead. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).\n\nNEXT: for interactive HTML with theme switch + animation that auto-follows system theme in GitHub README, use generate_interactive_diagram.",
       inputSchema: {
         type: "object",
         properties: {
@@ -297,6 +298,27 @@ function buildTools() {
           format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector high-res)" },
           diagramType: { type: "string", description: "Currently ignored — diagram type is determined by DSL syntax (e.g. D2 shape: sequence_diagram). Reserved for future use." },
           theme: { type: "string", description: "D2 only; named: 'default'(0)/'neutral'(1), or numeric themeID; unknown names error (see d2 --themes)" },
+          name: { type: "string", description: "Output filename (without extension)" },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["code"],
+      },
+    },
+    {
+      name: "generate_interactive_diagram",
+      description:
+        "Generate a SELF-CONTAINED INTERACTIVE HTML diagram (交互式自包含HTML图) that auto-follows system theme via @media (prefers-color-scheme: dark) — embeddable in GitHub README so dark/light readers see the right palette with zero JS. Single .html file with all CSS/JS inlined. Backend: D2 WASM (same DSL as generate_diagram, zero new deps). Supports pan/zoom, theme toggle, optional PNG preview. Multilingual triggers: 交互式图 · interactive diagram · diagrama interactivo · diagramme interactif · interaktives Diagramm · интерактивная диаграмма (en/zh/es/fr/de/ru). " +
+        "WHEN TO CHOOSE: GitHub README/wiki architecture diagram that must follow system theme; blog embeddable diagram with hover/click; product demo with subtle animation. " +
+        "AVOID: static SVG/PNG in docs (use generate_diagram, lighter); video output (use render_video); hand-coding SVG (use render_svg). " +
+        "NEXT: open the HTML in a browser to interact; set previewPng=true for a PNG snapshot alongside.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "D2 DSL source (same syntax as generate_diagram — see its description for the full D2 syntax guide)." },
+          theme: { type: "string", description: "Light theme (D2 themeID or 'default'/'neutral'). Default 'default'." },
+          darkTheme: { type: "string", description: "Dark theme (D2 themeID or 'default'/'neutral'). When set, D2 inks BOTH palettes + @media (prefers-color-scheme: dark) into the SVG so GitHub README auto-switches. If omitted, `theme` applies to both modes (no auto-switch)." },
+          title: { type: "string", description: "HTML <title> and visible heading. Default 'Interactive Diagram'." },
+          previewPng: { type: "boolean", default: false, description: "Also export a PNG snapshot (puppeteer-core if Chrome available, else resvg fallback). Default false (Chrome launch is slow)." },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
@@ -999,6 +1021,45 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const checked = await assertOutputClean(fp, { tool: "generate_diagram", format, originalInput: { engine: engineName } });
         if ("fatal" in checked) return err(checked.fatal.message);
         return ok({ engine: engineName, format, local_path: fp, ...(checked.warnings.length ? { warnings: checked.warnings } : {}) });
+      }
+
+      case "generate_interactive_diagram": {
+        // P0-5:第 20 工具 —— 自包含交互式 HTML 图(D2 双调色板 + viewer + motion governor)。
+        const code = requireString(a.code, "code");
+        const outDir = resolveOutDir(a.outDir);
+        try {
+          const result = await renderInteractiveHtml({
+            code,
+            theme: optString(a.theme),
+            darkTheme: optString(a.darkTheme),
+            title: optString(a.title) ?? "Interactive Diagram",
+            previewPng: a.previewPng === true,
+            name: optString(a.name),
+            outDir,
+          });
+          // HTML 不走 assertOutputClean —— P0-4 守 raster/vector 渲染产物;HTML 是 viewer 容器,
+          // 契约 asserts S2/S6/S9/S11 已在 renderInteractiveHtml 内部 assertSelfContained/assertSizeUnder
+          // 等做过。handler 拿到的 result 已经过契约断言。
+          return ok({
+            local_path: result.localPath,
+            bytes: result.bytes,
+            has_dual_palette: result.hasDarkLightDualPalette,
+            ...(result.previewPngPath ? { preview_png_path: result.previewPngPath } : {}),
+            hint: "Open in browser to interact; embed in GitHub README to auto-follow system theme.",
+          });
+        } catch (e: any) {
+          // 沿用 generate_diagram 的错误归一化范式(enhanceD2Error/normalizeEngineError 已在 P0-2 落地)。
+          // interactive-html 仅 D2 后端,engineHint 固定 "d2";resvg 错(PNG 路径)经 [resvg] 前缀路由。
+          const msg = String(e?.message ?? e);
+          const isResvg = /^\[resvg\] /i.test(msg);
+          const normalized = normalizeEngineError(
+            isResvg ? "resvg" : "d2",
+            msg.replace(/^\[resvg\] /i, ""),
+            { input: code, raw: msg },
+            isResvg ? "resvg" : undefined,
+          );
+          throw new Error(normalized); // 顶层 catch 转 err(normalized)
+        }
       }
 
       case "generate_qrcode": {

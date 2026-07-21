@@ -3,7 +3,7 @@
 > El «todo-en-uno de imágenes» para Claude Code — crea imágenes, dibuja ideas, entiende imágenes: una frase y listo. Todo gratis.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -185,6 +185,10 @@ El motor ligero por defecto es suficiente para inglés / números / captcha; la 
 **Dibuja diagramas estructurados**
 > Tú: «Dibuja una arquitectura: cliente → API gateway → servicio de pedidos + servicio de pago → base de datos»
 > Obtienes: diagrama de arquitectura vectorial (también flujos / secuencia / clases / ER / mapas mentales)
+
+**Dibuja un diagrama HTML interactivo** (incrustado en GitHub README, sigue el tema del sistema automáticamente, sin JS)
+> Tú: «Dibuja una arquitectura para un README que siga automáticamente a los lectores en claro/oscuro»
+> Obtienes: un archivo HTML único (paleta dual D2 + visor; pan / zoom / cambio de tema / exportar SVG)
 
 **Convierte datos en gráficos**
 > Tú: «Convierte estos datos de ventas en un gráfico de barras»
