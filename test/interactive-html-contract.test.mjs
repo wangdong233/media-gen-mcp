@@ -177,3 +177,31 @@ test("darkThemeID 字段大写正确(D2 注入了 dark palette CSS)", async () =
   // D2 darkThemeID 注入会产 .fill-B1 / .stroke-B1 等 dark palette 类(B=Blue/dark 系)
   assert.match(r.html, /\.fill-B\d+\s*\{/);
 });
+
+// F11(主控终验回归):title 含 sentinel 字面 → 抛错,防静默数据损坏。
+// 触发场景:用户/LLM 把 sentinel 字面拼进 title → escapeHtml 不转义下划线 →
+// SVG 占位的非 /g 替换落到 <title> 内 → stage 保留字面 sentinel,产物不抛错但不可用。
+test("F11: title 含 sentinel 字面 → 抛错(防静默损坏)", async () => {
+  await assert.rejects(
+    () => buildInteractiveHtml({ code: code(), title: "__MGM_SVG_SLOT__" }),
+    /sentinel/i,
+  );
+  await assert.rejects(
+    () => buildInteractiveHtml({ code: code(), title: "__MGM_TITLE_SLOT__" }),
+    /sentinel/i,
+  );
+});
+
+// F12(主控终验回归):darkTheme 空白串 → 视为"未提供",与 d2.ts resolveD2Theme 对齐。
+// 不抛 S4(此前 '   '/'""' 会进 assertDualPalette 但 D2 未注入 dark palette → 必失败)。
+// 对照:上面的 "unknown darkTheme → 抛错" 测的是未知主题名(在 D2 层抛),本测试测空白串(视为缺省)。
+test("F12: darkTheme 空白串视为未提供(不抛 S4,hasDualPalette=false)", async () => {
+  for (const blank of ["", "   ", "\t"]) {
+    const r = await buildInteractiveHtml({ code: code(), darkTheme: blank });
+    assert.equal(
+      r.hasDarkLightDualPalette,
+      false,
+      `blank darkTheme=${JSON.stringify(blank)} should be treated as absent`,
+    );
+  }
+});

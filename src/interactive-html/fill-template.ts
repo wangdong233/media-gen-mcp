@@ -33,6 +33,15 @@ export function escapeHtml(s: string): string {
  * 不变量:同输入同输出(确定性),无 Math.random/Date.now。
  */
 export function fillTemplate(opts: { svg: string; title: string }): string {
+  // F11(主控终验内修):防 sentinel 碰撞导致静默数据损坏。
+  // escapeHtml 不转义下划线 → 若 title 含 SVG_SENTINEL 字面,会先被 TITLE 的 /g 替换塞进 <title>/<h1>,
+  // 随后 SVG 的非 /g 替换首个命中落在 <title> 内 → SVG 注入错位、stage <div> 保留字面 sentinel,
+  // 产物不抛错但不可用(静默损坏)。入口校验,碰撞即抛。
+  if (opts.title.includes(TITLE_SENTINEL) || opts.title.includes(SVG_SENTINEL)) {
+    throw new Error(
+      "title must not contain reserved sentinel strings; found reserved placeholder literal in title.",
+    );
+  }
   const titleEscaped = escapeHtml(opts.title);
   // 函数式 replace:返回值原样使用,$&/$'/$1 不解释(markmap 范式)。
   // /g 全局:模板内 __MGM_TITLE_SLOT__ 出现 2 处(<title> + <h1>),都要填同一 escapeHtml(title)。

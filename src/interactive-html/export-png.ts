@@ -72,14 +72,20 @@ export async function exportPngFromSvg(
 
 /** resvg 光栅化 SVG → PNG Buffer(白底 + 中文字体兜底,与 generate_diagram PNG 路径同源)。 */
 function renderSvgToPngBuffer(svg: string): Buffer {
-  // fitTo width 1600(与 d2.ts D2_MAX_W 对齐),防大架构图产超大 PNG
-  const resvg = new Resvg(svg, {
-    background: "#ffffff",
-    fitTo: { mode: "width", value: 1600 },
-    font: {
-      loadSystemFonts: true,
-      defaultFontFamily: "PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif",
-    },
-  });
-  return Buffer.from(resvg.render().asPng());
+  // F14(主控终验内修):复刻 d2.ts PNG 路径范式 —— 加 [resvg] 前缀,handler catch 据此前缀路由到
+  // resvg 归一化;否则裸 resvg 错会被 handler 错归到 d2(F13 已先拦契约错,但引擎错仍需此前缀)。
+  try {
+    // fitTo width 1600(与 d2.ts D2_MAX_W 对齐),防大架构图产超大 PNG
+    const resvg = new Resvg(svg, {
+      background: "#ffffff",
+      fitTo: { mode: "width", value: 1600 },
+      font: {
+        loadSystemFonts: true,
+        defaultFontFamily: "PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif",
+      },
+    });
+    return Buffer.from(resvg.render().asPng());
+  } catch (e: any) {
+    throw new Error("[resvg] " + String(e?.message ?? e));
+  }
 }

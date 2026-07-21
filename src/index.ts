@@ -1048,9 +1048,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             hint: "Open in browser to interact; embed in GitHub README to auto-follow system theme.",
           });
         } catch (e: any) {
-          // 沿用 generate_diagram 的错误归一化范式(enhanceD2Error/normalizeEngineError 已在 P0-2 落地)。
-          // interactive-html 仅 D2 后端,engineHint 固定 "d2";resvg 错(PNG 路径)经 [resvg] 前缀路由。
           const msg = String(e?.message ?? e);
+          // F13(主控终验内修):契约 assert(S2/S4/S6/S9/S11)以 "S\d+ " 开头,是 interactive-html
+          // 自身契约违反,直接抛 [interactive-html] 前缀,不归一化到 d2 —— 否则用户看到 "[d2] S6 ..."
+          // 会误以为 D2 出错,而实测 D2 已成功(契约错发生在 D2 渲染之后的 HTML 断言阶段)。
+          if (/^S\d+\s/.test(msg)) {
+            throw new Error("[interactive-html] " + msg);
+          }
+          // 引擎错(D2 / resvg PNG 路径)沿用 generate_diagram 归一化范式。
+          // resvg 错经 [resvg] 前缀路由(见 export-png.ts renderSvgToPngBuffer);否则按 d2 归一化。
           const isResvg = /^\[resvg\] /i.test(msg);
           const normalized = normalizeEngineError(
             isResvg ? "resvg" : "d2",

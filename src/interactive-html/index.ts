@@ -110,16 +110,19 @@ export async function buildInteractiveHtml(
   });
 
   // 3. 契约 asserts(S2/S4/S6/S9/S11;S3 由调用方 / golden 验证)
+  // F12(主控终验内修):darkTheme 空白串边界 —— 与 d2.ts resolveD2Theme 对齐(空白/whitespace 返 null,
+  // 等价"未提供")。否则 '   '/'""' 会进入 assertDualPalette,但 D2 并未注入 dark 调色板 → S4 必失败。
+  const hasDark = req.darkTheme != null && req.darkTheme.trim() !== "";
   assertSelfContained(html);
   assertNoXmlDecl(html);                // C2 防线
-  if (req.darkTheme != null) assertDualPalette(html);
+  if (hasDark) assertDualPalette(html);
   assertMotionGovernor(html);
   assertSizeUnder(html, 256 * 1024);    // S6 默认 256KB
 
   return {
     html,
     bytes: Buffer.byteLength(html, "utf-8"),
-    hasDarkLightDualPalette: req.darkTheme != null,
+    hasDarkLightDualPalette: hasDark,
     svg,
   };
 }
