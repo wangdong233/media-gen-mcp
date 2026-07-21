@@ -71,22 +71,18 @@ function d2FitTo(svg: string): { mode: "zoom"; value: number } | { mode: "width"
   return { mode: "width", value: 1600 };
 }
 
-/** 增强 D2 错误信息:解析 D2 技术性错误,追加可操作 HINT(让 Claude 首次纠对,不试错)。 */
-function enhanceD2Error(msg: string, code: string): string {
-  let hint = "";
+/**
+ * DOT 误入 D2 启发式(预编译前的 input 检测,不是 errmsg 归一化范畴)。
+ * 从原 enhanceD2Error 首分支提取(2026-07-21 P0-2 §4.4 删除前的提取动作)。
+ * 保留在 d2.ts 是因为这是 input-based 启发式,与错误归一化(handler 层 normalizeEngineError)不同层。
+ * 最终归宿可能是 P1-1 的 DSL pre-flight lint 层;P0-2 期内保留行为不变。
+ * 返回 HINT 后缀(带前导空格,可直接拼到 errmsg 后),或 null。
+ */
+function detectDotAsD2(code: string): string | null {
   if (/^(strict\s+)?(di)?graph\b/mi.test(code.trim()) || /\brankdir\b/mi.test(code)) {
-    hint = " HINT: 这看起来像 Graphviz DOT 语法。D2 语法不同,请设 engine:\"graphviz\"。";
-  } else if (/reserved|keyword|cannot be (used|redefined)|redefinition/i.test(msg)) hint = " HINT: 可能是 D2 保留样式关键字(fill/stroke/shadow/font-size/bold/3d/opacity 等对应 style.X)被直接用作节点/属性名 —— 改名(如 shadow->elevation)。";
-  else if (/number between/i.test(msg)) hint = " HINT: D2 numeric properties (stroke-width, font-size, border-radius, stroke-dash, width, height) accept INTEGERS ONLY — floats like 1.5 are invalid, use 1 or 2.";
-  else if (/valid named color|hex code/i.test(msg)) hint = " HINT: hex colors MUST be QUOTED in D2 (style.fill: \"#ff0000\") because # starts a comment — unquoted #ff0000 is eaten as comment. Named colors like red don't need quotes.";
-  else if (/one of/i.test(msg)) {
-    const m = msg.match(/one of[^:]*:\s*(.+)/i);
-    if (m) hint = ` HINT: valid values are: ${m[1].trim()}`;
-  } else if (/maps must be terminated/i.test(msg)) hint = " HINT: in D2 map blocks { }, each property goes on its OWN LINE. Check for missing closing } or properties on the same line.";
-  else if (/unexpected text after/i.test(msg)) hint = " HINT: D2 map properties must be one per line (newline-separated). Multiple properties on one line with spaces/semicolons can cause this.";
-  else if (/non-integer/i.test(msg)) hint = " HINT: D2 requires integers (not floats) for this property.";
-  else if (/missing value after/i.test(msg)) hint = " HINT: # starts a COMMENT in D2. If your value starts with # (like a hex color #ff0000), it MUST be quoted: style.fill: \"#ff0000\". Named colors like red don't need quotes.";
-  return msg + (hint || "");
+    return ' HINT: 这看起来像 Graphviz DOT 语法。D2 语法不同,请设 engine:"graphviz"。';
+  }
+  return null;
 }
 
 // keep-alive 句柄:有在飞渲染时 ref() 保活让 await 落地;空闲 unref() → 独立进程(测试/脚本/嵌入式)
@@ -129,7 +125,12 @@ export class D2Engine implements DiagramEngine {
       try {
         compiled = await d2.compile(req.code);
       } catch (e: any) {
-        throw new Error(enhanceD2Error(e?.message ?? String(e), req.code));
+        // P0-2 §4.4:engine 层只抛裸 errmsg(不再走 enhanceD2Error 的 9 条 HINT)。
+        // HINT 知识已迁入 src/handlers/error-format.ts 的 knownErrorPatterns.d2(handler 层统一归一化)。
+        // DOT 误入 D2 启发式(非 errmsg 匹配)保留在此处 —— input-based,与归一化不同层。
+        const rawErrmsg = e?.message ?? String(e);
+        const dotHint = detectDotAsD2(req.code);
+        throw new Error(dotHint ? `${rawErrmsg}${dotHint}` : rawErrmsg);
       }
 
       // CQ-2:theme → themeID(D2 接受数字 ID)
@@ -143,12 +144,18 @@ export class D2Engine implements DiagramEngine {
 
       let png: Buffer | undefined;
       if (req.format === "png") {
-        const resvg = new Resvg(resolved, {
-          background: "#ffffff",
-          fitTo: d2FitTo(resolved),
-          font: { loadSystemFonts: true, defaultFontFamily: "PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" },
-        });
-        png = Buffer.from(resvg.render().asPng());
+        // P0-2 §4.3.4:PNG 复用路径的 resvg 错误加 [resvg] 前缀,handler 层 normalizeEngineError
+        // 用结构性信号(engineHint/前缀)路由到 resvg patterns 表,替代脆弱的内容匹配。
+        try {
+          const resvg = new Resvg(resolved, {
+            background: "#ffffff",
+            fitTo: d2FitTo(resolved),
+            font: { loadSystemFonts: true, defaultFontFamily: "PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" },
+          });
+          png = Buffer.from(resvg.render().asPng());
+        } catch (e: any) {
+          throw new Error("[resvg] " + (e?.message ?? String(e)));
+        }
       }
       return { svg: resolved, png };
     };

@@ -34,6 +34,7 @@ import { renderIcon } from "./icon.js";
 import { renderCard } from "./card.js";
 import { renderSvg } from "./render-svg.js";
 import { renderVideo } from "./render-video.js";
+import { normalizeEngineError } from "./handlers/error-format.js";
 import { applyTbpu } from "./vision/tbpu.js";
 import { filterIgnoreAreas, parseIgnoreAreas } from "./vision/ignore-area.js";
 import {
@@ -944,14 +945,29 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const engine = getDiagramEngine(engineName);
         if (!engine) return err(`unknown diagram engine: ${engineName} (supported: d2, graphviz)`);
         if (!engine.isAvailable()) return err(`diagram engine "${engineName}" not available`);
-        const rendered = await engine.render({
-          code,
-          engine: engineName as any,
-          format,
-          theme: optString(a.theme),
-          diagramType: optString(a.diagramType) ?? optString(a.type),
-          name: optString(a.name),
-        });
+        // P0-2:引擎 stderr 归一化(D2 JSON 数组 / Graphviz 修复后的 syntax error 对 LLM 难读)
+        let rendered;
+        try {
+          rendered = await engine.render({
+            code,
+            engine: engineName as any,
+            format,
+            theme: optString(a.theme),
+            diagramType: optString(a.diagramType) ?? optString(a.type),
+            name: optString(a.name),
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e);
+          // PNG 复用路径抛的 resvg 错带 `[resvg] ` 前缀(P0-2 §4.3.4),用 engineHint 路由到 resvg patterns 表
+          const isResvg = /^\[resvg\] /i.test(msg);
+          const normalized = normalizeEngineError(
+            isResvg ? "resvg" : (engineName === "graphviz" ? "graphviz" : "d2"),
+            msg.replace(/^\[resvg\] /i, ""),
+            { input: code, raw: msg },
+            isResvg ? "resvg" : undefined,
+          );
+          throw new Error(normalized); // 顶层 catch 转 err(normalized)
+        }
         const fp = await writeLocalRender(outDir, "diagram", optString(a.name), format, rendered);
         return ok({ engine: engineName, format, local_path: fp });
       }
@@ -979,7 +995,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         }
         const outDir = resolveOutDir(a.outDir);
         const format: "svg" | "png" = a.format === "png" ? "png" : "svg";
-        const rendered = await renderChart({ spec: a.spec, format });
+        // P0-2:Vega-Lite compile/render 错归一化 + PNG 复用路径 resvg 错经 [resvg] 前缀路由
+        let rendered;
+        try {
+          rendered = await renderChart({ spec: a.spec, format });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e);
+          const isResvg = /^\[resvg\] /i.test(msg);
+          const normalized = normalizeEngineError(
+            isResvg ? "resvg" : "vega-lite",
+            msg.replace(/^\[resvg\] /i, ""),
+            { input: a.spec as Record<string, unknown>, raw: msg },
+            isResvg ? "resvg" : undefined,
+          );
+          throw new Error(normalized);
+        }
         const fp = await writeLocalRender(outDir, "chart", optString(a.name), format, rendered);
         return ok({ format, local_path: fp, ...(rendered.warnings?.length ? { warnings: rendered.warnings } : {}) });
       }
@@ -1051,13 +1081,32 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const svg = requireString(a.svg, "svg");
         const outDir = resolveOutDir(a.outDir);
         const format: "svg" | "png" = a.format === "svg" ? "svg" : "png";
-        const rendered = await renderSvg({
-          svg,
-          format,
-          width: optNumber(a.width),
-          backend: optString(a.backend) as any,
-          scale: optNumber(a.scale),
-        });
+        // P0-2:resvg 栅格化错归一化(Chrome 后端错对 LLM 已清晰,不归一化)
+        let rendered;
+        try {
+          rendered = await renderSvg({
+            svg,
+            format,
+            width: optNumber(a.width),
+            backend: optString(a.backend) as any,
+            scale: optNumber(a.scale),
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e);
+          // resvg 错识别:优先看 [resvg] 前缀(render_svg.ts renderWithResvg 已对齐
+          // chart/d2/graphviz 三处 PNG 复用路径统一加 [resvg] 前缀,结构性信号 100% 可靠);
+          // 兜底用内容 rx(已基于 resvg native 二进制实测重写,见 handlers/error-format.ts resvg patterns)。
+          // P0-2 第 2 轮审查修复:原 `[^']{0,5}` 字符类排除单引号,匹配不上 resvg 实际抛的
+          //   "default font-family '' not found"(中间含 '')与 "No match for 'PingFang SC' font-family."
+          //   (含 '...'),完全漏掉字体加载失败信号。同步 error-format.ts:335 改 `.{0,15}` / `.{0,30}`
+          //   允许引号 + 补 "font doesn't have a family name" 分支。
+          const isResvgErr = /^\[resvg\] /i.test(msg)
+            || /SVG data parsing failed|default font-family.{0,15}not found|No match for.{0,30}font-family|Failed to load a font face|malformed font|font doesn't have a family name/i.test(msg);
+          const normalized = isResvgErr
+            ? normalizeEngineError("resvg", msg.replace(/^\[resvg\] /i, ""), { input: svg, raw: msg }, "resvg")
+            : msg;
+          throw new Error(normalized);
+        }
         const fp = await writeLocalRender(outDir, "svg", optString(a.name), format, rendered);
         return ok({ format, backend: rendered.backendUsed, warning: rendered.warning, local_path: fp });
       }

@@ -101,14 +101,13 @@ export async function renderChart(req: ChartRequest): Promise<ChartRenderOutput>
     throw new Error(`Vega-Lite spec error: ${m}${vh}`);
   }
   const view = new View(parse(vegaSpec), { renderer: "none" });
+  let svg: string;
   try {
-    const svg = await view.toSVG();
-    let png: Buffer | undefined;
-    if (req.format === "png") {
-      const resvg = new Resvg(svg);
-      png = Buffer.from(resvg.render().asPng());
-    }
-    return { svg, png, warnings };
+    // 外层 try 只裹 view.toSVG() —— 它抛的 vega signal/Unrecognized 错才需要 vh HINT。
+    // PNG 复用路径的 resvg 错必须独立 try/catch(对齐 d2.ts/graphviz.ts 结构),
+    // 否则会被外层 catch 的 "Vega-Lite render error: " 重包装,吃掉 [resvg] 前缀,
+    // 让 handler 层 normalizeEngineError 的结构性路由(`/^\[resvg\] /i` 锚首检测)失效。
+    svg = await view.toSVG();
   } catch (e: any) {
     const m = String(e?.message ?? e);
     let vh = "";
@@ -117,4 +116,16 @@ export async function renderChart(req: ChartRequest): Promise<ChartRenderOutput>
   } finally {
     view.finalize(); // CQ-3:释放 vega dataflow + scenegraph
   }
+  let png: Buffer | undefined;
+  if (req.format === "png") {
+    // P0-2 §4.3.4:PNG 复用路径的 resvg 错误加 [resvg] 前缀,handler 层 normalizeEngineError
+    // 用结构性信号(engineHint/前缀)路由到 resvg patterns 表,替代脆弱的内容匹配。
+    try {
+      const resvg = new Resvg(svg);
+      png = Buffer.from(resvg.render().asPng());
+    } catch (e: any) {
+      throw new Error("[resvg] " + (e?.message ?? String(e)));
+    }
+  }
+  return { svg, png, warnings };
 }

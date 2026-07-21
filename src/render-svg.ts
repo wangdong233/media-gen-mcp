@@ -198,8 +198,15 @@ async function renderWithChrome(svg: string, scale: number): Promise<Buffer> {
 
 /** resvg 渲染 SVG → PNG(进程内,~2-5MB WASM,92% 滤镜保真)。 */
 function renderWithResvg(svg: string, targetWidth: number): Buffer {
-  const resvg = new Resvg(svg, { fitTo: { mode: "width", value: targetWidth } });
-  return Buffer.from(resvg.render().asPng());
+  // P0-2 第 2 轮审查修复:与 chart.ts:121-127 / d2.ts:147-158 / graphviz.ts:81-91 三处
+  // PNG 复用路径对齐 —— resvg 栅格化错统一加 [resvg] 前缀,让 handler 层结构性信号
+  // (normalizeEngineError 用 /^\[resvg\] /i 锚首检测路由)100% 可靠,不再依赖脆弱的内容 rx。
+  try {
+    const resvg = new Resvg(svg, { fitTo: { mode: "width", value: targetWidth } });
+    return Buffer.from(resvg.render().asPng());
+  } catch (e: any) {
+    throw new Error("[resvg] " + (e?.message ?? String(e)));
+  }
 }
 
 export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput> {
