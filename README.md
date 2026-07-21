@@ -531,6 +531,20 @@ A:这类模糊请求的路由已经做过校准 —— 「做卡片 / 海报 / O
 
 > **License**:`pngjs` ^5.0.0(MIT)+ `jsqr` ^1.4.0(Apache-2.0)为本套件新增 devDependency,均为企业可商用;helpers / config / render / 测试文件全部自研,不引用任何第三方测试范式源码。
 
+### P0-4 产物守门员:`scripts/check-render-output.mjs`(运行时合法性)
+
+golden byte-compare(P0-3)守「同输入同输出」的**测试期**回归;**P0-4** 把守门员推到**运行时**:任何 `local_path` 指向的产物文件,落盘后**立刻**被校验「能不能读 / magic bytes 对不对 / 能不能解码 / SVG 有没有 NaN / 容器 ffmpeg 认不认」。
+
+- **三层守门结构**:`src/checks/output-checker.ts`(单一真相源,被 handler / CLI / test 三方 import 同一份 `dist/checks/output-checker.js`)+ `scripts/check-render-output.mjs`(独立 CLI)+ `test/check-render-output.test.mjs`(契约 + 黑盒 + meta)。
+- **三档 severity**:`fatal`(任何 profile throw → `isError:true`)/ `error`(strict throw,standard 降 warning,灰度两周后评估升档)/ `warning`(永不 throw,只写入 `warnings[]`)。**standard 档默认只 fatal throw**,hard-fail 灰度策略防误报锁死调用方。
+- **handler 钩子**:11 个有 `local_path` 的渲染工具(generate_image / create_video / get_video / generate_diagram / generate_qrcode / generate_chart / generate_formula / generate_icon / generate_card / render_svg / render_video)在 `writeLocalRender` / `downloadAsset` / `fs.writeFile` 之后、`return ok(...)` 之前调用 `assertOutputClean`;meta 测试 grep `src/index.ts` 断言调用数,防未来新增渲染工具漏装钩子。
+- **工具专属检查**:`generate_qrcode` 走 jsQR decode roundtrip(byte 级等比)、`generate_formula` 守 `<path>/<use>` 字形数(防 MathJax 字体未加载)、`render_svg` chrome 后端守 RGB 方差(防抓空白页)。
+- **紧急回滚**:`MEDIA_GEN_CHECK_DISABLE=1` 全跳过(<100ms 开销忽略不计,但有总比没有好)。
+- **CLI 用法**:`node scripts/check-render-output.mjs <file> [--profile=strict|standard] [--tool=...] [--format=...] [--original-input=<json>]`,stdout 输出结构化 `OutputReport`,exit 0 ⇔ ok===true。
+- **`npm test` 第 6 段**:`MEDIA_GEN_CHECK_PROFILE=strict node scripts/check-render-output.mjs test/golden/expected/qr/url.png` —— 对一张 golden PNG 跑严档 CLI 自校验(覆盖 png/* 完整矩阵 + jsQR roundtrip)。
+
+> **License**:`@xmldom/xmldom` ^0.9.0(MIT)为本层新增 devDependency;复用 P0-3 已加的 `pngjs`/`jsqr`,以及已有 `ffmpeg-static`(容器探活,GPL-3.0 pre-existing,迁移 ffprobe-static LGPL 单开 issue 跟踪)。output-checker.ts 全部自研。
+
 ---
 
 ## 这是给谁的

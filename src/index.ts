@@ -35,6 +35,7 @@ import { renderCard } from "./card.js";
 import { renderSvg } from "./render-svg.js";
 import { renderVideo } from "./render-video.js";
 import { normalizeEngineError } from "./handlers/error-format.js";
+import { assertOutputClean } from "./checks/output-checker.js";
 import { applyTbpu } from "./vision/tbpu.js";
 import { filterIgnoreAreas, parseIgnoreAreas } from "./vision/ignore-area.js";
 import {
@@ -618,6 +619,18 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             ),
           );
         }
+        // P0-4 产物守门员:对每张落盘产物做合法性校验(magic-bytes / decodable / dimensions-sane / non-blank)。
+        // standard 档 fatal → isError;hard-fail 降级 warning;warning 合并到响应 warnings[]。
+        // 注意:不传 format 提示 —— downloadAsset 按 provider 返回的 content-type 动态选扩展名
+        // (.png/.jpg/.webp/.gif/.svg),硬编码 format=png 会让合法 JPEG/WebP 被 PNG 签名校验误报 fatal
+        // (破坏 §6.1 "原本能成功的调用继续成功")。让 detectKind 按 magic bytes 自动路由到对应分支。
+        const imageWarnings: string[] = [];
+        for (const fp of localPaths) {
+          const checked = await assertOutputClean(fp, { tool: "generate_image" });
+          if ("fatal" in checked) return err(checked.fatal.message);
+          imageWarnings.push(...checked.warnings);
+        }
+        warnings.push(...imageWarnings);
         return ok({
           outputs,
           local_paths: localPaths,
@@ -767,6 +780,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (done.status === "completed" && done.url && a.download !== false) {
           localPath = await downloadAsset(done.url, "vid", outDir, optString(a.name));
         }
+        // P0-4 产物守门员:MP4 容器探活(fatal=container-decodable,warning=tracks-present)。
+        if (localPath) {
+          const checked = await assertOutputClean(localPath, { tool: "create_video", format: "mp4" });
+          if ("fatal" in checked) return err(checked.fatal.message);
+          warnings.push(...checked.warnings);
+        }
         const timeoutHint = done.status === "timeout" ? { hint: `等待超时但任务仍在后端生成;稍后用 ${handleHint} 拉取。` } : {};
         return ok({ ...done, provider_used: activeProvider.name, local_path: localPath, ...timeoutHint, ...(warnings.length ? { warnings } : {}) });
       }
@@ -781,12 +800,19 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (r.status === "completed" && r.url && a.download !== false) {
           localPath = await downloadAsset(r.url, "vid", resolveOutDir(a.outDir), optString(a.name));
         }
+        // P0-4 产物守门员:MP4 容器探活(同 create_video)。
+        const videoWarnings: string[] = [];
+        if (localPath) {
+          const checked = await assertOutputClean(localPath, { tool: "get_video", format: "mp4" });
+          if ("fatal" in checked) return err(checked.fatal.message);
+          videoWarnings.push(...checked.warnings);
+        }
         // 非终态给 retry 提示(免调用方盲目重试,不知何时再问)
         const retryAfter = Math.max(5, Math.round(config.video.pollIntervalMs / 1000));
         const retryHint = (r.status === "queued" || r.status === "in_progress")
           ? { retry_after_seconds: retryAfter, hint: `生成中,约 ${retryAfter}s 后再次调用 get_video 拉取。` }
           : {};
-        return ok({ ...r, local_path: localPath, ...retryHint });
+        return ok({ ...r, local_path: localPath, ...retryHint, ...(videoWarnings.length ? { warnings: videoWarnings } : {}) });
       }
 
       case "extract_text": {
@@ -969,7 +995,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           throw new Error(normalized); // 顶层 catch 转 err(normalized)
         }
         const fp = await writeLocalRender(outDir, "diagram", optString(a.name), format, rendered);
-        return ok({ engine: engineName, format, local_path: fp });
+        // P0-4 产物守门员:SVG/PNG 合法性(无 NaN 字面量 / 有绘制节点 / viewbox 非零)。
+        const checked = await assertOutputClean(fp, { tool: "generate_diagram", format, originalInput: { engine: engineName } });
+        if ("fatal" in checked) return err(checked.fatal.message);
+        return ok({ engine: engineName, format, local_path: fp, ...(checked.warnings.length ? { warnings: checked.warnings } : {}) });
       }
 
       case "generate_qrcode": {
@@ -986,7 +1015,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           width: optNumber(a.width),
         });
         const fp = await writeLocalRender(outDir, "qr", optString(a.name), format, rendered);
-        return ok({ format, local_path: fp, ...(rendered.warnings?.length ? { warnings: rendered.warnings } : {}) });
+        // P0-4 产物守门员 + QR decode roundtrip(jsQR 解码回原文 byte 级等比)。
+        const checked = await assertOutputClean(fp, { tool: "generate_qrcode", format, originalInput: { text } });
+        if ("fatal" in checked) return err(checked.fatal.message);
+        const mergedWarnings = [...(rendered.warnings ?? []), ...checked.warnings];
+        return ok({ format, local_path: fp, ...(mergedWarnings.length ? { warnings: mergedWarnings } : {}) });
       }
 
       case "generate_chart": {
@@ -1011,7 +1044,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           throw new Error(normalized);
         }
         const fp = await writeLocalRender(outDir, "chart", optString(a.name), format, rendered);
-        return ok({ format, local_path: fp, ...(rendered.warnings?.length ? { warnings: rendered.warnings } : {}) });
+        // P0-4 产物守门员:SVG no-nan-attrs(Vega 除零守门)/ has-content / viewbox-nonzero。
+        const checked = await assertOutputClean(fp, { tool: "generate_chart", format });
+        if ("fatal" in checked) return err(checked.fatal.message);
+        const mergedWarnings = [...(rendered.warnings ?? []), ...checked.warnings];
+        return ok({ format, local_path: fp, ...(mergedWarnings.length ? { warnings: mergedWarnings } : {}) });
       }
 
       case "generate_formula": {
@@ -1028,7 +1065,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           background: optString(a.background),
         });
         const fp = await writeLocalRender(outDir, "formula", optString(a.name), format, rendered);
-        return ok({ format, local_path: fp });
+        // P0-4 产物守门员 + formula/has-glyphs(path 或 use > 0,守 MathJax 字体未加载)。
+        const checked = await assertOutputClean(fp, { tool: "generate_formula", format, originalInput: { tex } });
+        if ("fatal" in checked) return err(checked.fatal.message);
+        return ok({ format, local_path: fp, ...(checked.warnings.length ? { warnings: checked.warnings } : {}) });
       }
 
       case "generate_icon": {
@@ -1044,7 +1084,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         const outName = optString(a.name) ?? iconId.replace(/[^a-zA-Z0-9._-]+/g, "-");
         const fp = await writeLocalRender(outDir, "icon", outName, format, rendered);
-        return ok({ format, local_path: fp });
+        // P0-4 产物守门员:SVG 合法性(Iconify 输出 / raster fallback magic-bytes)。
+        const checked = await assertOutputClean(fp, { tool: "generate_icon", format, originalInput: { icon: iconId } });
+        if ("fatal" in checked) return err(checked.fatal.message);
+        return ok({ format, local_path: fp, ...(checked.warnings.length ? { warnings: checked.warnings } : {}) });
       }
 
       case "generate_card": {
@@ -1074,7 +1117,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           format,
         });
         const fp = await writeLocalRender(outDir, "card", optString(a.name), format, rendered);
-        return ok({ format, local_path: fp, ...(rendered.warnings?.length ? { warnings: rendered.warnings } : {}) });
+        // P0-4 产物守门员:SVG has-content 守 Satori 空输出 / PNG magic-bytes + dimensions。
+        const checked = await assertOutputClean(fp, { tool: "generate_card", format, originalInput: { title } });
+        if ("fatal" in checked) return err(checked.fatal.message);
+        const mergedWarnings = [...(rendered.warnings ?? []), ...checked.warnings];
+        return ok({ format, local_path: fp, ...(mergedWarnings.length ? { warnings: mergedWarnings } : {}) });
       }
 
       case "render_svg": {
@@ -1108,7 +1155,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           throw new Error(normalized);
         }
         const fp = await writeLocalRender(outDir, "svg", optString(a.name), format, rendered);
-        return ok({ format, backend: rendered.backendUsed, warning: rendered.warning, local_path: fp });
+        // P0-4 产物守门员:chrome 后端时守 chrome-pixel-variance(防空白页);resvg 后端走标准 png/* 矩阵。
+        const checked = await assertOutputClean(fp, { tool: "render_svg", format, originalInput: { backend: rendered.backendUsed } });
+        if ("fatal" in checked) return err(checked.fatal.message);
+        return ok({ format, backend: rendered.backendUsed, warning: rendered.warning, local_path: fp, ...(checked.warnings.length ? { warnings: checked.warnings } : {}) });
       }
 
       case "render_video": {
@@ -1132,6 +1182,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const safeName = path.basename(optString(a.name) ?? `video_${Date.now().toString(36)}`);
         const fp = path.join(outDir, `${safeName}.${rendered.ext}`);
         await fs.writeFile(fp, rendered.video);
+        // P0-4 产物守门员:ffmpeg 容器探活(fatal=container-decodable / warning=tracks-present)。
+        const checked = await assertOutputClean(fp, { tool: "render_video", format });
+        if ("fatal" in checked) return err(checked.fatal.message);
         return ok({
           format,
           mime_type: rendered.mimeType,
@@ -1139,6 +1192,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           elapsed_ms: rendered.elapsedMs,
           local_path: fp,
           ...(rendered.warning ? { warning: rendered.warning } : {}),
+          ...(checked.warnings.length ? { warnings: checked.warnings } : {}),
         });
       }
 
