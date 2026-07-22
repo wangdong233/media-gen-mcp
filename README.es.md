@@ -1,4 +1,4 @@
-# media-gen-mcp
+<h1 align="center">media-gen-mcp</h1>
 
 > El «todo-en-uno de imágenes» para Claude Code — crea imágenes, dibuja ideas, entiende imágenes: una frase y listo. Todo gratis.
 

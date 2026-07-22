@@ -1,4 +1,4 @@
-# media-gen-mcp
+<h1 align="center">media-gen-mcp</h1>
 
 > O «canivete suíço de imagens» do Claude Code — crie, desenhe e entenda imagens numa única frase. Tudo de graça.
 

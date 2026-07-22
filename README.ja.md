@@ -1,4 +1,4 @@
-# media-gen-mcp
+<h1 align="center">media-gen-mcp</h1>
 
 > Claude Code の「画像スイスアーミーナイフ」—— 作画、アイデアの図解、画像の読み取りまで、一言で完了。全部無料。
 

@@ -280,13 +280,21 @@ function buildVisionRoutingGuidance(
   for (const task of Object.keys(taskCoverage)) {
     const all = taskCoverage[task] ?? [];
     const cfg = configuredOf(task);
+    // defaultVision(默认 tesseract)只在它真支持该 task 时才作兜底/默认 ——
+    // 否则会误导(如 extract-table/describe-image/analyze-chart,tesseract 不支持,
+    // 却出现在这些 task 的链里/被当默认)。实测(gapfillers 场景)暴露的既有瑕疵,此处修。
+    const defaultSupportsTask = all.includes(defaultVision);
     if (cfg.length === 0) {
-      // 无 configured:候选列 + 默认兜底(让用户知道配哪些能启用)
-      guidance[task] = `未配置 provider(候选:${all.join("/")});默认走 ${defaultVision}(零配置兜底)`;
+      // 无 configured:候选列 +(若 defaultVision 支持该 task)默认兜底
+      guidance[task] = defaultSupportsTask
+        ? `未配置 provider(候选:${all.join("/")});默认走 ${defaultVision}(零配置兜底)`
+        : `未配置 provider(候选:${all.join("/")});该 task 无零配置兜底,需配候选之一`;
     } else {
       // 按 tier 降序列 configured(fallback 链顺序)—— glm-vision/paddle/vlm 全自动包含,不再硬编码
       const ordered = cfg.slice().sort((a, b) => tierOf(b) - tierOf(a));
-      const tail = ordered.includes(defaultVision) ? "" : ` → ${defaultVision}(兜底)`;
+      const tail = ordered.includes(defaultVision) || !defaultSupportsTask
+        ? ""
+        : ` → ${defaultVision}(兜底)`;
       guidance[task] = `fallback 链:${ordered.join(" → ")}${tail}`;
     }
   }

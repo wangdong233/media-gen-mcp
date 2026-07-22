@@ -1,4 +1,4 @@
-# media-gen-mcp
+<h1 align="center">media-gen-mcp</h1>
 
 > Das «All-in-One-Bild-Toolkit» für Claude Code – Bilder erzeugen, Ideen zeichnen, Bilder verstehen, in einem einzigen Satz. Komplett kostenlos.
 

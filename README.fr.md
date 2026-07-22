@@ -1,4 +1,4 @@
-# media-gen-mcp
+<h1 align="center">media-gen-mcp</h1>
 
 > Le « couteau suisse de l'image » pour Claude Code — créer des images, donner vie à vos idées, comprendre l'image, en une seule phrase, totalement gratuit.
 
