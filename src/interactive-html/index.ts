@@ -76,6 +76,15 @@ export interface InteractiveDiagramResult extends InteractiveDiagramBuildResult 
 export const D2_INTERACTIVE_SALT = "media-gen-mcp-interactive";
 
 /**
+ * darkTheme 缺省值(0.12.1):D2 themeID 200 = 真·暗色调色板(Catppuccin 风 #1E1E2E/#313244/#45475A…,
+ * 2026-07-22 实测 @media dark 块色值与 light 完全不同 → 视觉真反色)。
+ * 选 200 而非 "default"(themeID 0,default 是浅色主题,暗态视觉不反色 —— 旧 README 头号用例踩坑)。
+ * renderInteractiveHtml(tool 落盘路径)在 darkTheme 省略时默认用它,让 GitHub README 自动跟随系统主题开箱即反色;
+ * buildInteractiveHtml(纯函数)不默认,golden + 契约 test 直接调它保 hasDark 可控。
+ */
+export const D2_DARK_THEME_DEFAULT = "200";
+
+/**
  * 构建 HTML(纯函数,不落盘)。golden pipeline 与契约 test 都调它。
  *
  * @param req     请求(code 必填)
@@ -137,7 +146,14 @@ export async function renderInteractiveHtml(
   req: InteractiveDiagramRequest,
   engine?: DiagramEngine,
 ): Promise<InteractiveDiagramResult> {
-  const built = await buildInteractiveHtml(req, engine);
+  // ① darkTheme 缺省默认 D2_DARK_THEME_DEFAULT("200" 真·暗色)—— 让 GitHub README 自动跟随系统主题开箱即反色。
+  // buildInteractiveHtml 不默认(纯函数,golden/契约 test 保 hasDark 可控);此处仅 tool 落盘路径默认。
+  // ?? 只拦 undefined(omitted);显式 "" / 空白串仍走 buildInteractiveHtml 的 F12 单调色板分支。
+  const reqWithDefault: InteractiveDiagramRequest = {
+    ...req,
+    darkTheme: req.darkTheme ?? D2_DARK_THEME_DEFAULT,
+  };
+  const built = await buildInteractiveHtml(reqWithDefault, engine);
   // 4. 落盘(renderer 内部直写,不经 writeLocalRender —— HTML 不在 svg|png format 类型内;P0-5A §0.4)
   const outDir = req.outDir;
   if (!outDir) throw new Error("`outDir` is required (handler resolves it via resolveOutDir before calling)");

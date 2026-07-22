@@ -69,20 +69,6 @@ html[data-theme="dark"] {
 }
 
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
-  }
-}
-html[data-motion="still"] *,
-html[data-motion="still"] *::before,
-html[data-motion="still"] *::after {
-  animation: none !important;
-  transition: none !important;
-}
-
-
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
 body {
@@ -167,6 +153,69 @@ body {
   .mgm-toolbar { padding: 0.4rem 0.5rem; gap: 0.25rem; }
   .mgm-toolbar h1 { font-size: 0.9rem; }
   .mgm-actions button { padding: 0.2rem 0.45rem; font-size: 0.78rem; }
+}
+
+
+/* === 1+2. 边数据流 + 依次高亮(逗号分隔多动画合并到 path.connection)=== */
+path.connection {
+  stroke-dasharray: 6 5;
+  animation: mgm-edge-flow 1.4s linear infinite, mgm-edge-pulse 3.6s ease-in-out infinite;
+}
+@keyframes mgm-edge-flow {
+  to { stroke-dashoffset: -11; }   /* -(dash+gap) = -(6+5) 无缝循环 */
+}
+@keyframes mgm-edge-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+/* 依次高亮:第 N 条边/消息的 pulse 错开(flow 始终 0 不错开)。
+   animation-delay 逗号列表与 animation 名列表一一对应(flow, pulse)。 */
+path.connection:nth-of-type(2)  { animation-delay: 0s, 0.30s; }
+path.connection:nth-of-type(3)  { animation-delay: 0s, 0.60s; }
+path.connection:nth-of-type(4)  { animation-delay: 0s, 0.90s; }
+path.connection:nth-of-type(5)  { animation-delay: 0s, 1.20s; }
+path.connection:nth-of-type(6)  { animation-delay: 0s, 1.50s; }
+path.connection:nth-of-type(7)  { animation-delay: 0s, 1.80s; }
+path.connection:nth-of-type(8)  { animation-delay: 0s, 2.10s; }
+path.connection:nth-of-type(9)  { animation-delay: 0s, 2.40s; }
+path.connection:nth-of-type(10) { animation-delay: 0s, 2.70s; }
+path.connection:nth-of-type(11) { animation-delay: 0s, 3.00s; }
+path.connection:nth-of-type(12) { animation-delay: 0s, 3.30s; }
+
+/* === 3. 节点入场淡入(加载一次,依次)+ 悬停高亮 === */
+g.shape {
+  animation: mgm-node-enter 0.55s ease-out both;
+  transition: filter 0.2s ease;
+}
+@keyframes mgm-node-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+g.shape:nth-of-type(2)  { animation-delay: 0.08s; }
+g.shape:nth-of-type(3)  { animation-delay: 0.16s; }
+g.shape:nth-of-type(4)  { animation-delay: 0.24s; }
+g.shape:nth-of-type(5)  { animation-delay: 0.32s; }
+g.shape:nth-of-type(6)  { animation-delay: 0.40s; }
+g.shape:nth-of-type(7)  { animation-delay: 0.48s; }
+g.shape:nth-of-type(8)  { animation-delay: 0.56s; }
+g.shape:nth-of-type(9)  { animation-delay: 0.64s; }
+g.shape:nth-of-type(10) { animation-delay: 0.72s; }
+g.shape:hover {
+  filter: drop-shadow(0 0 5px var(--mgm-accent, #6366f1));
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+html[data-motion="still"] *,
+html[data-motion="still"] *::before,
+html[data-motion="still"] *::after {
+  animation: none !important;
+  transition: none !important;
 }
 
 </style>

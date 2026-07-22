@@ -16,6 +16,7 @@
  */
 import { VIEWER_CSS_VARS, PREPAINT_RESOLVER_JS } from "./theme.js";
 import { MOTION_GOVERNOR_CSS } from "./motion-governor.js";
+import { ANIMATIONS_CSS } from "./animations.js";
 import { VIEWER_MIN_JS } from "./viewer-min.js";
 
 /**
@@ -140,8 +141,9 @@ ${PREPAINT_RESOLVER_JS}
 </script>
 <style>
 ${VIEWER_CSS_VARS}
-${MOTION_GOVERNOR_CSS}
 ${LAYOUT_CSS}
+${ANIMATIONS_CSS}
+${MOTION_GOVERNOR_CSS}
 </style>
 </head>
 <body>

@@ -3,7 +3,7 @@
 > Claude Code の「画像スイスアーミーナイフ」—— 作画、アイデアの図解、画像の読み取りまで、一言で完了。全部無料。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.1-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>

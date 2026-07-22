@@ -220,6 +220,23 @@ export const knownErrorPatterns: Record<NormalizedEngine, KnownErrorPattern[]> =
         remediation: `从上述清单中选一个替换当前值。`,
       }),
     },
+    {
+      // 实测样本 errmsg: index:1:12: unknown shape "badshape"
+      // 触发: a: {shape: badshape} / x: {shape: hexgon}(拼错形状名或用了非 D2 形状关键字)
+      // 0.12.1 补(场景测试 10 揭出 P0-2 漏覆盖此高频形态);D2 形状关键字 20+,拼错概率高。
+      rx: /unknown shape "([^"]+)"/,
+      make: (m, ctx) => {
+        const bad = m[1];
+        const line = pickD2Line(ctx.raw);
+        return {
+          line,
+          offendingConstruct: pickD2Offending(ctx.input as string, line),
+          message: `未知 D2 形状 "${bad}"。`,
+          remediation:
+            "D2 合法形状:rectangle/oval/circle/diamond/hexagon/cylinder/cloud/person/page/step/stored_data/package/triangle/trapezoid/parallelogram/star/document/queue/callout/class/sql_table/sequence_diagram/grid/table 等(完整清单见 `d2 --shapes`)。改用其中之一。",
+        };
+      },
+    },
   ],
 
   // ───────────────────────── Graphviz(3 条)─────────────────────────

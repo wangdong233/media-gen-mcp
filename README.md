@@ -3,7 +3,7 @@
 > Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.0-blue">
+  <img src="https://img.shields.io/badge/version-0.12.1-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -184,9 +184,9 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 > 你:"画个架构图:客户端 → API 网关 → 订单服务 + 支付服务 → 数据库"
 > 得到:矢量架构图(也支持流程图 / 时序图 / 类图 / ER 图 / 思维导图)
 
-**画交互式 HTML 图**(嵌 GitHub README 自动跟随深/浅色,零 JS)
-> 你:"画个架构图嵌到 README 里,深色浅色读者各看各的色"
-> 得到:单文件 HTML(D2 双调色板 + viewer,支持平移/缩放/主题切换/导出 SVG)
+**画交互式 / 动态 HTML 图**(嵌 GitHub README 自动跟随深/浅色,边数据流 + 节点动画,零 JS)
+> 你:"画个架构图嵌到 README 里,深色浅色读者各看各的色,最好还能动起来"
+> 得到:单文件 HTML(D2 双调色板默认开箱即反色 + viewer 平移/缩放/主题切换/导出 SVG + 边数据流/依次高亮/节点入场三种动画,Motion Governor 自动守无障碍)
 
 **把数据画成图表**
 > 你:"把这组销售数据画成柱状图"
