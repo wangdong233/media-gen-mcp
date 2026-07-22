@@ -185,7 +185,7 @@ Die Standard-Leichtgewicht-Engine reicht für Englisch / Ziffern, hat aber nur m
 > Du: «Zeichne ein Architekturdiagramm: Client → API-Gateway → Bestelldienst + Zahlungsdienst → Datenbank»
 > Erhalten: ein Vektor-Architekturdiagramm (auch Fluss-/Sequenz-/Klassen-/ER-Diagramme / Mindmaps)
 
-**Interaktives HTML-Diagramm zeichnen** (in GitHub-README einbettbar, folgt dem System-Theme automatisch, null JS)
+**Interaktives HTML-Diagramm zeichnen** (im Browser öffnen zum Interagieren; Kanten-Fluss + Knoten-Animation; Theme folgt System hell/dunkel)
 > Du: «Zeichne eine Architektur für ein README, die hell/dunkel-Lesern automatisch folgt»
 > Erhalten: eine einzelne HTML-Datei (D2-Doppel-Palette + Viewer; Pan / Zoom / Theme-Umschaltung / SVG-Export)
 

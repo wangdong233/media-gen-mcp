@@ -185,7 +185,7 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "Draw an architecture diagram: client → API gateway → order service + payment service → database"
 > Get: a vector architecture diagram (flowcharts / sequence diagrams / class diagrams / ER diagrams / mind maps also supported)
 
-**Draw an Interactive HTML Diagram** (embed in GitHub README, auto-follows system theme, zero JS)
+**Draw an Interactive HTML Diagram** (open in browser to interact; edge-flow + node animation; theme follows system light/dark)
 > You: "Draw an architecture diagram for a README that follows dark/light readers automatically"
 > Get: a single-file HTML (D2 dual palette + viewer; pan / zoom / theme toggle / export SVG)
 

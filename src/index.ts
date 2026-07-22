@@ -289,7 +289,7 @@ function buildTools() {
     {
       name: "generate_diagram",
       description:
-        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, use `render_svg` (hand-written SVG with feGaussianBlur) instead. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).\n\nNEXT: for interactive HTML with theme switch + animation that auto-follows system theme in GitHub README, use generate_interactive_diagram.",
+        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, use `render_svg` (hand-written SVG with feGaussianBlur) instead. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).\n\nNEXT: for interactive HTML with theme switch + animation (theme follows system light/dark, open the .html in a browser), use generate_interactive_diagram.",
       inputSchema: {
         type: "object",
         properties: {
@@ -307,8 +307,8 @@ function buildTools() {
     {
       name: "generate_interactive_diagram",
       description:
-        "Generate a SELF-CONTAINED INTERACTIVE HTML diagram (交互式自包含HTML图) that auto-follows system theme via @media (prefers-color-scheme: dark) — embeddable in GitHub README so dark/light readers see the right palette with zero JS. Single .html file with all CSS/JS inlined. Backend: D2 WASM (same DSL as generate_diagram, zero new deps). Supports pan/zoom, theme toggle, optional PNG preview. Multilingual triggers: 交互式图 · interactive diagram · diagrama interactivo · diagramme interactif · interaktives Diagramm · интерактивная диаграмма (en/zh/es/fr/de/ru). " +
-        "WHEN TO CHOOSE: GitHub README/wiki architecture diagram that must follow system theme; blog embeddable diagram with hover/click; product demo with subtle animation. " +
+        "Generate a SELF-CONTAINED INTERACTIVE HTML diagram (交互式自包含HTML图) — open the .html in a browser to interact (pan/zoom, theme toggle, edge-flow + node animation). Theme follows the system light/dark setting via @media (prefers-color-scheme: dark) baked into the SVG. Single .html file, all CSS/JS inlined, zero external deps. Backend: D2 WASM (same DSL as generate_diagram, zero new deps). Optional PNG preview. NOTE: full interactivity needs a browser — GitHub README strips <script>, so a README embed is static (no viewer/animation); for a theme-switching image in README use generate_diagram's SVG output instead. Multilingual triggers: 交互式图 · interactive diagram · diagrama interactivo · diagramme interactif · interaktives Diagramm · интерактивная диаграмма (en/zh/es/fr/de/ru). " +
+        "WHEN TO CHOOSE: architecture diagram you open in a browser to explore (pan/zoom/theme/animation); blog or doc diagram served as a downloadable .html; product demo with subtle animation. " +
         "AVOID: static SVG/PNG in docs (use generate_diagram, lighter); video output (use render_video); hand-coding SVG (use render_svg). " +
         "NEXT: open the HTML in a browser to interact; set previewPng=true for a PNG snapshot alongside.",
       inputSchema: {
@@ -316,7 +316,7 @@ function buildTools() {
         properties: {
           code: { type: "string", description: "D2 DSL source (same syntax as generate_diagram — see its description for the full D2 syntax guide)." },
           theme: { type: "string", description: "Light theme (D2 themeID or 'default'/'neutral'). Default 'default'." },
-          darkTheme: { type: "string", description: "Dark theme (D2 themeID or 'default'/'neutral'). When set, D2 inks BOTH palettes + @media (prefers-color-scheme: dark) into the SVG so GitHub README auto-switches. If omitted, `theme` applies to both modes (no auto-switch)." },
+          darkTheme: { type: "string", description: "Dark theme (D2 themeID; '200' is a real dark palette). When set, D2 inks BOTH palettes + @media (prefers-color-scheme: dark) into the SVG so dark mode uses the dark palette. Defaults to '200' (auto dark palette). Pass '' to force single-palette (no auto-switch)." },
           title: { type: "string", description: "HTML <title> and visible heading. Default 'Interactive Diagram'." },
           previewPng: { type: "boolean", default: false, description: "Also export a PNG snapshot (puppeteer-core if Chrome available, else resvg fallback). Default false (Chrome launch is slow)." },
           name: { type: "string", description: "Output filename (without extension)" },
@@ -1045,7 +1045,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             bytes: result.bytes,
             has_dual_palette: result.hasDarkLightDualPalette,
             ...(result.previewPngPath ? { preview_png_path: result.previewPngPath } : {}),
-            hint: "Open in browser to interact; embed in GitHub README to auto-follow system theme.",
+            hint: "Open the .html in a browser to interact (pan/zoom/theme/animation). Theme follows your system light/dark setting.",
           });
         } catch (e: any) {
           const msg = String(e?.message ?? e);

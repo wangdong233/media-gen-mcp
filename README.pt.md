@@ -185,7 +185,7 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 > Você: «Desenhe um diagrama de arquitetura: cliente → API gateway → serviço de pedidos + serviço de pagamentos → base de dados»
 > Recebe: diagrama de arquitetura vetorial (também suporta fluxogramas / diagramas de sequência / diagramas de classes / diagramas ER / mapas mentais)
 
-**Desenhar um diagrama HTML interativo** (incorporar no README do GitHub, segue automaticamente o tema do sistema, zero JS)
+**Desenhar um diagrama HTML interativo** (abra no navegador para interagir; fluxo nas arestas + animação de nós; o tema segue o claro/escuro do sistema)
 > Você: «Desenhe uma arquitetura para um README que siga automaticamente leitores em claro/escuro»
 > Recebe: um único arquivo HTML (paleta dupla D2 + visualizador; pan / zoom / troca de tema / exportar SVG)
 

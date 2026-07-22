@@ -186,7 +186,7 @@ El motor ligero por defecto es suficiente para inglés / números / captcha; la 
 > Tú: «Dibuja una arquitectura: cliente → API gateway → servicio de pedidos + servicio de pago → base de datos»
 > Obtienes: diagrama de arquitectura vectorial (también flujos / secuencia / clases / ER / mapas mentales)
 
-**Dibuja un diagrama HTML interactivo** (incrustado en GitHub README, sigue el tema del sistema automáticamente, sin JS)
+**Dibuja un diagrama HTML interactivo** (ábrelo en el navegador para interactuar; flujo en aristas + animación de nodos; el tema sigue el claro/oscuro del sistema)
 > Tú: «Dibuja una arquitectura para un README que siga automáticamente a los lectores en claro/oscuro»
 > Obtienes: un archivo HTML único (paleta dual D2 + visor; pan / zoom / cambio de tema / exportar SVG)
 

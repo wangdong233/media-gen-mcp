@@ -186,7 +186,7 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 > Vous : « Dessine un schéma d'architecture : client → passerelle API → service commande + service paiement → base de données »
 > Obtenu : schéma d'architecture vectoriel (prend aussi en charge organigrammes / diagrammes de séquence / diagrammes de classes / schémas ER / cartes mentales)
 
-**Dessiner un schéma HTML interactif** (intégrable dans un README GitHub, suit automatiquement le thème système, zéro JS)
+**Dessiner un schéma HTML interactif** (ouvrez-le dans le navigateur pour interagir ; flux sur les arêtes + animation des nœuds ; le thème suit le clair/sombre du système)
 > Vous : « Dessine un schéma d'architecture pour un README qui suit automatiquement les lecteurs clair/sombre »
 > Obtenu : un fichier HTML unique (palette double D2 + visionneuse ; pan / zoom / bascule de thème / export SVG)
 
