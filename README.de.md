@@ -189,6 +189,10 @@ Die Standard-Leichtgewicht-Engine reicht für Englisch / Ziffern, hat aber nur m
 > Du: «Zeichne eine Architektur für ein README, die hell/dunkel-Lesern automatisch folgt»
 > Erhalten: eine einzelne HTML-Datei (D2-Doppel-Palette + Viewer; Pan / Zoom / Theme-Umschaltung / SVG-Export)
 
+**Verschachteltes / Drill-down-Architekturdiagramm zeichnen** (im Browser öffnen; einen Layer anklicken, um in seine Sub-Architektur zu gelangen; Breadcrumb zurück zu jedem Vorgänger)
+> Du: «Zeichne dieses System als verschachtelte Architektur: oberste Ebene 5 Module, klicke auf ‹Bestell-Service› in sein Inneres, dann ins Bestell-anlegen-Sequenzdiagramm»
+> Erhalten: eine einzelne HTML-Datei (Layer anklicken → dessen interne Architektur; Layer beliebig verschachtelt — jeder kann Architektur / Sequenz / Klasse / ER / Flowchart sein; Breadcrumb oder Esc zurück zu jedem Vorgänger; URL-Hash verlinkt tief auf einen Layer; Theme folgt System hell/dunkel)
+
 **Daten als Chart darstellen**
 > Du: «Stelle diese Verkaufsdaten als Balkendiagramm dar»
 > Erhalten: ein hochauflösendes Datenchart (Balken / Linie / Torte / Fläche / Streuung – gib eine Zahlenreihe oder eine CSV)

@@ -189,6 +189,10 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "Draw an architecture diagram for a README that follows dark/light readers automatically"
 > Get: a single-file HTML (D2 dual palette + viewer; pan / zoom / theme toggle / export SVG)
 
+**Draw a Nested / Drill-down Architecture Diagram** (open in browser; click a layer to enter its sub-architecture; breadcrumb back to any ancestor)
+> You: "Draw this system as a nested architecture: top-level 5 modules, click 'Order Service' into its internals, then into the create-order sequence diagram"
+> Get: a single-file HTML (click a layer → that layer's internal architecture; layers nest arbitrarily — each can be architecture / sequence / class / ER / flowchart; breadcrumb or Esc back to any ancestor; URL hash deep-links a layer; theme follows system light/dark)
+
 **Plot Data as a Chart**
 > You: "Plot this sales data as a bar chart"
 > Get: a high-resolution data chart (bar / line / pie / area / scatter — feed it a string of numbers or a CSV)

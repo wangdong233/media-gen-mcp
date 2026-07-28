@@ -190,6 +190,10 @@ El motor ligero por defecto es suficiente para inglés / números / captcha; la 
 > Tú: «Dibuja una arquitectura para un README que siga automáticamente a los lectores en claro/oscuro»
 > Obtienes: un archivo HTML único (paleta dual D2 + visor; pan / zoom / cambio de tema / exportar SVG)
 
+**Dibuja un diagrama de arquitectura anidado / con drill-down** (ábrelo en el navegador; haz clic en una capa para entrar en su subarquitectura; la miga de pan vuelve a cualquier ancestro)
+> Tú: «Dibuja este sistema como arquitectura anidada: nivel superior 5 módulos, clic en 'Servicio de Pedidos' para entrar a su interior, luego al diagrama de secuencia de crear-pedido»
+> Obtienes: un archivo HTML único (clic en una capa → pasa a la arquitectura interna de esa capa; las capas se anidan arbitrariamente, cada una puede ser arquitectura / secuencia / clases / ER / flowchart; la miga de pan o Esc vuelve a cualquier ancestro; el hash de la URL enlaza a una capa concreta; el tema sigue el claro/oscuro del sistema)
+
 **Convierte datos en gráficos**
 > Tú: «Convierte estos datos de ventas en un gráfico de barras»
 > Obtienes: gráfico de datos en alta resolución (barras / líneas / circulares / área / dispersión; pásale números sueltos o un CSV)

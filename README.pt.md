@@ -189,6 +189,10 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 > Você: «Desenhe uma arquitetura para um README que siga automaticamente leitores em claro/escuro»
 > Recebe: um único arquivo HTML (paleta dupla D2 + visualizador; pan / zoom / troca de tema / exportar SVG)
 
+**Desenhar um diagrama de arquitetura aninhado / drill-down** (abra no navegador; clique numa camada para entrar na subarquitetura; a trilha de navegação volta a qualquer ancestra)
+> Você: «Desenhe este sistema como arquitetura aninhada: nível superior 5 módulos, clique em 'Serviço de Pedidos' para entrar no seu interior, depois no diagrama de sequência de criar-pedido»
+> Recebe: um único arquivo HTML (clicar numa camada → alterna para a arquitetura interna daquela camada; camadas se aninham arbitrariamente, cada uma pode ser arquitetura / sequência / classes / ER / fluxograma; trilha ou Esc volta a qualquer ancestra; o hash da URL linka direto para uma camada; o tema segue o claro/escuro do sistema)
+
 **Transformar dados em gráficos**
 > Você: «Transforme estes dados de vendas num gráfico de barras»
 > Recebe: gráfico de dados em alta resolução (barras / linhas / pizza / área / dispersão — dê números soltos ou um CSV)

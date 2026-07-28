@@ -190,6 +190,10 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 > Vous : « Dessine un schéma d'architecture pour un README qui suit automatiquement les lecteurs clair/sombre »
 > Obtenu : un fichier HTML unique (palette double D2 + visionneuse ; pan / zoom / bascule de thème / export SVG)
 
+**Dessiner un schéma d'architecture imbriqué / à exploration (drill-down)** (ouvrez dans le navigateur ; cliquez sur une couche pour entrer dans sa sous-architecture ; fil d'Ariane pour revenir à tout ancêtre)
+> Vous : « Dessine ce système en architecture imbriquée : niveau supérieur 5 modules, cliquer sur ‹Service Commandes› pour entrer dans son interne, puis dans le diagramme de séquence de création de commande »
+> Obtenu : un fichier HTML unique (cliquer sur une couche → bascule vers l'architecture interne de cette couche ; imbrication arbitraire — chacune peut être architecture / séquence / classes / ER / flowchart ; fil d'Ariane ou Esc pour revenir à tout ancêtre ; le hash de l'URL fait un lien profond vers une couche ; le thème suit le clair/sombre du système)
+
 **Transformer les données en graphiques**
 > Vous : « Mets ces données de vente en histogramme »
 > Obtenu : graphique de données haute définition (barres / courbes / camemberts / aires / nuages de points, donnez une série de nombres ou un CSV, ça marche)
