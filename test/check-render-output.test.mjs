@@ -358,15 +358,15 @@ describe("CLI check-render-output.mjs", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("handler 钩子覆盖完整性 meta", () => {
-  test("src/index.ts 中 assertOutputClean 调用数 === 11(渲染工具数;P0-5 generate_interactive_diagram 跳过)", () => {
+  test("src/index.ts 中 assertOutputClean 调用数 === 11(渲染工具数;generate_interactive_diagram + generate_nested_diagram 跳过)", () => {
     const src = readFileSync(path.join(ROOT, "src/index.ts"), "utf8");
     const calls = (src.match(/assertOutputClean\(/g) || []).length;
     // 11 个有 local_path 的 raster/vector 渲染工具(generate_image / create_video / get_video /
     // generate_diagram / generate_qrcode / generate_chart / generate_formula / generate_icon /
     // generate_card / render_svg / render_video)。
-    // P0-5 新增 generate_interactive_diagram 也产 local_path 但**故意跳过** assertOutputClean
-    // (HTML 是 viewer 容器,非 raster/vector;契约 asserts 在 renderInteractiveHtml 内部做)。
-    // 若未来新增 raster/vector 渲染工具,同步插入钩子并更新此断言。
+    // P0-5 generate_interactive_diagram + P0-5B generate_nested_diagram 均产 local_path 但**故意跳过**
+    // assertOutputClean(HTML 是 viewer 容器,非 raster/vector;契约 asserts S2/S4/S9/S11/S_NESTED 在
+    // renderInteractiveHtml / buildNestedHtml 内部做)。若未来新增 raster/vector 渲染工具,同步插入钩子并更新此断言。
     assert.equal(
       calls,
       11,

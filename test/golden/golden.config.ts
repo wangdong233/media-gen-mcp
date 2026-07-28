@@ -17,7 +17,7 @@
  */
 
 export type CompareStrategy = "svg-byte" | "png-byte" | "qr-png-verify" | "html-byte";
-export type GoldenTool = "qrcode" | "formula" | "chart" | "card" | "render_svg" | "diagram" | "interactive_html";
+export type GoldenTool = "qrcode" | "formula" | "chart" | "card" | "render_svg" | "diagram" | "interactive_html" | "nested_diagram";
 
 export interface GoldenCase {
   /** 唯一 id,用于 describe/test name。 */
@@ -75,6 +75,10 @@ export const GOLDEN: GoldenCase[] = [
   // ── interactive_html(P0-5:D2 darkThemeID 双调色板 + 三杠杆 + HTML 包装;实测 byte-stable)
   //    Step 1.2.5 确定性审计 10 次 diff 全 byte-identical;HTML 内容确定性,文件名非产物内容)──
   { id: "interactive-html-architecture", tool: "interactive_html", fixturePath: "interactive-html/architecture.d2", expectedPath: "interactive-html/architecture.golden.html", compareStrategy: "html-byte" },
+
+  // ── nested_diagram(P0-5B:嵌套架构图,template-store + viewer-stack 导航;3 层电商 fixture
+  //    root architecture + order-svc architecture + create-order sequence,含 drill links)──
+  { id: "nested-diagram-ecommerce", tool: "nested_diagram", fixturePath: "nested-diagram/ecommerce.json", expectedPath: "nested-diagram/ecommerce.golden.html", compareStrategy: "html-byte" },
 
   // ── icon:网络依赖(Iconify API),P0-3 skip;待 P0-4 mock fetch 后覆盖 ──
   // 注:fixturePath/expectedPath 留空(skipReason case 不渲染、不读盘);tool 用 render_svg 占位。

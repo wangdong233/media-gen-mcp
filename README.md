@@ -3,7 +3,7 @@
 > Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.1-blue">
+  <img src="https://img.shields.io/badge/version-0.13.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -187,6 +187,10 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 **画交互式 / 动态 HTML 图**(浏览器打开可交互,边数据流 + 节点动画,主题跟随系统深/浅色)
 > 你:"画个架构图,浏览器打开能交互、能动、主题跟着系统走"
 > 得到:单文件 HTML(D2 双调色板默认开箱即反色 + viewer 平移/缩放/主题切换/导出 SVG + 边数据流/依次高亮/节点入场三种动画,Motion Governor 自动守无障碍)
+
+**画可下钻的嵌套架构图**(浏览器打开点层进入子架构,面包屑回溯任意层)
+> 你:"把这套系统画成嵌套架构图:顶层 5 大模块,点'订单服务'进它的内部架构,再点进创建订单的时序图"
+> 得到:单文件 HTML(点某层 → 切到那层内部架构,层级可任意嵌套,每层可以是架构图 / 时序图 / 类图 / ER 图 / 流程图;面包屑或 Esc 回任意祖先层;URL 深链分享到某一层;主题跟随系统深/浅色)
 
 **把数据画成图表**
 > 你:"把这组销售数据画成柱状图"

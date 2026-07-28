@@ -89,5 +89,13 @@ export async function render(tool: string, fixturePath: string): Promise<RenderR
     const built = await buildInteractiveHtml({ code, darkTheme: "default" });
     return { input: code, svg: built.html };
   }
+  if (tool === "nested_diagram") {
+    // P0-5B golden:调 buildNestedHtml(不落盘纯函数)拿 HTML,复用 svg slot 装 HTML。
+    // darkTheme=200 触发 D2 双调色板(守 S4);fixture 是 manifest JSON。
+    const manifest = JSON.parse(readFileSync(abs, "utf8"));
+    const { buildNestedHtml } = await import("../../dist/nested-diagram/index.js");
+    const built = await buildNestedHtml({ manifest, darkTheme: "200" });
+    return { input: manifest, svg: built.html };
+  }
   throw new Error(`unknown tool: ${tool}`);
 }

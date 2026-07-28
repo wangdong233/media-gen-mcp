@@ -1,0 +1,38 @@
+{
+  "id": "root",
+  "label": "电商平台",
+  "diagram": "api: API 网关\norder: 订单服务\ninventory: 库存服务\napi -> order\napi -> inventory\norder -> inventory\norder: { link: \"drill:order-svc\" }\ninventory: { link: \"drill:inventory-svc\" }",
+  "diagramType": "architecture",
+  "notes": "顶层 3 模块架构;order/inventory 可 drill 进看内部。",
+  "children": [
+    {
+      "id": "order-svc",
+      "label": "订单服务",
+      "diagram": "",
+      "notes": "container-list 分组层(diagram 空串),drill 进来显 children 卡片。",
+      "children": [
+        {
+          "id": "create-order",
+          "label": "创建订单时序",
+          "diagram": "client: 客户端\nsvc: 订单服务\ndb: 订单库\nclient -> svc: POST /orders\nsvc -> db: INSERT orders\ndb -> svc: order_id\nsvc -> client: 201 Created",
+          "diagramType": "sequence",
+          "notes": "创建订单跨服务时序(叶子)。"
+        },
+        {
+          "id": "pay-order",
+          "label": "支付订单",
+          "diagram": "svc: 订单服务\npay: 支付服务\nsvc -> pay: charge\npay -> svc: paid",
+          "diagramType": "architecture",
+          "notes": "支付流程(叶子)。"
+        }
+      ]
+    },
+    {
+      "id": "inventory-svc",
+      "label": "库存服务",
+      "diagram": "stock: 库存表\nlock: 锁定记录\nstock -> lock",
+      "diagramType": "architecture",
+      "notes": "库存服务内部(叶子)。"
+    }
+  ]
+}

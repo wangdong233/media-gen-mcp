@@ -3,7 +3,7 @@
 > El «todo-en-uno de imágenes» para Claude Code — crea imágenes, dibuja ideas, entiende imágenes: una frase y listo. Todo gratis.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.1-blue">
+  <img src="https://img.shields.io/badge/version-0.13.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>

@@ -3,7 +3,7 @@
 > O «canivete suíço de imagens» do Claude Code — crie, desenhe e entenda imagens numa única frase. Tudo de graça.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.1-blue">
+  <img src="https://img.shields.io/badge/version-0.13.0-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>

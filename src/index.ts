@@ -28,6 +28,7 @@ import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
 import { getDiagramEngine, MERMAID_UNSUPPORTED_MSG } from "./diagram/render.js";
 import { renderInteractiveHtml } from "./interactive-html/index.js";
+import { renderNestedDiagram } from "./nested-diagram/index.js";
 import { renderQR } from "./qr.js";
 import { renderChart } from "./chart.js";
 import { renderFormula } from "./formula.js";
@@ -323,6 +324,30 @@ function buildTools() {
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
         required: ["code"],
+      },
+    },
+    {
+      name: "generate_nested_diagram",
+      description:
+        "Generate a NESTED / drill-down architecture diagram as a SELF-CONTAINED HTML (嵌套架构图/可下钻架构图). Pass a manifest tree: each node is one abstraction layer (id + label + a D2 diagram + optional children). Open the .html in a browser — click a layer to drill into its internal architecture, the breadcrumb trail navigates back to any ancestor, and the URL hash deep-links a specific path. Single .html file, all CSS/JS inlined, theme follows system light/dark. Backend: D2 WASM (same DSL as generate_diagram, zero new deps). Read-only navigation of a frozen manifest (NOT an editor). Optional root-layer PNG preview. NOTE: like generate_interactive_diagram, full interactivity needs a browser — GitHub README strips <script>, so an embed is static. " +
+        "WHEN TO CHOOSE: a complex system you want to explore layer-by-layer in a browser (top architecture → drill into each subsystem → drill into a sub-subsystem or a sequence diagram); architecture documentation served as a downloadable .html where reviewers click through the abstraction stack. " +
+        "AVOID: a single flat diagram (use generate_diagram or generate_interactive_diagram); editable / collaborative architecture tooling (this is read-only navigation). " +
+        "NEXT: you (the producer) write the manifest tree AND add drill links inside each parent layer's D2 DSL via `node_key: { link: \"drill:<child-id>\" }` on the nodes that should be clickable. A node with diagram=\"\" (empty string) is a grouping container (renders clickable child cards, has no own diagram). Open the HTML in a browser to explore; set previewPng=true for a root-layer PNG snapshot.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          manifest: {
+            type: "object",
+            description: "Manifest tree root (producer-declared abstraction tree). Each node: id (REQUIRED, ^[a-z0-9-]+$, tree-unique), label (REQUIRED, UI text), diagram (REQUIRED, D2 DSL source; empty string \"\" = grouping container that MUST have children), diagramType (optional; architecture|sequence|er|class|flowchart; default architecture), children (optional array of nodes; omitted/empty = leaf), notes (optional WHY annotation, producer-only). To make a node clickable, add a drill link in its PARENT's D2: `node_key: { link: \"drill:<that-child-id>\" }`.",
+          },
+          theme: { type: "string", description: "Light theme (D2 themeID or 'default'/'neutral'), shared across the whole tree. Default 'default'." },
+          darkTheme: { type: "string", description: "Dark theme (D2 themeID; '200' is a real dark palette), shared across the whole tree. Defaults to '200' (auto dark palette). Pass '' to force single-palette (no auto-switch)." },
+          title: { type: "string", description: "HTML <title> and visible heading. Default = manifest.label." },
+          previewPng: { type: "boolean", default: false, description: "Also export a root-layer PNG snapshot. Default false." },
+          name: { type: "string", description: "Output filename (without extension)" },
+          outDir: { type: "string", description: "Output directory, default session-dir/output" },
+        },
+        required: ["manifest"],
       },
     },
     {
@@ -1065,6 +1090,50 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             isResvg ? "resvg" : undefined,
           );
           throw new Error(normalized); // 顶层 catch 转 err(normalized)
+        }
+      }
+
+      case "generate_nested_diagram": {
+        // P0-5B:第 21 工具 —— 嵌套架构图(template-store + viewer-stack drill 导航)。
+        // 注:manifest==null 由 buildNestedHtml 内 prefixed 检查兜底(在 try 内 → catch 第一分支直抛);
+        // 此处不重复裸检查(nit 审查:避免无前缀裸 Error 与 F13 路由不一致)。
+        const manifest = a.manifest;
+        const outDir = resolveOutDir(a.outDir);
+        try {
+          const result = await renderNestedDiagram({
+            manifest,
+            theme: optString(a.theme),
+            darkTheme: optString(a.darkTheme),
+            title: optString(a.title),
+            previewPng: a.previewPng === true,
+            name: optString(a.name),
+            outDir,
+          });
+          return ok({
+            local_path: result.localPath,
+            bytes: result.bytes,
+            layers: result.layerCount,
+            has_dual_palette: result.hasDarkLightDualPalette,
+            ...(result.previewPngPath ? { preview_png_path: result.previewPngPath } : {}),
+            hint: 'Open the .html in a browser. Click a layer to drill in; breadcrumb or Esc to go back; URL hash deep-links a path. Drill links come from `link: "drill:<id>"` in each layer\'s D2.',
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e);
+          // F13-style 错误路由:[nested-diagram] 前缀(V1-V5 / S_NESTED_* / E_ENGINE / manifest required)直抛不归一化
+          if (/^\[nested-diagram\] /.test(msg)) throw new Error(msg);
+          // 通用契约 assert S2/S4/S6/S9/S11(interactive-html/asserts 抛,无前缀)归 [nested-diagram]
+          if (/^S\d+\s/.test(msg)) throw new Error("[nested-diagram] " + msg);
+          // 引擎错(D2 / resvg PNG 路径)沿用 generate_diagram 归一化范式。
+          // input 传空串:nit 审查 —— manifest 非 D2 源,传 JSON.stringify(manifest) 会标错输入源
+          // (pickD2Offending 取整 manifest 单行 split 后 offendingConstruct 错位)。D2 错本身已含足够信息。
+          const isResvg = /^\[resvg\] /i.test(msg);
+          const normalized = normalizeEngineError(
+            isResvg ? "resvg" : "d2",
+            msg.replace(/^\[resvg\] /i, ""),
+            { input: "", raw: msg },
+            isResvg ? "resvg" : undefined,
+          );
+          throw new Error(normalized);
         }
       }
 

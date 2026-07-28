@@ -216,16 +216,59 @@ test("user journey happy Graphviz: 合法 DOT → 成功返回 svg", async () =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// 用户旅程 7:20 工具枚举(P0-5 加入 generate_interactive_diagram 后 19→20;向后兼容)
+// 用户旅程 7:21 工具枚举(P0-5B 加入 generate_nested_diagram 后 20→21;向后兼容)
 // ═══════════════════════════════════════════════════════════════════════
 
-test("user journey 工具枚举: tools/list 返回 20 个工具(P0-5 后)", async () => {
+test("user journey 工具枚举: tools/list 返回 21 个工具(P0-5B 后)", async () => {
   const resp = await callTool(null, null, "tools/list");
   const tools = resp.result.tools;
-  assert.equal(tools.length, 20, `20 工具枚举破:${tools.length} 个`);
+  assert.equal(tools.length, 21, `21 工具枚举破:${tools.length} 个`);
   // 关键工具名仍在
   const names = tools.map((t) => t.name).sort();
-  for (const required of ["generate_diagram", "generate_chart", "render_svg", "generate_interactive_diagram"]) {
+  for (const required of ["generate_diagram", "generate_chart", "render_svg", "generate_interactive_diagram", "generate_nested_diagram"]) {
     assert.ok(names.includes(required), `${required} 工具消失`);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// 用户旅程 8:generate_nested_diagram 端到端(P0-5B 第 21 工具;happy + 错误路由三分支)
+// ═══════════════════════════════════════════════════════════════════════
+
+test("user journey nested happy: 合法 manifest → 返回 local_path(.html)+ bytes + layers", async () => {
+  const resp = await callTool("generate_nested_diagram", {
+    manifest: {
+      id: "root", label: "演示", diagram: "a -> b",
+      children: [{ id: "c1", label: "子", diagram: "x -> y" }],
+    },
+    outDir: "/tmp/nested-uj",
+  });
+  const result = resp.result;
+  assert.notEqual(result.isError, true, `happy path 不应 isError: ${JSON.stringify(result)}`);
+  const data = JSON.parse(result.content[0].text);
+  assert.match(data.local_path, /\.html$/, "返回 HTML 落盘路径");
+  assert.ok(data.bytes > 0, "bytes > 0");
+  assert.equal(data.layers, 2, "root + c1 两层 diagram");
+});
+
+test("user journey nested error 第一分支: 非法 manifest(重复 id)→ [nested-diagram] V1 直抛", async () => {
+  const resp = await callTool("generate_nested_diagram", {
+    manifest: { id: "dup", label: "x", diagram: "a", children: [{ id: "dup", label: "y", diagram: "b" }] },
+    outDir: "/tmp/nested-uj",
+  });
+  const result = resp.result;
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /\[nested-diagram\] V1/, "契约错(V1-V5/S_NESTED/E_ENGINE)直抛不归 d2");
+});
+
+test("user journey nested error 第三分支: 子层 D2 浮点 stroke-width → [d2] 归一化", async () => {
+  const resp = await callTool("generate_nested_diagram", {
+    manifest: { id: "root", label: "演示", diagram: "x: { style.stroke-width: 1.5 }" },
+    outDir: "/tmp/nested-uj",
+  });
+  const result = resp.result;
+  assert.equal(result.isError, true);
+  const text = result.content[0].text;
+  assert.match(text, /\[d2\]/, "D2 引擎错经第三分支 normalizeEngineError 归一化(非 [nested-diagram] 直抛)");
+  assert.match(text, /stroke-width/);
+  assert.doesNotMatch(text, /TypeError|Cannot read|is not a function/);
 });
