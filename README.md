@@ -3,7 +3,7 @@
 > Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.0-blue">
+  <img src="https://img.shields.io/badge/version-0.13.1-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>

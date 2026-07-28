@@ -3,7 +3,7 @@
 > Das «All-in-One-Bild-Toolkit» für Claude Code – Bilder erzeugen, Ideen zeichnen, Bilder verstehen, in einem einzigen Satz. Komplett kostenlos.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.0-blue">
+  <img src="https://img.shields.io/badge/version-0.13.1-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>

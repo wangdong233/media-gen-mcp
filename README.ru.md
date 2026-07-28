@@ -3,7 +3,7 @@
 > «Швейцарский нож для изображений» в Claude Code — создаём картинки, рисуем идеи, понимаем изображения: всё одной фразой, абсолютно бесплатно.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.0-blue">
+  <img src="https://img.shields.io/badge/version-0.13.1-blue">
   <img src="https://img.shields.io/badge/license-MIT-green">
   <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
