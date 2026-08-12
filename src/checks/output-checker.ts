@@ -19,7 +19,7 @@
  * 未抽到 src/checks/decode-helpers.ts 是 open point(pares4 OP-7),防 P0-4 范围蔓延。
  */
 
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -253,17 +253,27 @@ interface FfprobeResult {
   hasVideoTrack: boolean;
   durationMs?: number;
   timedOut: boolean;
+  /**
+   * ffmpeg 二进制缺失 / spawn ENOENT → 探活器本身不可用(非产物问题)。
+   * caller 应降级 warning,绝不 fatal 产物(产物可能完全合法,仅本机无 ffmpeg 无法自动校验)。
+   */
+  checkerUnavailable?: boolean;
   errorMessage?: string;
 }
 
 function probeContainer(file: string): FfprobeResult {
-  if (!ffmpegPath) {
+  // ⚠️ require('ffmpeg-static') 返回路径字符串即使二进制从未下载(postinstall 在屏蔽 GitHub/release
+  // 二进制下载的网络下被跳过,binary 不在盘)。此时 !ffmpegPath 兜底失效 → 必须 existsSync 实测二进制在盘。
+  // 否则 spawnSync 返回 ENOENT + 空 stderr → 下面 hasVideo/hasDuration 全 false → decodable:false →
+  // checkContainer 误判合法视频为 fatal "moov atom 缺失"(实测:agnes/zhipu 生成的合法 MP4 全被误杀)。
+  if (!ffmpegPath || !existsSync(ffmpegPath)) {
     return {
       ok: false,
       decodable: false,
       hasVideoTrack: false,
       timedOut: false,
-      errorMessage: "ffmpeg-static 未装/未找到,容器探活跳过",
+      checkerUnavailable: true,
+      errorMessage: "ffmpeg-static 二进制缺失(postinstall 未下二进制,常见于屏蔽 release 二进制的网络),容器探活跳过",
     };
   }
   try {
@@ -272,6 +282,17 @@ function probeContainer(file: string): FfprobeResult {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
+    // 防御:existsSync 后到 spawn 间二进制被删 / spawn 层 ENOENT → 同样判 checker 不可用,绝不 fatal 产物。
+    if (r.error && (r.error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        ok: false,
+        decodable: false,
+        hasVideoTrack: false,
+        timedOut: false,
+        checkerUnavailable: true,
+        errorMessage: "ffmpeg-static spawn ENOENT(二进制缺失),容器探活跳过",
+      };
+    }
     // ffmpeg 把元数据写到 stderr,exit code 通常非 0(null muxer 不接受 stdin 路径)
     // 但若容器能被 ffmpeg 读 → 至少能 stderr 出 Duration/Video: 信息;读不出来 → truly bad。
     const stderr = r.stderr ?? "";
@@ -961,6 +982,21 @@ function checkContainer(
   const probe = probeContainer(file);
   // container-decodable (fatal):ffmpeg 能读 stream 信息
   if (!probe.ok || !probe.decodable) {
+    if (probe.checkerUnavailable) {
+      // 探活器不可用(ffmpeg 二进制缺失)→ 降级 warning,绝不阻断产物。产物本身可能完全合法
+      // (本机仅缺 ffmpeg 无法自动校验);用 magic-bytes(ftyp)+ 文件大小 + 手动/视觉 QC 兜底。
+      // 这是 probeContainer !ffmpegPath 兜底的原意,修正 require 返回空路径字符串的漏判。
+      pushIssue(
+        issues,
+        checks,
+        "warning",
+        "mp4/checker-unavailable",
+        `ffmpeg 二进制不可用,容器合法性自动校验跳过:${probe.errorMessage ?? ""};产物已落盘,请用播放器/视觉确认可播放`,
+        "container-decodable",
+      );
+      metrics.mp4HasVideoTrack = probe.hasVideoTrack;
+      return;
+    }
     if (probe.timedOut) {
       // timeout 是 warning(R8):不阻断,可能大文件
       pushIssue(
