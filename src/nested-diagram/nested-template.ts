@@ -44,7 +44,7 @@ html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--mgm-bg);
   color: var(--mgm-fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  font-family: "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   line-height: 1.5;
   display: flex;
@@ -139,6 +139,10 @@ body {
   min-height: 100%;
 }
 #mgm-stage svg { display: block; max-width: none; height: auto; }
+/* 可下钻节点视觉信号(viewer-stack markDrillable 注入 ▾ 角标 + class)—— 解决"看不出能点" */
+#mgm-stage a[href^="drill:"] { cursor: pointer; }
+#mgm-stage a[href^="drill:"]:hover { filter: drop-shadow(0 0 6px var(--mgm-accent)); }
+.mgm-drill-mark { fill: var(--mgm-accent); font-size: 13px; font-weight: bold; pointer-events: none; }
 /* container-list:分组容器层(diagram=""),显示 children 卡片 */
 .mgm-container-list { max-width: 900px; margin: 0 auto; padding: 1rem 0; }
 .mgm-container-placeholder { color: var(--mgm-fg-muted); margin: 0 0 1rem; font-size: 0.9rem; }
@@ -163,6 +167,7 @@ body {
 .mgm-child-card:focus-visible { outline: 2px solid var(--mgm-accent); outline-offset: 2px; }
 .mgm-card-title { color: var(--mgm-fg); font-weight: 600; }
 .mgm-card-hint { color: var(--mgm-fg-muted); font-size: 0.78rem; }
+.mgm-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 @media (max-width: 640px) {
   .mgm-toolbar { padding: 0.4rem 0.5rem; gap: 0.25rem; }
   .mgm-toolbar h1 { font-size: 0.9rem; }
@@ -207,6 +212,7 @@ ${MOTION_GOVERNOR_CSS}
 __MGM_NESTED_ROOT_SVG_SLOT__
 </div>
 </main>
+<div id="mgm-aria-live" role="status" aria-live="polite" class="mgm-visually-hidden"></div>
 <script type="application/json" id="mgm-manifest">__MGM_NESTED_MANIFEST_SLOT__</script>
 <script>
 __MGM_NESTED_VIEWER_SLOT__

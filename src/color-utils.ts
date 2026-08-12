@@ -5,7 +5,7 @@
 
 /** 解析颜色串首个 #hex(#RGB/#RRGGBB;渐变取首个 stop)→ [r,g,b];无 hex 返回 null。 */
 export function parseHex(color: string): [number, number, number] | null {
-  const m = color.match(/#([0-9a-f]{3}|[0-9a-f]{6})/i);
+  const m = color.match(/#([0-9a-f]{6}|[0-9a-f]{3})/i);
   if (!m) return null;
   let h = m[1];
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
@@ -15,7 +15,7 @@ export function parseHex(color: string): [number, number, number] | null {
 /** 解析颜色串全部 #hex 停止色(渐变含多个)→ 数组(可能空)。 */
 export function parseAllHex(color: string): [number, number, number][] {
   const out: [number, number, number][] = [];
-  const re = /#([0-9a-f]{3}|[0-9a-f]{6})/gi;
+  const re = /#([0-9a-f]{6}|[0-9a-f]{3})/gi;
   let m;
   while ((m = re.exec(color))) {
     let h = m[1];

@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
  * 用户说"给这篇文章生成一张分享卡片" → Claude 调 generate_card(title=..., subtitle=...) → PNG(1200×630)。
  *
  * 字体策略:Satori 必须传入字体数据(ArrayBuffer)。
- *  - 默认从 jsDelivr @fontsource 按需取(Inter,Latin),磁盘+内存缓存(~/.media-gen-mcp/fonts/)。
+ *  - 默认 Geist 内置(@fontsource/geist-sans,离线);非默认字体从 jsDelivr @fontsource 按需取。
  *  - **CJK(中日韩)内置**:依赖 @fontsource/noto-sans-sc,文本含 CJK 时自动加载其 chinese-simplified
  *    子集(.woff;Satori 不支持 woff2)作为回退字体,逐字形回退,无需用户配置、离线可用。
  *  - 自定义字体:传 fontPath 指向本地 .ttf/.otf/.woff(覆盖默认;CJK 仍叠加 Noto 回退兜底)。
@@ -54,6 +54,11 @@ async function loadFont(
       );
     }
     return { name: family, data: toArrayBuffer(buf), weight, style: "normal" };
+  }
+  // 默认 Geist 优先走本地 bundle(离线确定性);不可用回退 CDN
+  if (family.toLowerCase() === "geist") {
+    const geist = await loadGeistFont(weight);
+    if (geist) return geist;
   }
   const key = `${family.toLowerCase()}@${weight}`;
   const cached = memFontCache.get(key);
@@ -130,6 +135,44 @@ async function loadCJKFont(weight: FontWeight): Promise<LoadedFont | null> {
   }
 }
 
+// ── Geist 内置 Latin 字体(@fontsource/geist-sans,离线;默认正文字体)──
+const GEIST_FAMILY = "Geist";
+const GEIST_FONT_KEY = "geist-latin";
+let geistFontDirResolved: string | null | undefined;
+
+/** 定位 @fontsource/geist-sans 的 files 目录;失败返回 null(降级 CDN,不崩)。 */
+function resolveGeistFontDir(): string | null {
+  if (geistFontDirResolved !== undefined) return geistFontDirResolved;
+  try {
+    const pkgPath = createRequire(import.meta.url).resolve(
+      "@fontsource/geist-sans/package.json",
+    );
+    geistFontDirResolved = path.join(path.dirname(pkgPath), "files");
+  } catch {
+    geistFontDirResolved = null;
+  }
+  return geistFontDirResolved;
+}
+
+/** 加载 Geist Latin 字体(指定 weight);不可用返回 null(调用方降级 CDN/fontPath)。 */
+async function loadGeistFont(weight: FontWeight): Promise<LoadedFont | null> {
+  const key = `${GEIST_FONT_KEY}@${weight}`;
+  const cached = memFontCache.get(key);
+  if (cached) return { name: GEIST_FAMILY, data: cached, weight, style: "normal" };
+  const dir = resolveGeistFontDir();
+  if (!dir) return null;
+  const file = path.join(dir, `geist-sans-latin-${weight}-normal.woff`);
+  try {
+    if (!fsSync.existsSync(file)) return null;
+    const buf = await fs.readFile(file);
+    const ab = toArrayBuffer(buf);
+    memFontCache.set(key, ab);
+    return { name: GEIST_FAMILY, data: ab, weight, style: "normal" };
+  } catch {
+    return null;
+  }
+}
+
 /** 检测文本是否含 CJK 统一表意 / 扩展 A 字符。 */
 const CJK_RE = /[一-鿿㐀-䶿]/;
 function hasCJK(text: string | undefined | null): boolean {
@@ -149,7 +192,7 @@ function withAlpha(color: string, alpha: number): string {
 
 /** 解析颜色串首个 #hex(#RGB/#RRGGBB;渐变取首个 stop)→ [r,g,b];无 hex 返回 null。 */
 function parseHex(color: string): [number, number, number] | null {
-  const m = color.match(/#([0-9a-f]{3}|[0-9a-f]{6})/i);
+  const m = color.match(/#([0-9a-f]{6}|[0-9a-f]{3})/i);
   if (!m) return null;
   let h = m[1];
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
@@ -262,7 +305,7 @@ export interface CardRequest {
   logoSize?: number;
   /** logo 是否圆形(avatar 用,默认 false=圆角方形)。 */
   logoRound?: boolean;
-  /** 字体族(默认 Inter,仅 Latin;中文需 fontPath 指向 CJK 字体)。 */
+  /** 字体族(默认 Geist,内置离线;中文自动叠加 Noto Sans SC;自定义传 fontPath)。 */
   fontFamily?: string;
   /** 本地字体文件路径(.ttf/.otf/.woff)。 */
   fontPath?: string;
@@ -544,8 +587,8 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   const height = req.height && req.height > 0 ? Math.floor(req.height) : 630;
   const bg = req.bg && req.bg.trim() ? req.bg.trim() : "#0f172a";
   const color = req.color && req.color.trim() ? req.color.trim() : "#f8fafc";
-  const accent = req.accent && req.accent.trim() ? req.accent.trim() : "#6366f1";
-  const family = req.fontFamily && req.fontFamily.trim() ? req.fontFamily.trim() : "Inter";
+  const accent = req.accent && req.accent.trim() ? req.accent.trim() : "#0d9488";
+  const family = req.fontFamily && req.fontFamily.trim() ? req.fontFamily.trim() : "Geist";
   const template = req.template ?? "og";
   const warnings: string[] = [];
   const KNOWN_TPL = new Set(["og", "quote", "minimal", "hero", "panel"]);
@@ -615,9 +658,10 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   const titleStyle: Record<string, unknown> = {
     fontFamily: fontStack,
     fontSize: titleSize,
-    fontWeight: 700,
+    fontWeight: 600,
     lineHeight: 1.12,
-    letterSpacing: -1,
+    letterSpacing: -Math.round(titleSize * 0.04),
+    fontFeatureSettings: "'ss03', 'calt', 'liga', 'kern'",
   };
   if (titleGradient) {
     // 渐变文字:Satori 用 mask 把渐变裁到字形
@@ -637,9 +681,9 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
 
   const titleNode = txt(req.title, titleStyle);
   const subNode = req.subtitle
-    ? txt(req.subtitle, { fontFamily: fontStack, fontSize: 40, fontWeight: 700, color: accent, lineHeight: 1.2 })
+    ? txt(req.subtitle, { fontFamily: fontStack, fontSize: 40, fontWeight: 500, color: accent, lineHeight: 1.2 })
     : null;
-  const bodyNode = req.body ? txt(req.body, { fontFamily: fontStack, fontSize: 32, color: muted, lineHeight: 1.4 }) : null;
+  const bodyNode = req.body ? txt(req.body, { fontFamily: fontStack, fontSize: 32, color: muted, lineHeight: 1.5 }) : null;
   const footerNode = req.footer ? txt(req.footer, { fontFamily: fontStack, fontSize: 28, color: muted }) : null;
 
   // logo:URL/data URI/本地路径 → Satori <img>(置于内容顶部)。本地路径读失败会抛错。

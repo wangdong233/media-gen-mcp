@@ -66,6 +66,6 @@ g.shape:nth-of-type(8)  { animation-delay: 0.56s; }
 g.shape:nth-of-type(9)  { animation-delay: 0.64s; }
 g.shape:nth-of-type(10) { animation-delay: 0.72s; }
 g.shape:hover {
-  filter: drop-shadow(0 0 5px var(--mgm-accent, #6366f1));
+  filter: drop-shadow(0 0 5px var(--mgm-accent, #0d9488));
 }
 `;

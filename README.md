@@ -146,6 +146,10 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 > 你:"抓一个 GitHub 的 Logo,128 像素"
 > 得到:20 万+ 图标库里的矢量 Logo,即下即用(GitHub / Twitter / Material / Lucide / Font Awesome 等)
 
+**逆向 AI 生成图的提示词与参数**
+> 你:"这张图是用什么 prompt、什么参数生成的?能复现吗?"
+> 得到:结构化参数 —— 正向 / 负向 prompt、模型、采样步数、CFG、种子、尺寸(从 PNG 嵌入的 ComfyUI / A1111 元数据本地解析;Agnes 生成的图自带完整生成参数,拿到 prompt 可用 generate_image 一键复现)
+
 ### 看懂一张图 / 一份 PDF(把图和文档变数据)
 
 **从截图里抠出文字**

@@ -42,9 +42,9 @@
   --mgm-btn-fg: #334155;
   --mgm-btn-border: #cbd5e1;
   --mgm-btn-hover-bg: #f1f5f9;
-  --mgm-accent: #6366f1;
+  --mgm-accent: #0d9488;
   --mgm-accent-fg: #ffffff;
-  --mgm-focus-ring: rgba(99, 102, 241, 0.4);
+  --mgm-focus-ring: rgba(13, 148, 136, 0.4);
   --mgm-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
   --mgm-stage-bg: #ffffff;
   --mgm-stage-border: #e2e8f0;
@@ -60,9 +60,9 @@ html[data-theme="dark"] {
   --mgm-btn-fg: #f1f5f9;
   --mgm-btn-border: #475569;
   --mgm-btn-hover-bg: #475569;
-  --mgm-accent: #818cf8;
-  --mgm-accent-fg: #0f172a;
-  --mgm-focus-ring: rgba(129, 140, 248, 0.5);
+  --mgm-accent: #2dd4bf;
+  --mgm-accent-fg: #042f2e;
+  --mgm-focus-ring: rgba(45, 212, 191, 0.5);
   --mgm-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
   --mgm-stage-bg: #0f172a;
   --mgm-stage-border: #334155;
@@ -74,7 +74,7 @@ html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--mgm-bg);
   color: var(--mgm-fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  font-family: "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   line-height: 1.5;
   display: flex;
@@ -201,7 +201,7 @@ g.shape:nth-of-type(8)  { animation-delay: 0.56s; }
 g.shape:nth-of-type(9)  { animation-delay: 0.64s; }
 g.shape:nth-of-type(10) { animation-delay: 0.72s; }
 g.shape:hover {
-  filter: drop-shadow(0 0 5px var(--mgm-accent, #6366f1));
+  filter: drop-shadow(0 0 5px var(--mgm-accent, #0d9488));
 }
 
 
@@ -441,6 +441,7 @@ html[data-motion="still"] *::after {
   function labelMotion(){
     var m = htmlEl.dataset.motion === 'still' ? 'Off' : 'On';
     motionBtn.textContent = 'Motion: ' + m;
+    motionBtn.setAttribute('aria-pressed', htmlEl.dataset.motion === 'still' ? 'false' : 'true');
   }
   function resolveAuto(){
     try {

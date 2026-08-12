@@ -148,6 +148,10 @@ El motor ligero por defecto es suficiente para inglés / números / captcha; la 
 > Tú: «Captura el logo de GitHub, 128 píxeles»
 > Obtienes: logo vectorial de una librería de más de 200 000 iconos, listo para usar (GitHub / Twitter / Material / Lucide / Font Awesome, entre otros)
 
+**Ingeniería inversa del prompt y parámetros de una imagen IA**
+> Tú: «¿Con qué prompt y parámetros se generó esta imagen? ¿Se puede reproducir?»
+> Obtienes: parámetros estructurados — prompt positivo/negativo, modelo, pasos de muestreo, CFG, semilla, tamaño (parseado localmente de los metadatos ComfyUI/A1111 embebidos en el PNG; las imágenes generadas por Agne llevan los parámetros completos — recupera el prompt y reprodúcelo con generate_image en un clic)
+
 ### Entender una imagen / un PDF (imagen y documento → datos)
 
 **Extrae texto de una captura**

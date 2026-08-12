@@ -260,9 +260,10 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
     await page.setViewport({ width, height, deviceScaleFactor: scale });
 
     // 包裹 HTML:补 DOCTYPE + 重置默认外边距 + 防滚动条
-    const html = req.html.trim().startsWith("<")
-      ? `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;box-sizing:border-box;overflow:hidden;background:#000;}*{margin:0;padding:0;box-sizing:border-box;}</style></head><body>${req.html}</body></html>`
-      : req.html;
+    // 完整 HTML 文档(带 doctype/<html>)原样透传,尊重用户 head/样式;仅片段才包裹兜底
+    const html = /^\s*<(?:!doctype\s+html|html[\s>])/i.test(req.html.trim())
+      ? req.html
+      : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;box-sizing:border-box;overflow:hidden;background:#000;}*{margin:0;padding:0;box-sizing:border-box;}</style></head><body>${req.html}</body></html>`;
     await page.setContent(html, { waitUntil: "load" }); // networkidle0 在 setContent 下会超时,用 load
 
     // 就绪:字体 + 图片 + 首帧 paint

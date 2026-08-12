@@ -268,7 +268,7 @@ function probeContainer(file: string): FfprobeResult {
   }
   try {
     const r = spawnSync(ffmpegPath, ["-i", file, "-f", "null", "-"], {
-      timeout: 5000,
+      timeout: 15000, // 5s→15s:CPU 过载环境 ffmpeg spawn 偶发慢(实测 Load94),给余量防 flaky timeout
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -981,6 +981,7 @@ function checkContainer(
         "container-decodable",
       );
     }
+    metrics.mp4HasVideoTrack = probe.hasVideoTrack; // 防御:early return 前也设 metrics(免 undefined;probe.ok=false 时为 false 便于诊断)
     return;
   }
   pushOk(checks, "container-decodable", `${kind}/container-decodable`, [

@@ -85,11 +85,40 @@ export const VIEWER_NESTED_JS = `(function(){
     stage.innerHTML = layer.viewMode === 'container-list'
       ? renderContainerList(layer)
       : layer.svg;
+    markDrillable(); // 给可下钻节点加 ▾ 信号(防"看不出能点")
     zoom = 1; applyZoom();
     viewer.scrollLeft = 0; viewer.scrollTop = 0;
     renderBreadcrumb();
     syncHash();
     if (upBtn) upBtn.disabled = stack.length <= 1;
+    // a11y:切层播报(屏幕阅读器读 layer.title)+ 焦点回退(stage innerHTML 替换后旧焦点链接消失 → 焦点落 upBtn 让键盘用户可继续)
+    var live = document.getElementById('mgm-aria-live');
+    if (live) live.textContent = layer.title ? '进入:' + layer.title : '';
+    if (!stage.contains(document.activeElement) || document.activeElement === document.body) {
+      if (upBtn && !upBtn.disabled) { try { upBtn.focus({ preventScroll: true }); } catch (e) { try { upBtn.focus(); } catch (e2) {} } }
+    }
+  }
+
+  // ── markDrillable:可下钻节点(a[href^="drill:"])加 ▾ 角标 + hover 高亮 + cursor ──
+  // 解决"用户不知道哪些节点能点"的可视辨识缺失(设计 §5.2 chevron 角标 + hover 信号)
+  function markDrillable() {
+    var links = stage.querySelectorAll('a[href^="drill:"]');
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      try { a.classList.add('mgm-drillable'); } catch (e) { a.className += ' mgm-drillable'; }
+      a.style.cursor = 'pointer';
+      if (a.querySelector('.mgm-drill-mark')) continue; // 已加
+      try {
+        var bb = a.getBBox(); // SVGGraphicsElement.getBBox,<a> 内坐标(共享 transform)
+        var mark = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        mark.setAttribute('class', 'mgm-drill-mark');
+        mark.setAttribute('x', bb.x + bb.width - 3);
+        mark.setAttribute('y', bb.y + bb.height - 3);
+        mark.setAttribute('text-anchor', 'end');
+        mark.textContent = '▾ 点击进入';
+        a.appendChild(mark);
+      } catch (e) { /* getBBox 失败(隐藏/无几何)→ 跳过,hover 信号仍生效 */ }
+    }
   }
 
   // ── drillInto:INV-2 安全(目标必须是当前层 child,防 hash/外部链接逃树)──
@@ -227,7 +256,10 @@ export const VIEWER_NESTED_JS = `(function(){
     if (themeBtn) themeBtn.textContent = 'Theme: ' + p.charAt(0).toUpperCase() + p.slice(1);
   }
   function labelMotion() {
-    if (motionBtn) motionBtn.textContent = 'Motion: ' + (htmlEl.dataset.motion === 'still' ? 'Off' : 'On');
+    if (motionBtn) {
+      motionBtn.textContent = 'Motion: ' + (htmlEl.dataset.motion === 'still' ? 'Off' : 'On');
+      motionBtn.setAttribute('aria-pressed', htmlEl.dataset.motion === 'still' ? 'false' : 'true');
+    }
   }
   function resolveAuto() {
     try {

@@ -36,6 +36,7 @@ import { renderIcon } from "./icon.js";
 import { renderCard } from "./card.js";
 import { renderSvg } from "./render-svg.js";
 import { renderVideo } from "./render-video.js";
+import { extractImageMeta } from "./extract-image-meta.js";
 import { normalizeEngineError } from "./handlers/error-format.js";
 import { assertOutputClean } from "./checks/output-checker.js";
 import { applyTbpu } from "./vision/tbpu.js";
@@ -290,7 +291,7 @@ function buildTools() {
     {
       name: "generate_diagram",
       description:
-        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, use `render_svg` (hand-written SVG with feGaussianBlur) instead. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).\n\nNEXT: for interactive HTML with theme switch + animation (theme follows system light/dark, open the .html in a browser), use generate_interactive_diagram.",
+        "Generate architecture / flowchart / sequence / class / ER / mindmap diagrams (架构图/流程图/时序图/类图/ER图/思维导图/示意图), rendered locally to vector SVG. The D2 and Graphviz engines are BUILT IN (WASM, bundled with this tool) — you do NOT need d2/dot/graphviz installed, do NOT run `which d2`/`which dot`, and do NOT shell out to them or write DOT files by hand; just call this tool and provide the D2 or DOT DSL. Prefer this for structured technical diagrams (architecture, flowchart, sequence, ER, class). For system/software architecture diagrams specifically, prefer a functional layered layout — top-level `direction: down` + container bands per concern (user access / business capability / technical support) + an independent box per functional domain; this is advisory, and flowcharts/sequence/ER/mindmap keep their native layouts. See generate_nested_diagram's MANIFEST DESIGN for the full method. LIMITS: D2 produces clean auto-laid-out diagrams with shapes/connections/basic style (fill/stroke/shadow/border-radius/gradients) — it does NOT support SVG filters (feGaussianBlur glow/blur), ambient lighting, vignette, pattern grids, or artistic depth effects. For highly stylized '酷炫/霓虹/科技感' graphics requiring glow/blur/depth beyond what D2 offers, use `render_svg` (hand-written SVG with feGaussianBlur) instead. mermaid is not supported in-process (needs a browser); use d2 or graphviz instead. Multilingual triggers: 図 · diagrama · diagramme · Diagramm · диаграмма · diagrama (ja/es/fr/de/ru/pt).\n\nNEXT: for interactive HTML with theme switch + animation (theme follows system light/dark, open the .html in a browser), use generate_interactive_diagram.",
       inputSchema: {
         type: "object",
         properties: {
@@ -311,7 +312,8 @@ function buildTools() {
         "Generate a SELF-CONTAINED INTERACTIVE HTML diagram (交互式自包含HTML图) — open the .html in a browser to interact (pan/zoom, theme toggle, edge-flow + node animation). Theme follows the system light/dark setting via @media (prefers-color-scheme: dark) baked into the SVG. Single .html file, all CSS/JS inlined, zero external deps. Backend: D2 WASM (same DSL as generate_diagram, zero new deps). Optional PNG preview. NOTE: full interactivity needs a browser — GitHub README strips <script>, so a README embed is static (no viewer/animation); for a theme-switching image in README use generate_diagram's SVG output instead. Multilingual triggers: 交互式图 · interactive diagram · diagrama interactivo · diagramme interactif · interaktives Diagramm · интерактивная диаграмма (en/zh/es/fr/de/ru). " +
         "WHEN TO CHOOSE: architecture diagram you open in a browser to explore (pan/zoom/theme/animation); blog or doc diagram served as a downloadable .html; product demo with subtle animation. " +
         "AVOID: static SVG/PNG in docs (use generate_diagram, lighter); video output (use render_video); hand-coding SVG (use render_svg). " +
-        "NEXT: open the HTML in a browser to interact; set previewPng=true for a PNG snapshot alongside.",
+        "NEXT: open the HTML in a browser to interact; set previewPng=true for a PNG snapshot alongside. " +
+        "ARCHITECTURE LAYOUT (when the diagram is a system architecture, not a flowchart/ER/sequence): prefer a FUNCTIONAL LAYERED layout over a technical-topology or code dump. `direction: down`; each layer a container band with one concern (user access / business capability WHAT / technical support HOW), styled with `style.fill` (light hex, quoted) + `style.stroke-dash: 3` (one property per line — full D2 rules live in generate_diagram's `code` field). Split the capability band into independent boxes that do NOT share a container, and keep cross-cutting concerns (quality gates, observability) in their own band, not stuffed into a capability box. Label layer-to-layer arrows with the value stream (user need -> engine/service -> artifact -> delivery). This is the single-diagram form of generate_nested_diagram's MANIFEST DESIGN — same user-first layered thinking, no drill-down.",
       inputSchema: {
         type: "object",
         properties: {
@@ -332,7 +334,8 @@ function buildTools() {
         "Generate a NESTED / drill-down architecture diagram as a SELF-CONTAINED HTML (嵌套架构图/可下钻架构图). Pass a manifest tree: each node is one abstraction layer (id + label + a D2 diagram + optional children). Open the .html in a browser — click a layer to drill into its internal architecture, the breadcrumb trail navigates back to any ancestor, and the URL hash deep-links a specific path. Single .html file, all CSS/JS inlined, theme follows system light/dark. Backend: D2 WASM (same DSL as generate_diagram, zero new deps). Read-only navigation of a frozen manifest (NOT an editor). Optional root-layer PNG preview. NOTE: like generate_interactive_diagram, full interactivity needs a browser — GitHub README strips <script>, so an embed is static. " +
         "WHEN TO CHOOSE: a complex system you want to explore layer-by-layer in a browser (top architecture → drill into each subsystem → drill into a sub-subsystem or a sequence diagram); architecture documentation served as a downloadable .html where reviewers click through the abstraction stack. " +
         "AVOID: a single flat diagram (use generate_diagram or generate_interactive_diagram); editable / collaborative architecture tooling (this is read-only navigation). " +
-        "NEXT: you (the producer) write the manifest tree AND add drill links inside each parent layer's D2 DSL via `node_key: { link: \"drill:<child-id>\" }` on the nodes that should be clickable. A node with diagram=\"\" (empty string) is a grouping container (renders clickable child cards, has no own diagram). Open the HTML in a browser to explore; set previewPng=true for a root-layer PNG snapshot.",
+        "NEXT: you (the producer) write the manifest tree AND add drill links inside each parent layer's D2 DSL via `node_key: { link: \"drill:<child-id>\" }` on the nodes that should be clickable. A node with diagram=\"\" (empty string) is a grouping container (renders clickable child cards, has no own diagram). Open the HTML in a browser to explore; set previewPng=true for a root-layer PNG snapshot. " +
+        "MANIFEST DESIGN (how to layer — applies unless the user gives an explicit architecture spec): structure the tree as abstraction layers from the user's purpose DOWNWARD, not as a code/module dump. Top layer = what the user does or sees (user value / business capability); each drill reveals the next deeper abstraction (capability -> technical implementation -> module internals). Favor deep modules (small interface, thick implementation hidden below) and one clean concern per layer (no complecting). When the top layer is a whole-system architecture (diagramType architecture), prefer a FUNCTIONAL LAYERED layout: top-level `direction: down`, each layer a container band with one concern (user access / business capability WHAT / technical support HOW), each functional domain inside a band as its OWN box (visibly partitioned, not blended), and cross-cutting concerns (quality gates, observability) in their own band, not folded into a capability box. Use D2 containers with `style.fill` (light hex, quoted) + `style.stroke-dash: 3` for the bands, one property per line (full D2 syntax lives in generate_diagram's `code` field). Label layer-to-layer arrows with the value stream (user need -> engine/service -> artifact -> delivery). C4 System Context (actors around a black box) is also a valid top layer when the audience is stakeholders and the drill chain goes Context -> Container -> Component; the functional-layered layout is just better when the goal is to show partitioned internal domains. For other top-layer topologies (sequence/er/class/flowchart) use that type's native layout. Avoid two proven failure modes at the top: a pure technical dump (MCP entry / dispatcher / engine as the whole story) and a pure user-scenario view (user jobs, not business capability). Write node labels in user-intelligible language and a one-line WHY note (what user problem this layer solves), not technical WHAT. Default to this user-first layered analysis (simple-architecture thinking); only mirror a provided spec verbatim if the user explicitly supplies one.",
       inputSchema: {
         type: "object",
         properties: {
@@ -437,7 +440,7 @@ function buildTools() {
           height: { type: "number", description: "Pixel height (default 630, OG standard)" },
           bg: { type: "string", description: "Background: a solid color (default #0f172a) OR a CSS gradient string, e.g. linear-gradient(135deg, #4f46e5, #06b6d4) / radial-gradient(circle at 30% 30%, #f59e0b, #ef4444)" },
           color: { type: "string", description: "Title text color (default #f8fafc). Note: only the title uses this; subtitle uses accent, body/footer use a muted gray." },
-          accent: { type: "string", description: "Accent color (default #6366f1)" },
+          accent: { type: "string", description: "Accent color (default #0d9488, teal-600)" },
           titleGradient: { type: "string", description: "CSS gradient applied to the title text via background-clip:text, e.g. linear-gradient(90deg,#f59e0b,#ef4444). Note: does not combine with glow (Satori drops the shadow when text is clipped to a gradient — use one or the other)." },
           glow: { type: "string", description: "Title glow (text-shadow). Pass 'true' to auto-derive from accent color, or a full text-shadow CSS value like '0 0 40px rgba(245,158,11,.6)'. Pass 'false' to disable. Does NOT combine with titleGradient (shadow is clipped when text is gradient-filled)." },
           blob: { type: "boolean", default: true, description: "hero template only: blurred accent blob behind the title for depth (default true)" },
@@ -445,8 +448,8 @@ function buildTools() {
           logo: { type: "string", description: "Embedded image (brand logo / avatar): a URL, data URI, or local file path (.png/.jpg/.webp/.svg). Placed at the top of the card content." },
           logoSize: { type: "number", description: "Logo pixel size (square edge), default 88" },
           logoRound: { type: "boolean", default: false, description: "Logo circular (for avatars); default false = rounded square" },
-          fontFamily: { type: "string", description: "Font family from @fontsource (default Inter, Latin only)" },
-          fontPath: { type: "string", description: "Local base-font file path (.ttf/.otf/.woff) to override the default Inter; optional (CJK auto-supported via built-in Noto Sans SC)" },
+          fontFamily: { type: "string", description: "Font family from @fontsource (default Geist, built-in offline, Latin only; CJK auto-stacked via Noto Sans SC)" },
+          fontPath: { type: "string", description: "Local base-font file path (.ttf/.otf/.woff) to override the default Geist; optional (CJK auto-supported via built-in Noto Sans SC)" },
           format: { type: "string", enum: ["svg", "png"], default: "png" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
@@ -534,6 +537,22 @@ function buildTools() {
           outDir: { type: "string", description: "Output directory, default session-dir/output" },
         },
         required: ["pdfId"],
+      },
+    },
+    {
+      name: "extract_image_meta",
+      description:
+        "Extract embedded generation metadata from a PNG / AI-generated image — reverse-engineer the prompt and params (逆向提示词/参数). Parses PNG tEXt/iTXt/zTXt chunks locally: ComfyUI workflow JSON (Agnes outputs embed the full ComfyUI prompt+model+sampler+seed+size) and A1111 WebUI parameters. Returns structured: generator (ComfyUI/A1111/none), positive/negative prompt, model, sampler, steps, cfg, seed, size, raw chunk list. Zero AI, zero network (unless imageSource is a URL). " +
+        "WHEN TO CHOOSE: user shows an AI-generated image and asks 'what prompt was this / 什么参数生成的 / 逆向 prompt / 提取生成参数'. " +
+        "AVOID: ordinary photos (no embedded metadata, generator=none); for AI visual understanding (scene/object description) use describe_image. " +
+        "NEXT: recover the prompt, then re-run generate_image with it to reproduce. Multilingual triggers: 逆向提示词 · extract prompt · 提取参数 · prompt reverse · 生成参数 (en/zh).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          imageSource: { type: "string", description: "Image source: local file path / data URI / http(s) URL. PNG is richest (embeds ComfyUI/A1111 metadata)." },
+          includeRaw: { type: "boolean", default: false, description: "Also return the raw workflow JSON object (default false, structured summary only)." },
+        },
+        required: ["imageSource"],
       },
     },
   ];
@@ -1546,6 +1565,28 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           ...(localPath ? { local_path: localPath } : {}),
           ...(built.rangeWarnings?.length ? { range_warnings: built.rangeWarnings } : {}),
           ...(built.warnings.length ? { warnings: built.warnings } : {}),
+        });
+      }
+
+      case "extract_image_meta": {
+        const meta = await extractImageMeta({
+          imageSource: requireString(a.imageSource, "imageSource"),
+          ...(a.includeRaw !== undefined ? { includeRaw: a.includeRaw === true } : {}),
+        });
+        return ok({
+          generator: meta.generator,
+          ...(meta.positivePrompt ? { positivePrompt: meta.positivePrompt } : {}),
+          ...(meta.negativePrompt ? { negativePrompt: meta.negativePrompt } : {}),
+          ...(meta.model ? { model: meta.model } : {}),
+          ...(meta.sampler ? { sampler: meta.sampler } : {}),
+          ...(meta.steps !== undefined ? { steps: meta.steps } : {}),
+          ...(meta.cfg !== undefined ? { cfg: meta.cfg } : {}),
+          ...(meta.scheduler ? { scheduler: meta.scheduler } : {}),
+          ...(meta.seed !== undefined ? { seed: meta.seed } : {}),
+          ...(meta.size ? { size: meta.size } : {}),
+          chunks: meta.chunks,
+          ...(meta.rawWorkflow !== undefined ? { rawWorkflow: meta.rawWorkflow } : {}),
+          ...(meta.warnings.length ? { warnings: meta.warnings } : {}),
         });
       }
 

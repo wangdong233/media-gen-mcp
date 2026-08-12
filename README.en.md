@@ -147,6 +147,10 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "Grab a GitHub logo, 128 pixels"
 > Get: a vector logo from a library of 200k+ icons, ready to use (GitHub / Twitter / Material / Lucide / Font Awesome, etc.)
 
+**Reverse-engineer the prompt & params of an AI-generated image**
+> You: "What prompt and params was this image generated with? Can I reproduce it?"
+> Get: structured params — positive/negative prompt, model, sampling steps, CFG, seed, size (parsed locally from PNG-embedded ComfyUI/A1111 metadata; Agnes-generated images carry the full generation params — recover the prompt and reproduce with generate_image in one click)
+
 ### Understand an Image / a PDF (Image & Document → Data)
 
 **Extract Text From a Screenshot**

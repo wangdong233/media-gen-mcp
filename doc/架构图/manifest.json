@@ -1,0 +1,128 @@
+{
+  "id": "root",
+  "label": "media-gen-mcp 分层架构图",
+  "diagram": "direction: down\n\n用户层: {\n  label: \"用户接入层\"\n  style.fill: \"#F3E8FF\"\n  style.stroke-dash: 3\n  user: {\n    shape: person\n    label: \"Claude Code 用户\"\n  }\n  agent: {\n    shape: person\n    label: \"AI 助手\"\n  }\n  dev: {\n    shape: person\n    label: \"开发者(配置服务方)\"\n  }\n}\n\n能力层: {\n  label: \"业务能力层(三大功能域)\"\n  style.fill: \"#E0F2FE\"\n  style.stroke-dash: 3\n  生成: {\n    label: \"生成能力 ▾\\n写实图·视频·图标\"\n    link: \"drill:create\"\n  }\n  理解: {\n    label: \"理解能力 ▾\\nOCR·表格·图表·PDF\"\n    link: \"drill:understand\"\n  }\n  结构化: {\n    label: \"结构化能力 ▾\\n架构图·数据图·卡片·二维码\"\n    link: \"drill:structure\"\n  }\n}\n\n支撑层: {\n  label: \"技术支撑与交付保障层\"\n  style.fill: \"#F0FDF4\"\n  style.stroke-dash: 3\n  engines: \"本地引擎(D2·Vega·MathJax·Satori)\"\n  providers: \"外部服务(Agnes·智谱·tesseract·PaddleX·vLLM)\"\n  交付保障: {\n    label: \"交付保障 ▾\\n守门·错误契约·Golden\"\n    link: \"drill:deliver\"\n  }\n}\n\n用户层 -> 能力层: \"一句话需求\"\n能力层 -> 支撑层: \"调引擎/服务\"\n支撑层 -> 能力层: \"返回产物\"\n能力层 -> 用户层: \"图/视频/数据/卡片 落盘交付\"\n",
+  "diagramType": "architecture",
+  "notes": "C4 System Context(业务顶层,调研结论 1,主源 3-0 票高置信)——给所有人含非技术干系人看:中心是系统黑盒,左侧是人(Claude Code 用户经 AI 助手调用 / 开发者配置服务方),右侧是系统依赖的外部服务(AI 生成 · 视觉理解 · 图标 · 特效视频)。箭头是端到端价值流(调研结论 5 / arc42 §3):用户一句话进来,图/视频/数据/卡片落盘出去。刻意不出现 MCP/stdio/TypeScript/src 模块名/provider/engine——这些是 drill 三层后才看到的技术真相(01 §2.1 抽象层面)。三根业务能力柱(生成/理解/结构化 = WHAT 业务能做,调研结论 3)+ 一根交付保障(横切质量,非能力柱)可 drill。价值主张(README):把『装 N 个工具记 N 套参数』压缩成『装一次,一句话』。",
+  "children": [
+    {
+      "id": "create",
+      "label": "生成能力(从无到有产出新内容)",
+      "diagram": "ai-photo: {\n  label: \"AI 写实照片 / 插画 ▾\"\n  link: \"drill:create-tech\"\n}\nai-video: {\n  label: \"AI 短视频(3-18 秒) ▾\"\n  link: \"drill:create-tech\"\n}\nbrand-icon: \"图标 / 品牌 Logo(20 万矢量库,即下即用)\"\nai-photo -> ai-video: \"同走外部 AI 生成服务\"\n",
+      "diagramType": "architecture",
+      "notes": "业务能力柱一·生成(WHAT,调研结论 3):把脑子里的画面变成可见成品。业务服务:AI 写实照片/插画、AI 短视频、图标/品牌 Logo。解决设计师/内容创作者/独立产品主『要一张图却不想装 N 个工具记 N 套参数』的痛。AI 生成走外部服务,图标走 20 万矢量库即下即用。drill 看外部服务怎么接入。",
+      "children": [
+        {
+          "id": "create-tech",
+          "label": "外部 AI 生成服务接入(生成背后)",
+          "diagram": "agnes: \"Agnes(默认,免费层永久开放)\"\nzhipu: \"智谱 cogview/cogvideox(中文原生 fallback)\"\nresolve: {\n  label: \"服务方调度与恢复 ▾\"\n  link: \"drill:provider-fallback\"\n}\nagnes -> resolve: \"implements\"\nzhipu -> resolve: \"implements\"\n",
+          "diagramType": "architecture",
+          "notes": "技术实现(从旧 manifest 复用):两家免费生成服务方 Agnes(默认)+ 智谱 cogview(中文 fallback)。任一挂掉自动切换,用户无感。接口窄(MediaProvider 能力袋)、实现厚(私有协议/重试/熔断),典型深模块(01 §2.4)。",
+          "children": [
+            {
+              "id": "provider-fallback",
+              "label": "三层恢复链(服务方调度内部)",
+              "diagram": "resolve: \"resolveProvider(模型→服务方自动路由)\"\nretry: \"withRetry(5xx 指数退避)\"\nfallback: \"getFallbackProvider 三过滤链\"\ntier: \"tier 降序排序键\"\nhealth: \"health 熔断(60 秒软冷却)\"\nresolve -> retry: \"同服务方重试\"\nretry -> fallback: \"仍失败则换服务方\"\nfallback -> tier\nfallback -> health\n",
+              "diagramType": "flowchart",
+              "notes": "深模块内部(三层恢复):同服务方 withRetry(5xx 指数退避)→ 换服务方(排除当前→health→capableOf→tier 降序)→ 60s 软熔断。复杂度全藏在小接口背后(01 §2.4 接口小实现厚)。视频轮询取片时钉定不切换(防拿到错的结果)。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "understand",
+      "label": "理解能力(把图/PDF 反向变成数据)",
+      "diagram": "ocr: {\n  label: \"文字识别(OCR) ▾\"\n  link: \"drill:understand-vision-tech\"\n}\ntable: {\n  label: \"表格 → HTML/Markdown ▾\"\n  link: \"drill:understand-vision-tech\"\n}\nchart-read: {\n  label: \"图表反推数据点 ▾\"\n  link: \"drill:understand-vision-tech\"\n}\nvqa: {\n  label: \"看图问答 / 手写 / 公式 ▾\"\n  link: \"drill:understand-vision-tech\"\n}\npdf-extract: {\n  label: \"整份 PDF 抠字 ▾\"\n  link: \"drill:understand-pdf-tech\"\n}\nself-check: \"先问一句:我现在能识别什么\"\nocr -> table: \"同一组识别服务\"\n",
+      "diagramType": "architecture",
+      "notes": "业务能力柱二·理解(WHAT):把图/PDF 反向变成数据。业务服务:文字识别(OCR)、表格→HTML、图表反推数据、看图问答/手写/公式、整份 PDF 抠字、能力自检。解决财务/法务/学术/教育『从截图发票合同论文反向抽数据』的双向场景。drill 看多档识别与 PDF 管线。",
+      "children": [
+        {
+          "id": "understand-vision-tech",
+          "label": "多档识别服务接入(理解背后)",
+          "diagram": "t1: \"档1 默认轻量(零配置,英文/数字/验证码)\"\nt2: \"档2 智谱 GLM 云(中文 SOTA + 问答,零部署)\"\nt3: \"档3 PaddleX 自托管(发票/报表表格)\"\nt4: \"档4 vLLM Qwen 自托管(问答/手写)\"\npostproc: {\n  label: \"后处理(忽略区/多栏阅读序) ▾\"\n  link: \"drill:vision-postproc\"\n}\nt1 -> postproc\nt2 -> postproc\nt3 -> postproc\nt4 -> postproc\n",
+          "diagramType": "architecture",
+          "notes": "技术实现:四档识别按需选装,默认零配置就能用第一档(英文/验证码)。档2 智谱 GLM 云端补中文 SOTA+问答,档3/4 自托管。后处理(忽略水印/多栏阅读序)对所有服务方一视同仁——服务方可替换,后处理是稳定能力(01 §2.3 what 与 how 分离)。",
+          "children": [
+            {
+              "id": "vision-postproc",
+              "label": "忽略区剔除 + 多栏阅读序(后处理内部)",
+              "diagram": "filter: \"filterIgnoreAreas 几何剔除(水印/红章/页眉)\"\ntbpu: \"applyTbpu 排版重排(GapTree + 段解析)\"\nfilter -> tbpu: \"铁律:剔除先于排版\"\n",
+              "diagramType": "flowchart",
+              "notes": "深模块内部(铁律):filterIgnoreAreas 先(剔除水印/红章)→ applyTbpu 后(排版重排),否则被剔除块参与 GapTree 干扰列分隔线检测。provider-agnostic,8 策略复用同一 GapTree 内核。"
+            }
+          ]
+        },
+        {
+          "id": "understand-pdf-tech",
+          "label": "PDF 异步提取管线(PDF 抠字背后)",
+          "diagram": "pagerange: \"页码解析(3 / 1-10 / odd / last)\"\njobstore: \"任务库(TTL 30min + sweeper)\"\nasync: \"异步触发 fire-and-forget\"\ntextlayer: \"文字层快路径(数字 PDF 秒出)\"\nrender: \"扫描件逐页 OCR(provider 钉定)\"\nasync -> jobstore: \"注册 → setImmediate\"\njobstore -> textlayer: \"逐页探测\"\ntextlayer -> render: \"扫描件走 OCR\"\n",
+          "diagramType": "flowchart",
+          "notes": "技术实现:数字版 PDF 直接抽文字层秒出,扫描件自动逐页渲染+OCR。异步后台跑,完成通知取结果。provider 钉定(首页后不换家,对齐轮询不 fallback 铁律)。流程类用 flowchart 表时序最清晰。"
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "label": "结构化能力(把想法/数据组织成可发出去的成品)",
+      "diagram": "diagram: {\n  label: \"架构/流程/数据图(静态·交互·嵌套) ▾\"\n  link: \"drill:diagram-tech\"\n}\ncard: {\n  label: \"分享卡 / 二维码 / 数学公式 ▾\"\n  link: \"drill:card-render-tech\"\n}\ncool: {\n  label: \"高清特效图 / 动画视频 ▾\"\n  link: \"drill:cool-render-tech\"\n}\ndiagram -> card: \"同属本地引擎,免 Key\"\ncard -> cool: \"同输入永远同输出\"\n",
+      "diagramType": "architecture",
+      "notes": "业务能力柱三·结构化(WHAT):把抽象想法和发出去的成品一次性做出来。业务服务:架构/流程/数据图(静态·交互·嵌套)、分享卡/二维码/数学公式、高清特效图/动画视频。全本地引擎,免 Key、矢量高清、同输入永远同输出可入 git——解决写文档/做运营物料『要确定性可复现』的需求。",
+      "children": [
+        {
+          "id": "diagram-tech",
+          "label": "本地 WASM 引擎深核(结构化背后)",
+          "diagram": "d2-engine: \"D2(架构/流程/时序/类图/ER)\"\ngraphviz: \"Graphviz\"\nvega: \"Vega-Lite(数据图表)\"\nnested: {\n  label: \"嵌套架构图内部 ▾\"\n  link: \"drill:nested-internals\"\n}\ninteractive: {\n  label: \"交互 HTML 内部 ▾\"\n  link: \"drill:interactive-internals\"\n}\nd2-engine -> nested: \"+ manifest 树\"\nd2-engine -> interactive: \"+ viewer chrome\"\n",
+          "diagramType": "architecture",
+          "notes": "技术实现:D2/Graphviz WASM 本地编译,矢量高清零联网。三档图(静态→交互→嵌套)共用一个 D2Engine 单例深核,sibling 非超集(01 §3.2 duplication > wrong abstraction)。drill 看两个最深模块。",
+          "children": [
+            {
+              "id": "nested-internals",
+              "label": "嵌套架构图内部(manifest 树 + 导航栈)",
+              "diagram": "validate: \"validateManifest V1-V5(写前先校验)\"\ndfs: \"renderManifestLayers DFS 串行\"\nstack: \"viewer-stack template-store 导航栈\"\ninv2: \"INV-2 防逃树(安全核心)\"\nvalidate -> dfs: \"任一违例整树拒绝\"\ndfs -> stack: \"await 串行 byte-identical\"\nstack -> inv2: \"drill 必是当前 child\"\n",
+              "diagramType": "architecture",
+              "notes": "深模块内部:点某层切到那层架构,面包屑回溯任意祖先。drill 路径零 D2 重渲染(全 SVG build 阶段预渲染)。INV-2 防 hash/外链逃树——嵌套图本身就是这份 manifest 用的渲染器,自举。"
+            },
+            {
+              "id": "interactive-internals",
+              "label": "交互 HTML 内部(单图 viewer)",
+              "diagram": "theme: \"双调色板(@media 跟随系统深/浅色)\"\nmotion: \"Motion Governor(reduced-motion 守无障碍)\"\nviewer: \"viewer-min pan/zoom/主题/SVG export\"\ntheme -> viewer\nmotion -> viewer: \"!important gate\"\n",
+              "diagramType": "architecture",
+              "notes": "深模块内部:纯 CSS 动画确定性(无 Math.random/Date.now),Motion Governor 守无障碍。双调色板默认开箱即反色,堵 GitHub README 主题切换盲区。5 契约被 nested-diagram 复用。"
+            }
+          ]
+        },
+        {
+          "id": "card-render-tech",
+          "label": "确定性叶子渲染器(卡片/二维码/公式)",
+          "diagram": "card: \"分享卡(Satori 排版 + resvg 光栅化)\"\nqr: \"二维码(纯 JS 原生 PNG)\"\nformula: \"数学公式(MathJax lazy singleton)\"\ncolor: \"color-utils(WCAG 对比度)\"\ncolor -> card: \"titleGradient\"\ncolor -> qr: \"contrastRatio\"\n",
+          "diagramType": "architecture",
+          "notes": "技术实现:三个叶子各自 Ousterhout 典型深模块——接口薄(renderX(req)→{svg,png}),实现厚(外部引擎+字体策略+缓存)。中文/日文汉字/彩色 emoji 内置字体全自动。同输入永远同输出。"
+        },
+        {
+          "id": "cool-render-tech",
+          "label": "酷炫动效渲染器(SVG/视频)",
+          "diagram": "rsvg: \"render-svg(resvg + Chrome 双后端自动选)\"\nrvideo: \"render-video(逐帧 seek + ffmpeg)\"\nchrome: \"getBrowser 单例(跨工具复用)\"\nrsvg -> chrome\nrvideo -> chrome\n",
+          "diagramType": "architecture",
+          "notes": "技术实现:SVG 含 feGaussianBlur/辉光/景深时自动切 Chrome 后端保真,否则 resvg 轻量。render-video 逐帧 seek+ffmpeg 拼帧,确定性(同输入同输出)。Chrome 子进程单例被两个叶子共享。"
+        }
+      ]
+    },
+    {
+      "id": "deliver",
+      "label": "交付保障(横切质量,非能力柱)",
+      "diagram": "gate: {\n  label: \"产物自动校验防崩 ▾\"\n  link: \"drill:output-checker\"\n}\nfallback: \"服务方失败自动切换(60 秒软冷却)\"\ndeterm: \"同输入永远同输出(可入 git)\"\ngate -> fallback: \"生成/识别侧各有链\"\n",
+      "diagramType": "architecture",
+      "notes": "交付保障(横切质量,非能力柱,01 §2.5 刻度四正交):每次都靠谱——产物自动校验防崩、服务方失败自动切换、同输入永远同输出。这是横切所有能力柱的正交质量属性,不是第四根能力柱。README 反复强调的『能入 git、免费层挂了你无感、不会拿到坏图』就是这块。drill 看守门矩阵。",
+      "children": [
+        {
+          "id": "output-checker",
+          "label": "产物守门矩阵(交付保障背后)",
+          "diagram": "fatal: \"fatal(任何 profile 抛错:JPEG SIGSEGV / magic 错)\"\nerror: \"error(strict 抛错,standard 降 warning)\"\nwarning: \"warning(永不抛错,只记录)\"\nhtmlskip: \"HTML 跳过守门(viewer 容器非产物)\"\nfatal -> error\nerror -> warning\nhtmlskip -> warning: \"契约搬进 renderer\"\n",
+          "diagramType": "flowchart",
+          "notes": "深模块(守门矩阵):垂直穿过所有 handler(单向依赖:叶子←handler→checker)。三档 severity × 双 profile 决策矩阵。HTML 类工具(交互/嵌套)跳过 assertOutputClean——契约 asserts 搬进 renderer 内部替代(概念完整不守在『同一函数』,守在『每个产物必被守』,01 §2.5 刻度四)。"
+        }
+      ]
+    }
+  ]
+}

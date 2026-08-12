@@ -148,6 +148,10 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 > Vous : « Récupère un logo GitHub, 128 pixels »
 > Obtenu : logo vectoriel à partir d'une bibliothèque de plus de 200 000 icônes, téléchargé et prêt à l'emploi (GitHub / Twitter / Material / Lucide / Font Awesome, etc.)
 
+**Retrouver le prompt et les paramètres d'une image IA**
+> Vous : « Avec quel prompt et quels paramètres cette image a-t-elle été générée ? Reproductible ? »
+> Obtenu : paramètres structurés — prompt positif/négatif, modèle, pas d'échantillonnage, CFG, graine, taille (analysé localement depuis les métadonnées ComfyUI/A1111 embarquées dans le PNG ; les images Agnes portent tous les paramètres — récupérez le prompt et reproduisez avec generate_image en un clic)
+
 ### Comprendre une image / un PDF (transformer l'image et les documents en données)
 
 **Extraire le texte d'une capture**

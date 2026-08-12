@@ -47,7 +47,7 @@ html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--mgm-bg);
   color: var(--mgm-fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  font-family: "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   line-height: 1.5;
   display: flex;

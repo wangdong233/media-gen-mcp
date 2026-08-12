@@ -30,9 +30,9 @@ export const VIEWER_CSS_VARS = `
   --mgm-btn-fg: #334155;
   --mgm-btn-border: #cbd5e1;
   --mgm-btn-hover-bg: #f1f5f9;
-  --mgm-accent: #6366f1;
+  --mgm-accent: #0d9488;
   --mgm-accent-fg: #ffffff;
-  --mgm-focus-ring: rgba(99, 102, 241, 0.4);
+  --mgm-focus-ring: rgba(13, 148, 136, 0.4);
   --mgm-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
   --mgm-stage-bg: #ffffff;
   --mgm-stage-border: #e2e8f0;
@@ -48,9 +48,9 @@ html[data-theme="dark"] {
   --mgm-btn-fg: #f1f5f9;
   --mgm-btn-border: #475569;
   --mgm-btn-hover-bg: #475569;
-  --mgm-accent: #818cf8;
-  --mgm-accent-fg: #0f172a;
-  --mgm-focus-ring: rgba(129, 140, 248, 0.5);
+  --mgm-accent: #2dd4bf;
+  --mgm-accent-fg: #042f2e;
+  --mgm-focus-ring: rgba(45, 212, 191, 0.5);
   --mgm-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
   --mgm-stage-bg: #0f172a;
   --mgm-stage-border: #334155;

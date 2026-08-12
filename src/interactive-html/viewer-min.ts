@@ -41,6 +41,7 @@ export const VIEWER_MIN_JS = `(function(){
   function labelMotion(){
     var m = htmlEl.dataset.motion === 'still' ? 'Off' : 'On';
     motionBtn.textContent = 'Motion: ' + m;
+    motionBtn.setAttribute('aria-pressed', htmlEl.dataset.motion === 'still' ? 'false' : 'true');
   }
   function resolveAuto(){
     try {

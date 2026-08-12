@@ -147,6 +147,10 @@ Die Standard-Leichtgewicht-Engine reicht für Englisch / Ziffern, hat aber nur m
 > Du: «Hol ein GitHub-Logo, 128 Pixel»
 > Erhalten: ein Vektor-Logo aus einer Bibliothek mit 200.000+ Icons, sofort verwendbar (GitHub / Twitter / Material / Lucide / Font Awesome usw.)
 
+**Prompt und Parameter eines KI-Bilds zurückgewinnen**
+> Du: «Mit welchem Prompt und welchen Parametern wurde dieses Bild erzeugt? Kann ich es reproduzieren?»
+> Erhalten: strukturierte Parameter — positiver/negativer Prompt, Modell, Sampling-Schritte, CFG, Seed, Größe (lokal aus PNG-eingebetteten ComfyUI/A1111-Metadaten geparst; Agnes-generierte Bilder tragen die vollständigen Parameter — Prompt zurückgewinnen und mit generate_image per Klick reproduzieren)
+
 ### Ein Bild / ein PDF verstehen (Bild und Dokument in Daten verwandeln)
 
 **Text aus einem Screenshot extrahieren**

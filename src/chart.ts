@@ -91,6 +91,21 @@ export async function renderChart(req: ChartRequest): Promise<ChartRenderOutput>
       if (spec.width == null) spec.width = 640;
       if (spec.height == null) spec.height = 400;
     }
+    // 工具层默认审美(用户 spec.config 永赢,仅补缺失 key):
+    //   - 分类色板 = Wong 2011 CVD-safe(Nature Methods,独立 CVD 基准,色盲安全;非 dataviz 自指)
+    //   - 字体 = Geist Sans 优先栈(消费者系统有则用,否则兜底)
+    //   - 单系列 mark 默认色 = Wong 深蓝 #0072B2
+    spec.config = spec.config || {};
+    if (spec.config.font == null) {
+      spec.config.font = '"Geist Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
+    }
+    spec.config.range = spec.config.range || {};
+    if (spec.config.range.category == null) {
+      spec.config.range.category = ['#E69F00', '#56B4E9', '#009E73', '#F0E442', '#0072B2', '#D55E00', '#CC79A7', '#999999'];
+    }
+    if (typeof spec.config.mark === 'object' && spec.config.mark !== null && spec.config.mark.color == null) {
+      spec.config.mark.color = '#0072B2';
+    }
     const compiled = compile(spec);
     vegaSpec = compiled.spec;
   } catch (e: any) {

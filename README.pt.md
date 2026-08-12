@@ -147,6 +147,10 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 > Você: «Capture o Logo do GitHub, 128 píxeis»
 > Recebe: Logo vetorial de uma biblioteca com mais de 200 mil ícones, pronto a usar (GitHub / Twitter / Material / Lucide / Font Awesome, etc.)
 
+**Engenharia reversa do prompt e parâmetros de uma imagem IA**
+> Você: «Com qual prompt e parâmetros esta imagem foi gerada? Dá para reproduzir?»
+> Recebe: parâmetros estruturados — prompt positivo/negativo, modelo, passos de amostragem, CFG, seed, tamanho (analisado localmente dos metadados ComfyUI/A1111 embutidos no PNG; imagens geradas pelo Agnes trazem os parâmetros completos — recupere o prompt e reproduza com generate_image num clique)
+
 ### Entender uma imagem / um PDF (transformar imagem e documento em dados)
 
 **Extrair texto de uma captura de ecrã**
