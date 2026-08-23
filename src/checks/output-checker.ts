@@ -203,9 +203,19 @@ export function detectKind(buf: Buffer, format?: string): Kind {
   // 此处只负责"路由到正确的检查分支",避免对 format hint 做无意义的死代码三元。
   // 历史 bug:曾写 `return buf.length >= 8 && buf.subarray(0,8).equals(SIG_PNG) ? "png" : "png"`
   // 两个分支同值,签名校验结果被丢弃(dead code),且让 caller 误传 format=png 校验 JPEG 字节时被盲信。
+  // 视频/动图容器(audit finding-11 纵深防御):format 提示不再盲信 —— mp4 需 ftyp box /
+  // webm 需 EBML magic / gif 需 GIF8 头;不满足则落到下方 magic 路由按字节真实种类判定,
+  // 由 checkOutput 的 format↔kind 交叉校验报 fatal(防"图片字节贴 .mp4 扩展名"一路绿灯)。
   if (format === "svg") return "svg";
   if (format === "png") return "png";
-  if (format === "mp4" || format === "gif" || format === "webm") return format;
+  if (format === "mp4") {
+    if (buf.length >= 12 && buf.subarray(4, 8).toString("ascii") === "ftyp") return "mp4";
+  } else if (format === "webm") {
+    if (buf.length >= 4 && buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return "webm";
+  } else if (format === "gif") {
+    const head = buf.subarray(0, Math.min(buf.length, 6)).toString("ascii");
+    if (head === "GIF87a" || head === "GIF89a") return "gif";
+  }
 
   if (buf.length >= 8 && buf.subarray(0, 8).equals(SIG_PNG)) return "png";
   if (buf.length >= 3 && buf.subarray(0, 3).equals(SIG_JPEG_FF)) return "jpeg";
@@ -472,6 +482,19 @@ export async function checkOutput(filePath: string, opts: CheckOptions = {}): Pr
   // 阈值(对齐 pares4 §6.1 warning 表):
   //   PNG/JPEG/WebP > 64B;SVG > 32B;MP4/GIF/WebM > 1KB
   const kind = detectKind(buf, format);
+  // format↔字节交叉校验(audit finding-11 第三层防线):调用方声明视频/动图容器(format=mp4/webm/gif)
+  // 但 magic 判定不是该容器 → fatal。防"provider 错发图片字节 + format 提示被盲信 +
+  // ffmpeg 恰能解 JPEG"三层防线同时失效,把打不开的"视频"零告警交付。
+  if ((format === "mp4" || format === "webm" || format === "gif") && kind !== format) {
+    pushIssue(
+      issues,
+      checks,
+      "fatal",
+      "file/format-byte-mismatch",
+      `调用方声明 format=${format} 但字节非该容器(magic 判定 kind=${kind});产物疑似贴错扩展名/错类别的字节,不可作为 ${format} 交付`,
+      "format-byte-mismatch",
+    );
+  }
   const minSizeFor = (k: Kind): number => {
     if (k === "png" || k === "jpeg" || k === "webp") return 64;
     if (k === "svg") return 32;

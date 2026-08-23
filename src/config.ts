@@ -57,6 +57,9 @@ function buildProviders(): Record<string, any> {
       videoMinIntervalMs: num(`${upper}_VIDEO_MIN_INTERVAL_MS`, 62_000, p.videoMinIntervalMs),
       models: p.models,
       rateLimits: p.rateLimits ?? {},
+      // 原始块整体透传:provider 专属字段(如 flow 的 cdpPort/projectId)无需在 config.ts
+      // 逐个白名单 —— 保持「新增 provider config.ts 零改动」的开闭承诺(硬约束 #4 架构)。
+      settings: p,
       // pares7: vlm extra_body 透传(Unlimited-OCR images_config/custom_logit_processor/custom_params/
       // skip_special_tokens 等顶层扩展字段)。接受 camelCase 或 snake_case;缺省不发 Object.assign(零回归)。
       ...(p.extraBody ?? p.extra_body ? { extraBody: p.extraBody ?? p.extra_body } : {}),

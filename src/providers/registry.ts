@@ -5,6 +5,7 @@ import { TesseractProvider } from "./tesseract.js";
 import { PaddleocrProvider } from "./paddle.js";
 import { VlmProvider } from "./vlm.js";
 import { GlmVisionProvider } from "./glm-vision.js";
+import { FlowProvider } from "./flow.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -40,6 +41,13 @@ const registry: Record<string, MediaProvider> = {
     apiKey: config.providers["glm-vision"]?.apiKey,
     baseUrl: config.providers["glm-vision"]?.baseUrl,
     model: config.providers["glm-vision"]?.models?.default,
+  }),
+  flow: new FlowProvider({ // Google Flow(经本机 Chrome CDP 页面上下文;契约 doc/flow-api-contract.md)。
+    // 刻意不实现 capabilities() → 不进 agnes/zhipu 免费 fallback 链,防默认路由被破坏(审查铁律)。
+    // 无默认视频模型:提交视频消耗积分,必须显式指定(或 config providers.flow.models.video.default)。
+    cdpPort: config.providers.flow?.settings?.cdpPort,
+    projectId: config.providers.flow?.settings?.projectId,
+    models: config.providers.flow?.models,
   }),
 };
 

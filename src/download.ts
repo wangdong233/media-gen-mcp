@@ -6,6 +6,20 @@ import crypto from "node:crypto";
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 
 /**
+ * 自定义文件名清洗:basename 去路径穿越 + 剥调用方自带扩展名(防双扩展)+ 仅替文件系统危险字符;
+ * 保留中文等 Unicode 字符(此前用 [^\w.\-] 会把中文全替成 _);空名/未传返回 ""(调用方 UUID/默认名兜底)。
+ * 抽出导出:flow_status 的自定义落盘名复用同一清洗(与 downloadAsset 一致 —— audit finding-14)。
+ */
+export function sanitizeFileBase(nameHint?: string): string {
+  if (!nameHint || !nameHint.trim()) return "";
+  return path
+    .basename(nameHint.trim())
+    .replace(/\.(png|jpe?g|gif|webm|mp4|mov|webp)$/i, "")
+    .replace(/[/\\<>:"|?*\x00-\x1f]/g, "_")
+    .replace(/^\.+/, "");
+}
+
+/**
  * 下载产物到本地。Agnes 产物 URL(platform-outputs.agnes-ai.space)实测免鉴权。
  * - 带超时(AbortSignal),避免网络挂起无限阻塞工具调用。
  * - 流式落盘(reader → writeStream),避免大视频全量入内存。
@@ -36,17 +50,7 @@ export async function downloadAsset(
     else if (ct.includes("gif")) ext = ".gif";
     else if (ct.includes("svg")) ext = ".svg";
   }
-  // sanitize 自定义名:basename 去路径穿越 + 剥调用方自带扩展名(防双扩展) + 仅替文件系统危险字符;
-  // 保留中文等 Unicode 字符(此前用 [^\w.\-] 会把中文全替成 _);空名/未传 → UUID 兜底(保持旧行为)。
-  let base = "";
-  if (nameHint && nameHint.trim()) {
-    base = path
-      .basename(nameHint.trim())
-      .replace(/\.(png|jpe?g|gif|webm|mp4|mov|webp)$/i, "")
-      .replace(/[/\\<>:"|?*\x00-\x1f]/g, "_")
-      .replace(/^\.+/, "");
-  }
-  if (!base) base = `${kind}_${crypto.randomUUID().slice(0, 12)}`;
+  const base = sanitizeFileBase(nameHint) || `${kind}_${crypto.randomUUID().slice(0, 12)}`;
   const fp = path.join(outDir, base + ext);
 
   const ws = fsSync.createWriteStream(fp);

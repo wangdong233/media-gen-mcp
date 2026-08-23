@@ -26,6 +26,18 @@ export interface ImageRequest {
   /** 图生图输入:公网 URL 或 data URI;base64 直传也可(取决于 provider)。 */
   images?: string[];
   mode?: ImageMode;
+  /**
+   * 比例直传("16:9"/"9:16"/"1:1"/"3:4"/"4:3")。provider 支持时消费(flow 映射到 5 种
+   * IMAGE_ASPECT_RATIO_* 枚举);不支持的 provider(agnes/zhipu)由工具层告警后忽略
+   * (项目纪律:provider 丢弃参数必须出 warning,不静默)。
+   */
+  aspect?: string;
+  /**
+   * 复现/锁定结果用 seed。provider 支持时消费(flow 直入请求体 seed 字段);
+   * 不支持的 provider 由工具层告警后忽略。绝不经 extra 透传(extra 会被
+   * agnes/zhipu 的 Object.assign(body, extra) 直透上游请求体)。
+   */
+  seed?: number;
   /** provider 私有字段透传口(如 Agnes 的 return_base64 / extra_body.response_format)。 */
   extra?: Record<string, unknown>;
 }
@@ -33,6 +45,10 @@ export interface ImageRequest {
 export interface ImageOutput {
   url?: string;
   b64?: string;
+  /** flow:该张对应的 Flow mediaId(经 flow_status(mediaId) 可复下载/对账;其他 provider 不填)。 */
+  mediaId?: string;
+  /** flow:该张的实际生成 seed(响应侧回读,复现用)。 */
+  seed?: number;
 }
 
 export interface ImageResult {
@@ -53,6 +69,10 @@ export interface VideoRequest {
   image?: string;
   /** 关键帧:多图 URL 数组。 */
   keyframes?: string[];
+  /** 参考图:多图 URL 数组(flow r2v 模式;上传后作 referenceImages 引用)。 */
+  images?: string[];
+  /** 视频源 mediaId(flow extension/upsampler 模式:项目内已有视频的引用,无需上传)。 */
+  videoMediaId?: string;
   resolution?: Resolution;
   ratio?: string;
   numFrames?: number;
