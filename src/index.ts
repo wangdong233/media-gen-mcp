@@ -21,11 +21,10 @@ import {
 import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, getProviderPriority, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
-import { FlowProvider, isFlowMediaIdLike } from "./providers/flow.js";
-import { isFallbackWorthy, isChainAdvanceable } from "./providers/http.js";
+import { isFallbackWorthy, isChainAdvanceable, isRequestPinned } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
-import { downloadAsset, sanitizeFileBase } from "./download.js";
+import { downloadAsset } from "./download.js";
 import fs from "node:fs/promises";
 import { getDiagramEngine, MERMAID_UNSUPPORTED_MSG } from "./diagram/render.js";
 import { renderInteractiveHtml } from "./interactive-html/index.js";
@@ -132,18 +131,16 @@ function buildTools() {
     {
       name: "generate_image",
       description:
-        "Generate or edit an AI image (text-to-image 文生图/AI画图; or image-to-image 图生图 via `images`) using free models (Agnes AI default, or Zhipu). Output downloads locally and the path is returned; no local rendering libs needed.\n\nWHEN: subject is photographic or illustrated (写实图/插画/概念图/original logo artwork / 原创品牌主视觉); user says 'AI画图 / 文生图 / generate an image of ...' and wants AI-generated pixels.\n\nAVOID:\n- Text-heavy cards / OG images / posters / quote cards / cover images → use `generate_card` instead (deterministic Satori render, no AI variability, same input → same output).\n- An existing brand logo (Iconify 200k+ vector set) → use `generate_icon` instead; this tool only draws ORIGINAL logo artwork.\n\nNEXT: call `list_models` first to discover available model names and size constraints per provider. provider=flow (Google Flow via local Chrome): `aspect` (16:9/9:16/1:1/3:4/4:3) and `seed` are honored exactly; outputs carry `mediaId`+`seed` (re-download via `flow_status(mediaId)`); image generation is 0-credit. provider=flow also accepts `images` (image-to-image, live-verified): images[0] = base image (aspect follows the base), images[1..10] = references — each is uploaded to the Flow project first (0 credits). Image UPSCALE: model=GEM_PIX_2_UPSAMPLE_2K + images[0] (an existing image mediaId, or a URI to upload first) → 2K upscale, 0 credits, prompt ignored.\n\nMultilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
+        "Generate or edit an AI image (text-to-image 文生图/AI画图; or image-to-image 图生图 via `images`) using free models (Agnes AI default, or Zhipu). Output downloads locally and the path is returned; no local rendering libs needed.\n\nWHEN: subject is photographic or illustrated (写实图/插画/概念图/original logo artwork / 原创品牌主视觉); user says 'AI画图 / 文生图 / generate an image of ...' and wants AI-generated pixels.\n\nAVOID:\n- Text-heavy cards / OG images / posters / quote cards / cover images → use `generate_card` instead (deterministic Satori render, no AI variability, same input → same output).\n- An existing brand logo (Iconify 200k+ vector set) → use `generate_icon` instead; this tool only draws ORIGINAL logo artwork.\n\nNEXT: call `list_models` first to discover available model names and size constraints per provider.\n\nMultilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "Image description." },
           model: {
             type: "string",
-            description: "Optional; omit to use the provider default. Call list_models to see options. provider=flow: GEM_PIX_2_UPSAMPLE_2K = 2K UPSCALE mode (requires images[0] = an existing image mediaId or a URI; 0 credits, prompt ignored).",
+            description: "Optional; omit to use the provider default. Call list_models to see options.",
           },
-          size: { type: "string", description: "e.g. 1024x1024. Zhipu requires each side 512-2880, multiple of 16, pixels ≤ 2^21 — the tool auto-snaps to a valid size; Agnes accepts free size. provider=flow: size maps to the nearest of 5 aspect ratios (1920x1080→16:9 / 720x1280→9:16 / 1024x1024→1:1 / 768x1024→3:4 / 1024x768→4:3); pass `aspect` for an exact ratio." },
-          aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "3:4", "4:3"], description: "Direct aspect ratio (provider=flow only — maps to Flow IMAGE_ASPECT_RATIO_*; exact, no size guessing). Other providers ignore it with a warning; use `size` there." },
-          seed: { type: "number", description: "Seed for reproducible results (provider=flow only — goes straight into the request; the response echoes the actual per-image seed). Other providers ignore it with a warning." },
+          size: { type: "string", description: "e.g. 1024x1024. Zhipu requires each side 512-2880, multiple of 16, pixels ≤ 2^21 — the tool auto-snaps to a valid size; Agnes accepts free size." },
           n: { type: "number", description: "Number of images (1-8). Provider APIs ignore batch n, so the tool fans out N parallel single-image requests; partial success returns fewer + a `warnings` field." },
           images: {
             type: "array",
@@ -154,7 +151,7 @@ function buildTools() {
           download: { type: "boolean", default: true },
           name: { type: "string", description: "Output filename (without extension); multi-image adds -1/-2/… suffix. Defaults to img_<uuid>." },
           outDir: { type: "string", description: "产物落盘目录,省略用默认(会话目录/output)。" },
-          provider: { type: "string", default: config.imageProviderChainHead, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); explicitly naming a provider pins it (no silent substitution)." },
+          provider: { type: "string", default: config.imageProviderChainHead, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. agnes → zhipu); explicitly naming a provider pins it (no silent substitution)." },
         },
         required: ["prompt"],
       },
@@ -162,22 +159,20 @@ function buildTools() {
     {
       name: "create_video",
       description:
-        "Create an AI video (text-to-video / image-to-video / keyframe animation; 文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) via free models (Agnes AI default, or Zhipu). Smart async: long videos return a handle to poll with `get_video`; short ones block until done.\n\nWHEN: user wants photorealistic or AI-generated video (写实视频 / AI 合成画面 / 让这张图动起来). AVOID when the user wants deterministic motion graphics — see below.\n\nAVOID:\n- HTML/CSS/GSAP motion graphics / kinetic typography / animated charts / brand intros (deterministic, same input → same output, no AI) → use `render_video` instead.\n\nNEXT: if the call returns a handle (async mode), poll with `get_video` until status=done. Call `list_models` first to verify allowed numFrames per provider (Agnes constraints vary by resolution). Flow provider (provider=\"flow\"): model = full usage key (live catalog via `flow_status`), durationSeconds ∈ {4,6,8,10}s (off-grid snaps nearest), ratio 16:9/9:16 only, ONE clip per call — repeat calls for x2-x4 (each bills credits and gets its own seed). Modes (2026-08-23 live-verified wire): text-to-video (t2v key), image-to-video (`image` + i2v key e.g. abra_i2v_8s; upload 0 credits), reference images (`images` 1-10 + r2v key e.g. abra_r2v_8s, 7-15 credits by duration), first+last frame (`keyframes` = exactly 2 images + interpolation/_fl key), extend (`videoMediaId` = an existing video's mediaId + extension key e.g. veo_3_1_extension_lite, 10 credits — references generated videos directly, no upload), upscale (`videoMediaId` + veo_3_1_upsampler_1080p, 0 credits), V2V edit (`videoMediaId` + prompt edit instruction + abra_edit, 20 credits — wire probe-verified, NOT yet live-submitted; the response carries a warning).\n\nMultilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
+        "Create an AI video (text-to-video / image-to-video / keyframe animation; 文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) via free models (Agnes AI default, or Zhipu). Smart async: long videos return a handle to poll with `get_video`; short ones block until done.\n\nWHEN: user wants photorealistic or AI-generated video (写实视频 / AI 合成画面 / 让这张图动起来). AVOID when the user wants deterministic motion graphics — see below.\n\nAVOID:\n- HTML/CSS/GSAP motion graphics / kinetic typography / animated charts / brand intros (deterministic, same input → same output, no AI) → use `render_video` instead.\n\nNEXT: if the call returns a handle (async mode), poll with `get_video` until status=done. Call `list_models` first to verify allowed numFrames per provider (Agnes constraints vary by resolution).\n\nMultilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "Video content description." },
-          model: { type: "string", description: "Optional; omit to use the provider default video model. provider=flow: pass a FULL usage key (e.g. abra_t2v_8s / veo_3_1_t2v_lite / veo_3_1_upsampler_1080p) or mnemonic+durationSeconds (abra_t2v + 8) — the complete live catalog is in flow_status; open key families: t2v (text), i2v (+`image`), r2v (+`images`), interpolation/_fl (+`keyframes` 2), extension (+`videoMediaId`, e.g. veo_3_1_extension_lite / veo_3_1_extend_fast_landscape), upsampler (+`videoMediaId`, veo_3_1_upsampler_1080p = 0 credits; 4k tier-locked), edit (+`videoMediaId` + edit-instruction prompt, abra_edit = 20 credits, wire probe-verified)." },
+          model: { type: "string", description: "Optional; omit to use the provider default video model. Call list_models to see options." },
           mode: { type: "string", enum: [...VIDEO_MODES] },
-          image: { type: "string", description: "image-to-video: single image URL (http(s)/data:). provider=flow: START_IMAGE — upload (0 credits) then submit; requires an i2v key (e.g. abra_i2v_8s / veo_3_1_i2v_lite), a t2v key + image → structured S301 telling you the key to use." },
-          keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image URL array. provider=flow: exactly 2 images (first + last frame), requires an interpolation/_fl key (e.g. veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl); other counts or key families → structured S301." },
-          images: { type: "array", items: { type: "string" }, description: "reference images (provider=flow only): 1-10 image URLs (http(s)/data:) for r2v keys (e.g. abra_r2v_8s / veo_3_1_r2v_lite) — uploaded (0 credits) then submitted as referenceImages. Mutually exclusive with image/keyframes/videoMediaId. Other providers ignore it with a warning." },
-          videoMediaId: { type: "string", description: "provider=flow only: mediaId of an EXISTING video in the Flow project (see flow_status) as the source for extension keys (veo_3_1_extension_lite, 10 credits), V2V edit (abra_edit + prompt = the edit instruction, 20 credits) or the 0-credit upscaler (veo_3_1_upsampler_1080p) — references the generated video directly (videoInput:{mediaId}), no re-upload needed. Must be a completed video; images/in-progress ids → structured S301." },
-          resolution: { type: "string", enum: [...RESOLUTIONS], default: "720p", description: "Provider may snap to nearest preset (Agnes size_mapping). provider=flow: ignored with a warning — resolution is decided by the model key (720P); for higher res use key variants (e.g. veo_3_1_t2v_fast_ultra) or the 0-credit veo_3_1_upsampler_1080p afterwards." },
-          ratio: { type: "string", description: "16:9 / 9:16 / 1:1 / 4:3 / 3:4 (preferred over raw size). provider=flow: video supports 16:9 / 9:16 only (others → structured S301)." },
-          numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Allowed: " + vc.allowedNumFrames.join("/") + " (provider-specific; cross-provider routing re-validates per actual provider — check list_models). provider=flow: prefer durationSeconds (native set = 96/144/192/240 @24fps)." },
+          image: { type: "string", description: "image-to-video: single image URL (http(s)/data:)." },
+          keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image URL array." },
+          resolution: { type: "string", enum: [...RESOLUTIONS], default: "720p", description: "Provider may snap to nearest preset (Agnes size_mapping)." },
+          ratio: { type: "string", description: "16:9 / 9:16 / 1:1 / 4:3 / 3:4 (preferred over raw size)." },
+          numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Allowed: " + vc.allowedNumFrames.join("/") + " (provider-specific; cross-provider routing re-validates per actual provider — check list_models)." },
           frameRate: { type: "number", enum: vc.allowedFrameRates, default: vc.defaultFrameRate, description: "允许值 " + vc.allowedFrameRates.join("/") + " (provider 专有;跨 provider 路由后按实际 provider 复算)" },
-          durationSeconds: { type: "number", description: "If set, auto-pick the nearest valid numFrames (~3/5/10/18s). provider=flow: legal set {4,6,8,10}s — off-grid values snap to the nearest with a warning (5→4s, 12→10s)." },
+          durationSeconds: { type: "number", description: "If set, auto-pick the nearest valid numFrames (~3/5/10/18s)." },
           seed: { type: "number" },
           negativePrompt: { type: "string" },
           wait: { type: "boolean", description: "省略=智能(预估≤60s 同步、>60s 异步返回 handle);true=阻塞等待(发 progress);false=立即返回 handle。" },
@@ -186,7 +181,7 @@ function buildTools() {
           download: { type: "boolean", default: true },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>." },
           outDir: { type: "string", description: "产物落盘目录,省略用默认(会话目录/output)。" },
-          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider). provider=flow bills credits — always pass it explicitly when Flow video is intended." },
+          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider)." },
         },
         required: ["prompt"],
       },
@@ -203,40 +198,7 @@ function buildTools() {
           download: { type: "boolean", default: true },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>." },
           outDir: { type: "string", description: "下载落盘目录,省略用默认。与 create_video 一致以避免异步轮询落盘到别处。" },
-          provider: { type: "string", default: videoHead, description: "Provider used at task creation: 'agnes' / 'zhipu' / 'flow' — defaults to the video provider chain head. create_video responses carry provider_used; pass it back here to poll the right backend." },
-        },
-      },
-    },
-    {
-      name: "flow_status",
-      description:
-        "Google Flow introspection / media status / download / delete / share / cancel (ZERO-CREDIT; 零消耗自省/状态查询/媒体下载/媒体删除/分享链接/取消生成). Backed by the LOCAL Chrome session via CDP (lasso launch-chrome --port 9223, logged into labs.google) — every call runs as page-context fetch, no API keys needed. With NO mediaId: full snapshot (login email, credits balance, dynamic image/video model catalog with per-key generationTimeSeconds, 30 preset voices, project media list). With mediaId: one media's generation status (+ download the finished mp4/png locally). With deleteMediaIds: batch-delete project media (0 credits, IRREVERSIBLE — keeps flow_status polling payloads small). With shareMediaIds: create public share links (0 credits). With cancelMediaIds: cancel in-flight generations (0 credits). NEVER submits generation — video/image submission goes through create_video / generate_image with provider=\"flow\" (video costs credits: abra 7-20, veo lite 10 / fast 20 / quality 100 per clip; images & upscaling are 0-credit).\n\nWHEN: preflight before using the flow provider; poll a submitted mediaId; fetch an already-generated asset; check remaining credits; clean up accumulated media; share a result; cancel a wrong submission before it finishes.\n\nNEXT: create_video(provider=\"flow\", model=\"abra_t2v_8s\") submits (async handle → get_video(provider=\"flow\", taskId=…)); flow_status(mediaId=…) tracks it; flow_status(deleteMediaIds=[…]) deletes; flow_status(shareMediaIds=[…]) shares; flow_status(cancelMediaIds=[…]) cancels while in_progress.\n\nMultilingual triggers: flow 状态 · flow 积分 · Flow status (zh/en).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          mediaId: { type: "string", description: "Optional: return this media's generation status instead of the full project snapshot (mediaId == create_video taskId)." },
-          download: { type: "boolean", default: true, description: "With mediaId + completed status: download the asset (video/mp4 or image) locally." },
-          thumbnail: { type: "boolean", default: false, description: "With mediaId: fetch the JPEG thumbnail (MEDIA_URL_TYPE_THUMBNAIL) instead of the original asset." },
-          deleteMediaIds: { type: "array", items: { type: "string" }, description: "Batch-DELETE these project media (0 credits, IRREVERSIBLE 不可恢复; POST /v1/flow:batchDeleteAssets). Any unknown id → the whole batch is refused (S400, nothing deleted). Mutually exclusive with mediaId/shareMediaIds/cancelMediaIds. Use to keep the polling payload small." },
-          shareMediaIds: { type: "array", items: { type: "string" }, description: "Create PUBLIC share links for these project media (0 credits; tRPC flow.share.shareMedia → mediaShareId). Returns shareUrl per media: https://labs.google/fx/tools/flow/shared/{image|video}/<mediaShareId> (prompt included). Mutually exclusive with mediaId/deleteMediaIds/cancelMediaIds." },
-          cancelMediaIds: { type: "array", items: { type: "string" }, description: "CANCEL in-flight VIDEO generations for these mediaIds (0 credits; POST /v1/flowMedia:cancelGeneration body {mediaId}). Only in_progress media are submitted — completed/failed are reported as notCancelable; status re-checked after (expect MEDIA_GENERATION_STATUS_CANCELED). LIVE-VERIFIED BOUNDARY: image in-flight cancel returns 404 (images are not cancelable — bundle wires cancel for the video queue only); video E2E cancel is wire-verified but not yet live-submitted. Mutually exclusive with mediaId/deleteMediaIds/shareMediaIds." },
-          name: { type: "string", description: "Output filename (without extension). Defaults to flow_<mediaId-prefix>." },
-          outDir: { type: "string", description: "下载落盘目录,省略用默认(会话目录/output)。" },
-        },
-      },
-    },
-    {
-      name: "flow_entity",
-      description:
-        "Google Flow character entities (角色实体, ZERO-CREDIT; 24th tool). Create/update CHARACTER entities and bind a preset voice for later audio/character generation. Create: tRPC flow.createEntity {projectId, collectionId:\"\"} (empty string passes zod — no collection needed); update: PATCH /v1/flow/entities with dotted updateMask (displayName / characterInfo.audioReferences=[{presetVoiceId}] / characterInfo.imageReferences=[{workflowId}]). Entity images attach via imageMediaIds (completed image mediaIds; the workflowId mapping is resolved automatically from project workflows). 30 preset voices are star-named (achernar/charon/kore/…) with descriptions — list them via action=voices or flow_status preset_voices.\n\nLIMITATION (honest): Flow has NO entity read endpoint (projectContents has no entities key; collections REST is CORS-blocked in page context) — only entities created via this tool are tracked, in a local mirror ~/.media-gen-mcp/flow-entities.json (aligned with flow-project.json precedent). action=list returns the mirror, not a server query.\n\nWHEN: 角色卡 / 建角色 / character entity / bind voice / 角色绑定语音 / 绑定形象图.\n\nNEXT: generate the character image first (generate_image provider=flow), then flow_entity(action=create, displayName=…, imageMediaIds=[…], presetVoiceId=…) wires it up; all operations are 0-credit.\n\nMultilingual triggers: 角色 · 实体 · character · entity · voice binding (zh/en).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          action: { type: "string", enum: ["create", "update", "list", "voices"], default: "create", description: "create = new CHARACTER entity (+optional displayName/presetVoiceId/imageMediaIds in one call); update = rename/rebind an entity from the local mirror (entityId required); list = local mirror records (Flow has no entity read endpoint); voices = 30 preset voices (id/displayName/description)." },
-          entityId: { type: "string", description: "action=update: the entityId from create (must exist in the local mirror)." },
-          displayName: { type: "string", description: "Character display name (create defaults to server's 'Untitled Character' if omitted; update renames)." },
-          presetVoiceId: { type: "string", description: "Preset voice id to bind as the character voice (e.g. charon; see action=voices for all 30). Validated before submission." },
-          imageMediaIds: { type: "array", items: { type: "string" }, description: "Completed image mediaIds (from generate_image provider=flow / flow_status) to attach as the character's look — resolved to workflowIds automatically." },
+          provider: { type: "string", default: videoHead, description: "Provider used at task creation: 'agnes' / 'zhipu' — defaults to the video provider chain head. create_video responses carry provider_used; pass it back here to poll the right backend." },
         },
       },
     },
@@ -659,56 +621,42 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (resolved.autoRouted) {
           warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
         }
-        // flow 专属直通参数(audit finding-2/6):通用 schema 的 aspect/seed 仅 flow 分支消费;
-        // agnes/zhipu 不识别 → 按项目纪律告警后忽略(不静默丢弃),且绝不塞进 extra
-        // (extra 会被 agnes/zhipu 的 Object.assign(body, extra) 直透上游请求体)。
-        const aspect = optString(a.aspect);
-        const imageSeed = optNumber(a.seed);
-        const flowDirect = p.name === "flow";
-        if (!flowDirect) {
-          if (aspect) warnings.push(`provider "${p.name}" 不支持 aspect(仅 flow 生图支持 16:9/9:16/1:1/3:4/4:3),已忽略;请用 size 控制尺寸。`);
-          if (imageSeed != null) warnings.push(`provider "${p.name}" 不支持 seed,已忽略。`);
-        }
         // n 批量:钳制 1-8;provider 忽略 n,工具层并发 fan-out(N 次单图调用 + 聚合)
         const reqN = optNumber(a.n);
         const n = reqN && reqN > 1 ? Math.min(Math.max(1, Math.floor(reqN)), 8) : 1;
         if (reqN && reqN > 8) warnings.push(`n=${reqN} 超上限,已钳制为 8。`);
         // H3:images[] 须为 URI(与 create_video 对称,防本地路径/相对路径 silent 进 body)
         const imgs = toStringArray(a.images);
-        // flow 放大例外:images[0] 允许传已有图片的 mediaId(存在性/类型交给 provider findMedia 结构化 S400/S301;
-        // 形状 = UUID 或 UUID 派生名,如 §10.7 实证的 <源id>_upsampled —— 启发式定义在 provider 的 isFlowMediaIdLike)
-        const flowUpscale = p.name === "flow" && model === "GEM_PIX_2_UPSAMPLE_2K";
-        const uriOk = (u: string) => isImageUri(u) || (flowUpscale && imgs?.length === 1 && isFlowMediaIdLike(u));
-        if (imgs?.some((u) => !uriOk(u))) {
-          return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。(provider=flow + GEM_PIX_2_UPSAMPLE_2K 时 images[0] 也接受已有图片的 mediaId)");
+        if (imgs?.some((u) => !isImageUri(u))) {
+          return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
         }
         // images 图生图:provider 不支持时拒绝(免静默丢弃 — zhipu cogview 纯文生图,传 images 会忽略)
         if (imgs?.length && p.supportsImageToImage?.() === false) {
           return err(`provider "${p.name}" 不支持图生图(images 会被忽略)。请改用 agnes,或去掉 images 走纯文生图。`);
         }
         const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
-        // C 任务:渠道优先级链式 walk(复用 getFallbackProvider 的排序/熔断/能力谈判管线,不旁路)。
-        // 钉死守卫(audit finding-15 语义劫持防护):flow 经「显式点名」到达(provider=flow 或
-        // flow 模型 auto-route)→ 失败直抛,绝不静默换成 agnes 产物;
-        // flow 经「默认路由」到达(imageProviderPriority 链头,config 显式同意)→ 环境前置失败
-        // (S1xx precondition)与 fallback-worthy 错按序推进到下一渠道(agnes → zhipu)。
-        const flowPinned = resolved.provider.name === "flow"
-          && (optString(a.provider) != null || model != null);
+        // 渠道优先级链式 walk(复用 getFallbackProvider 的排序/熔断/能力谈判管线,不旁路)。
+        // 钉死守卫(语义劫持防护):显式点名 provider / model 归属路由 → 失败直抛,
+        // 绝不静默换成他渠道产物;经「默认路由」到达(链头)→ 环境前置失败
+        // (precondition)与 fallback-worthy 错按序推进到下一渠道。
+        // 2026-08-24 行为决策(Flow 分离,选项 b):钉死从 flow 专属泛化为全渠道统一 ——
+        // 兑现工具描述契约 "explicitly naming a provider pins it (no silent substitution)",
+        // model 归属路由同样视为点名(如 cogview-4 → zhipu)。详见 http.ts isRequestPinned 注释 + commit message。
+        const pinned = isRequestPinned(optString(a.provider), model);
         // 链长上限(priority 链 ≤3 成员 + 防御余量;每跳失败即 notifyUnavailable 打熔断,天然防 ping-pong)
         const MAX_CHAIN_HOPS = 4;
         const makeOne = async (): Promise<{ result: ImageResult; providerName: string }> => {
           let active = p;
-          let activeIsFlowDirect = flowDirect;
           let activeModel: string | undefined = model;
           let activeSize = optString(a.size) ?? "1024x1024";
           for (let hop = 0; ; hop++) {
             try {
-              const result = await active.generateImage({ prompt, model: activeModel, size: activeSize, images: imgs, extra, ...(activeIsFlowDirect ? { aspect, seed: imageSeed } : {}) });
+              const result = await active.generateImage({ prompt, model: activeModel, size: activeSize, images: imgs, extra });
               return { result, providerName: active.name };
             } catch (e: any) {
-              // pares3 语义保留:非 fallback-worthy 的业务错直抛;钉死链(flow 显式点名)直抛。
+              // 语义保留:非 fallback-worthy 的业务错直抛;钉死链(显式点名)直抛。
               // isChainAdvanceable = isFallbackWorthy ∪ 环境前置失败(请求从未提交,非业务错)。
-              if (flowPinned || hop >= MAX_CHAIN_HOPS || !isChainAdvanceable(e)) throw e;
+              if (pinned || hop >= MAX_CHAIN_HOPS || !isChainAdvanceable(e)) throw e;
               const fbRaw = getFallbackProvider(active.name, "image", { images: imgs });
               if (!fbRaw) throw e;
               const fb = asImageProvider(fbRaw);
@@ -717,12 +665,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
               activeSize = fb.snapImageSize?.(activeSize) ?? activeSize;
               warnings.push(`provider "${active.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"(免费)。`);
               active.notifyUnavailable?.(e);
-              // 离开 flow 时 aspect/seed 不再适用(flow-only 直通参数),按「丢弃必告警」纪律明示
-              if (activeIsFlowDirect && (aspect || imageSeed != null)) {
-                warnings.push(`fallback 到 "${fb.name}":aspect/seed 仅 flow 支持,已忽略。`);
-              }
               active = fb;
-              activeIsFlowDirect = false;
               activeModel = undefined; // model 归属失败方(fallback 目标用其默认模型,现行为)
             }
           }
@@ -769,7 +712,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           imageWarnings.push(...checked.warnings);
         }
         warnings.push(...imageWarnings);
-        // 同 create_video/get_video:flow 的 data: URI 成品(可达数百 KB)不进响应,防灌爆调用方上下文。
+        // 同 create_video/get_video:provider 返回 data: URI 成品(可达数百 KB)时不进响应,防灌爆调用方上下文。
         const outsOut = outputs.map((o, i) => {
           if (!o || typeof o.url !== "string" || !o.url.startsWith("data:")) return o;
           const kb = Math.round(o.url.length / 1024);
@@ -800,10 +743,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (image && !isImageUri(image)) return err("`image` 须为 http(s): 或 data: URI。");
         const keyframes = toStringArray(a.keyframes);
         if (keyframes?.some((u) => !isImageUri(u))) return err("`keyframes` 每项须为 http(s): 或 data: URI。");
-        // flow 专属:r2v 参考图数组 + extension/upsampler 视频源 mediaId(其他 provider 忽略并告警)
-        const refImages = toStringArray(a.images);
-        if (refImages?.some((u) => !isImageUri(u))) return err("`images` 每项须为 http(s): 或 data: URI(参考图)。");
-        const videoMediaId = optString(a.videoMediaId);
         // M4:numFrames 与 durationSeconds 互斥(防 silent 覆盖 + estimate 错位导致长时间阻塞)
         if (optNumber(a.numFrames) != null && optNumber(a.durationSeconds) != null) {
           return err("`numFrames` 与 `durationSeconds` 互斥,二选一(numFrames 精确;durationSeconds 自动吸附最近合法帧数)。");
@@ -850,27 +789,20 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // pares3: create_video fallback(铁律:仅 submit 可 fallback,poll 路径绝不 fallback)
         let activeProvider = p;
         let created: VideoTask;
-        // flow 直通参数(images=r2v 参考图 / videoMediaId=extension·upsampler 视频源):其他 provider 告警忽略
-        const flowVideo = p.name === "flow";
-        if (!flowVideo && (refImages?.length || videoMediaId)) {
-          warnings.push(`provider "${p.name}" 不支持 images(参考图)/videoMediaId(仅 flow 的 r2v/extension/upsampler 模式),已忽略。`);
-        }
         try {
           created = await p.createVideo({
             prompt, model, mode: mode as VideoMode | undefined, image, keyframes,
-            ...(flowVideo ? { images: refImages, videoMediaId } : {}),
             resolution: resolution as Resolution | undefined, ratio, numFrames: effFrames, frameRate,
             durationSeconds: optNumber(a.durationSeconds), seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
           });
         } catch (e: any) {
           // pares3: create_video fallback(铁律:仅 submit 可 fallback,poll 路径绝不 fallback)
-          // flow 钉死守卫(audit finding-15):显式 provider=flow / flow 模型 auto-route 后,
-          // 用户点名的是 Flow 的 Veo/abra,静默 fallback 成 agnes 视频是语义劫持。
-          // C 任务:flow 经「默认路由」到达(仅当 videoProviderPriority 显式列入 flow)时,
-          // 环境前置失败(S1xx)/fallback-worthy 错允许单跳推进(默认配置下链头永不为 flow,零漂移)。
-          const flowPinnedVideo = p.name === "flow"
-            && (optString(a.provider) != null || model != null);
-          if (flowPinnedVideo || !isChainAdvanceable(e)) throw e;
+          // 钉死守卫(语义劫持防护):显式点名 provider / model 归属路由后,
+          // 用户点名的是该渠道的模型,静默 fallback 成他渠道视频是语义劫持。
+          // 经「默认路由」到达(链头)时,环境前置失败(precondition)/fallback-worthy 错允许单跳推进。
+          // 2026-08-24 泛化决策与 image 侧一致(见 http.ts isRequestPinned 注释)。
+          const pinnedVideo = isRequestPinned(optString(a.provider), model);
+          if (pinnedVideo || !isChainAdvanceable(e)) throw e;
           const fbRaw = getFallbackProvider(p.name, "video", { mode, keyframes, image });
           if (!fbRaw) throw e;
           const fb = asVideoProvider(fbRaw);
@@ -944,7 +876,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (done.status === "completed" && done.url && a.download !== false) {
           localPath = await downloadAsset(done.url, "vid", outDir, optString(a.name));
         }
-        // flow provider 的成品 url 是 data: URI(整段 base64,视频可达 MB 级);
+        // provider 成品 url 若为 data: URI(整段 base64,可达 MB 级);
         // 已落盘或用户关下载时从响应剔除,防多 MB JSON 灌爆调用方上下文。
         const doneOut: Record<string, unknown> = { ...done };
         if (typeof doneOut.url === "string" && (doneOut.url as string).startsWith("data:")) {
@@ -972,7 +904,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (r.status === "completed" && r.url && a.download !== false) {
           localPath = await downloadAsset(r.url, "vid", resolveOutDir(a.outDir), optString(a.name));
         }
-        // 同 create_video:flow 的 data: URI 成品不进响应(防 MB 级 JSON)
+        // 同 create_video:provider 的 data: URI 成品不进响应(防 MB 级 JSON)
         const rOut: Record<string, unknown> = { ...r };
         if (typeof rOut.url === "string" && (rOut.url as string).startsWith("data:")) {
           const kb = Math.round((rOut.url as string).length / 1024);
@@ -992,162 +924,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           ? { retry_after_seconds: retryAfter, hint: `生成中,约 ${retryAfter}s 后再次调用 get_video 拉取。` }
           : {};
         return ok({ ...rOut, local_path: localPath, ...retryHint, ...(videoWarnings.length ? { warnings: videoWarnings } : {}) });
-      }
-
-      case "flow_status": {
-        // Google Flow 零消耗自省/状态/下载(契约 doc/flow-api-contract.md §2.2/§2.3/§2.6)。
-        // 铁律:本工具绝不触发生成 —— 提交路径只在 create_video/generate_image(provider=flow,消耗积分)。
-        const p = getProvider("flow");
-        if (!(p instanceof FlowProvider)) {
-          return err("flow_status 仅支持 flow provider(registry 注册异常)");
-        }
-        const mediaId = optString(a.mediaId);
-        const deleteMediaIds = toStringArray(a.deleteMediaIds);
-        const shareMediaIds = toStringArray(a.shareMediaIds);
-        const cancelMediaIds = toStringArray(a.cancelMediaIds);
-        const batchParams = [
-          ["mediaId(状态查询)", mediaId],
-          ["deleteMediaIds(删除)", deleteMediaIds?.length ? deleteMediaIds : null],
-          ["shareMediaIds(分享)", shareMediaIds?.length ? shareMediaIds : null],
-          ["cancelMediaIds(取消)", cancelMediaIds?.length ? cancelMediaIds : null],
-        ].filter(([, v]) => v) as Array<[string, unknown]>;
-        if (batchParams.length > 1) {
-          return err(`flow_status 参数互斥:${batchParams.map(([n]) => n).join(" + ")} 同时传入,一次只能选一种。`);
-        }
-        if (deleteMediaIds?.length) {
-          // 0 点删除(不可逆;provider 内部先整批校验存在性,有未知 id 整批不删)
-          const del = await p.deleteAssets(deleteMediaIds);
-          return ok({
-            ok: true,
-            deleted: del.deleted,
-            deleted_count: del.deleted.length,
-            requested_count: deleteMediaIds.length,
-            media_remaining: del.mediaRemaining,
-            hint: `删除不可逆;剩余 ${del.mediaRemaining} 个 media,不带参数调 flow_status 可查看全量。`,
-          });
-        }
-        if (shareMediaIds?.length) {
-          // 0 点分享链接(tRPC flow.share.shareMedia;公开可访问含提示词)
-          const sh = await p.shareMedia(shareMediaIds);
-          return ok({
-            ok: true,
-            shared: sh.shared,
-            shared_count: sh.shared.length,
-            hint: sh.hint,
-          });
-        }
-        if (cancelMediaIds?.length) {
-          // 0 点取消 in-flight 生成(POST /v1/flowMedia:cancelGeneration;只对生成中的媒体有效)
-          const cx = await p.cancelGenerations(cancelMediaIds);
-          return ok({
-            ok: true,
-            canceled: cx.canceled,
-            canceled_count: cx.canceled.length,
-            not_cancelable: cx.notCancelable,
-            status_after: cx.statusAfter,
-            hint: cx.canceled.length
-              ? "取消已提交;status_after 若仍显示 in_progress 属状态转移延迟(tRPC 读侧有缓存),稍后用 flow_status(mediaId) 复查(期望终态 MEDIA_GENERATION_STATUS_CANCELED)。"
-              : "没有可取消的媒体(全部已完成或非生成中;图片生成本就不可取消 —— 契约 §11.3 live 实证 404);详见 not_cancelable。",
-          });
-        }
-        if (!mediaId) {
-          return ok(await p.flowStatus());
-        }
-        const st = await p.mediaStatus(mediaId);
-        let localPath: string | null = null;
-        let contentType: string | null = null;
-        let downloadedBytes = 0;
-        const dlWarnings: string[] = [];
-        if (st.status === "completed" && a.download !== false) {
-          const got = await p.getMediaBytes(mediaId, { thumbnail: a.thumbnail === true });
-          // 传输完整性(audit finding-18):仅原始资产可按 mediaBlobSize 比对(防截断/错误 content-type 字节照写)。
-          // 缩略图(MEDIA_URL_TYPE_THUMBNAIL)是服务端另行生成的 JPEG,与本资产 mediaBlobSize 本就不同
-          // (2026-08-23 live 实证:2,508,689B 视频的缩略图仅 43,007B raw JPEG —— 拿缩略图字节对比原资产
-          // 尺寸会让已完成视频 100% 误报 S402,契约 §2.6 勘误)。
-          if (!a.thumbnail && st.bytes && got.buf.length !== st.bytes) {
-            return err(`[flow] S402 下载不完整:${got.buf.length}B ≠ mediaBlobSize ${st.bytes}B(疑似截断),请重试 flow_status`);
-          }
-          contentType = got.contentType;
-          downloadedBytes = got.buf.length;
-          const outDir = resolveOutDir(a.outDir);
-          await fs.mkdir(outDir, { recursive: true });
-          const ct = got.contentType;
-          // 扩展名:content-type 优先;未知 ct 按 media kind 兜底(防视频字节贴 .png —— audit finding-12)
-          const ext = ct.includes("webm") ? ".webm"
-            : ct.includes("video") || ct.includes("mp4") ? ".mp4"
-            : ct.includes("jpeg") || ct.includes("jpg") ? ".jpg"
-            : ct.includes("webp") ? ".webp"
-            : st.kind === "video" ? ".mp4" : ".png";
-          // 自定义名走 downloadAsset 同款清洗(audit finding-14:防 : ? 控制字符原样进文件名)
-          const safeName = sanitizeFileBase(optString(a.name)) || `flow_${mediaId.slice(0, 8)}`;
-          localPath = path.join(outDir, safeName + ext);
-          await fs.writeFile(localPath, got.buf);
-          // P0-4 产物守门员(第 4 条落盘路径补齐,audit finding-12):视频传 mp4 容器探活;
-          // 图片/缩略图不传 format,让 magic bytes 自动路由到对应检查分支
-          const formatHint = ext === ".mp4" ? "mp4" : ext === ".webm" ? "webm" : undefined;
-          const checked = await assertOutputClean(localPath, { tool: "flow_status", ...(formatHint ? { format: formatHint } : {}) });
-          if ("fatal" in checked) return err(checked.fatal.message);
-          dlWarnings.push(...checked.warnings);
-        }
-        const retryHint = st.status === "in_progress"
-          ? { retry_after_seconds: 10, hint: "生成中,约 10s 后再次调用 flow_status(同一 mediaId)拉取。" }
-          : {};
-        return ok({
-          ...st,
-          ...(contentType ? { content_type: contentType } : {}),
-          ...(downloadedBytes ? { downloaded_bytes: downloadedBytes } : {}),
-          ...(localPath ? { local_path: localPath } : {}),
-          ...retryHint,
-          ...(dlWarnings.length ? { warnings: dlWarnings } : {}),
-        });
-      }
-
-      case "flow_entity": {
-        // Google Flow 角色实体(第 24 工具;全 0 点 —— create/update/voices 均不触生成提交)。
-        // 读侧局限(诚实):Flow 无实体读端点 → list 只回本地镜像(契约 §9.6/§11.4)。
-        const p = getProvider("flow");
-        if (!(p instanceof FlowProvider)) {
-          return err("flow_entity 仅支持 flow provider(registry 注册异常)");
-        }
-        const action = optString(a.action) ?? "create";
-        if (action === "list") {
-          const entities = p.listEntities();
-          return ok({
-            ok: true,
-            entities,
-            count: entities.length,
-            hint: entities.length
-              ? "本地镜像记录(Flow 无实体读端点,只追踪本工具创建的实体);更新请用 action=update + entityId。"
-              : "镜像为空:用 action=create 创建;Flow 无服务端实体读端点,非本工具创建的实体无法枚举(契约 §9.6)。",
-          });
-        }
-        if (action === "voices") {
-          const voices = await p.listPresetVoices();
-          return ok({ ok: true, voices, count: voices.length, hint: "30 预设语音(projectInitialData externalReferenceMedia 只读);绑定用 presetVoiceId(如 charon)。" });
-        }
-        if (action === "create") {
-          const created = await p.createEntity({
-            displayName: optString(a.displayName),
-            presetVoiceId: optString(a.presetVoiceId),
-            imageMediaIds: toStringArray(a.imageMediaIds),
-          });
-          return ok({
-            ok: true,
-            ...created,
-            hint: `实体已创建${created.presetVoiceId ? `并绑定语音 ${created.presetVoiceId}` : ""}${created.imageWorkflowIds?.length ? `并绑定形象图 ${created.imageWorkflowIds.length} 张` : ""};本地镜像已更新(~/.media-gen-mcp/flow-entities.json)。全 0 点。`,
-          });
-        }
-        if (action === "update") {
-          const entityId = optString(a.entityId);
-          if (!entityId) return err("action=update 需要 entityId(action=create 的返回)。");
-          const updated = await p.updateEntity(entityId, {
-            displayName: optString(a.displayName),
-            presetVoiceId: optString(a.presetVoiceId),
-            imageMediaIds: toStringArray(a.imageMediaIds),
-          });
-          return ok({ ok: true, ...updated, hint: "实体已更新(PATCH updateMask 只动变更字段);本地镜像已同步。" });
-        }
-        return err(`action 非法:"${action}"(合法:create / update / list / voices)`);
       }
 
       case "extract_text": {
@@ -1296,7 +1072,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           providers: listProviders(),
           detail: buildListModelsDetail(optString(a.provider)),
           ...(imgChain ? { imageProviderPriority: imgChain, imageRoutingNote: `image 默认路由按链走:${imgChain.join(" → ")}(链头失败/前置不满足时按序回落;显式点名 provider 则钉死)` } : {}),
-          ...(vidChain ? { videoProviderPriority: vidChain, videoRoutingNote: `video 默认路由按链走:${vidChain.join(" → ")}(未配置时 = ${config.defaultVideoProvider} + 免费层 fallback;flow 视频消耗积分,须显式列入或点名)` } : {}),
+          ...(vidChain ? { videoProviderPriority: vidChain, videoRoutingNote: `video 默认路由按链走:${vidChain.join(" → ")}(未配置时 = ${config.defaultVideoProvider} + 免费层 fallback)` } : {}),
         });
       }
 

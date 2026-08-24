@@ -35,8 +35,8 @@ function num(envName: string, def: number, fileVal?: number): number {
 }
 
 /**
- * C 任务(渠道优先级链):解析 per-modality provider 优先级列表。
- * 来源:config.json 数组 > env 逗号分隔(如 MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu")。
+ * 渠道优先级链:解析 per-modality provider 优先级列表。
+ * 来源:config.json 数组 > env 逗号分隔(如 MEDIA_IMAGE_PROVIDER_PRIORITY="agnes,zhipu")。
  * 未配置 = undefined → 走 legacy 行为(defaultXxxProvider + tier 免费链,零回归)。
  * 非字符串/空项剔除、小写归一、去重(保序);结果为空数组也按未配置处理。
  * 导出供单测白盒(与 num 同范式)。
@@ -81,7 +81,7 @@ function buildProviders(): Record<string, any> {
       videoMinIntervalMs: num(`${upper}_VIDEO_MIN_INTERVAL_MS`, 62_000, p.videoMinIntervalMs),
       models: p.models,
       rateLimits: p.rateLimits ?? {},
-      // 原始块整体透传:provider 专属字段(如 flow 的 cdpPort/projectId)无需在 config.ts
+      // 原始块整体透传:provider 专属字段(如 paddle 的 baseUrl)无需在 config.ts
       // 逐个白名单 —— 保持「新增 provider config.ts 零改动」的开闭承诺(硬约束 #4 架构)。
       settings: p,
       // pares7: vlm extra_body 透传(Unlimited-OCR images_config/custom_logit_processor/custom_params/
@@ -107,14 +107,14 @@ export const config = {
   defaultVisionProvider: userCfg.defaultVisionProvider ?? "tesseract",
 
   /**
-   * C 任务:渠道优先级链(image 模态)。priority[0] = 未显式指定 provider 时的链头;
+   * 渠道优先级链(image 模态)。priority[0] = 未显式指定 provider 时的链头;
    * 链头失败(fallback-worthy / 环境前置失败)按序惰性推进。未配置 = undefined → 现行为
-   * (defaultImageProvider + agnes/zhipu tier 免费链,零回归)。optIn provider(如 flow)
-   * 只有显式列入本链才可被默认路由/链内回落选中。
+   * (defaultImageProvider + agnes/zhipu tier 免费链,零回归)。optIn 型 provider
+   * 只有显式列入本链才可被默认路由/链内回落选中(现无成员,框架保留)。
    */
   imageProviderPriority: parseProviderPriority(userCfg.imageProviderPriority, "MEDIA_IMAGE_PROVIDER_PRIORITY"),
 
-  /** C 任务:渠道优先级链(video 模态)。语义同上;默认不配置(agnes 免费),flow 需显式列入(视频消耗积分)。 */
+  /** 渠道优先级链(video 模态)。语义同上;默认不配置(agnes 免费,zhipu 自动互备)。 */
   videoProviderPriority: parseProviderPriority(userCfg.videoProviderPriority, "MEDIA_VIDEO_PROVIDER_PRIORITY"),
 
   /**

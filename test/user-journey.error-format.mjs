@@ -216,17 +216,20 @@ test("user journey happy Graphviz: 合法 DOT → 成功返回 svg", async () =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// 用户旅程 7:23 工具枚举(flow 加入 flow_status 后 22→23;向后兼容)
+// 用户旅程 7:22 工具枚举(flow_status/flow_entity 随 Google Flow 渠道分离至 flow-mcp:24→22;向后兼容)
 // ═══════════════════════════════════════════════════════════════════════
 
-test("user journey 工具枚举: tools/list 返回 24 个工具(flow_entity 后)", async () => {
+test("user journey 工具枚举: tools/list 返回 22 个工具(Flow 渠道分离后)", async () => {
   const resp = await callTool(null, null, "tools/list");
   const tools = resp.result.tools;
-  assert.equal(tools.length, 24, `24 工具枚举破:${tools.length} 个`);
-  // 关键工具名仍在
+  assert.equal(tools.length, 22, `22 工具枚举破:${tools.length} 个`);
+  // 关键工具名仍在(flow_status/flow_entity 已分离至 flow-mcp,不应再出现)
   const names = tools.map((t) => t.name).sort();
-  for (const required of ["generate_diagram", "generate_chart", "render_svg", "generate_interactive_diagram", "generate_nested_diagram", "extract_image_meta", "flow_status"]) {
+  for (const required of ["generate_diagram", "generate_chart", "render_svg", "generate_interactive_diagram", "generate_nested_diagram", "extract_image_meta"]) {
     assert.ok(names.includes(required), `${required} 工具消失`);
+  }
+  for (const gone of ["flow_status", "flow_entity"]) {
+    assert.ok(!names.includes(gone), `${gone} 工具仍在本包(应已分离至 flow-mcp)`);
   }
 });
 

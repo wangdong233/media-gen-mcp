@@ -5,7 +5,6 @@ import { TesseractProvider } from "./tesseract.js";
 import { PaddleocrProvider } from "./paddle.js";
 import { VlmProvider } from "./vlm.js";
 import { GlmVisionProvider } from "./glm-vision.js";
-import { FlowProvider } from "./flow.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -42,16 +41,11 @@ const registry: Record<string, MediaProvider> = {
     baseUrl: config.providers["glm-vision"]?.baseUrl,
     model: config.providers["glm-vision"]?.models?.default,
   }),
-  flow: new FlowProvider({ // Google Flow(经本机 Chrome CDP 页面上下文;契约 doc/flow-api-contract.md)。
-    // 渠道准入(C 任务):flow 实现 capabilities()(能力事实)+ requiresOptIn()=true(准入策略)——
-    // 未显式同意(provider/model 点名或 <modality>ProviderPriority 列入)时不进任何隐式 fallback 链
-    // (取代旧门禁「不实现 capabilities」,见 types.ts MediaProviderBase.requiresOptIn)。
-    // 无默认视频模型:提交视频消耗积分,必须显式指定(或 config providers.flow.models.video.default)。
-    cdpPort: config.providers.flow?.settings?.cdpPort,
-    projectId: config.providers.flow?.settings?.projectId,
-    models: config.providers.flow?.models,
-  }),
 };
+
+// Google Flow 渠道已于 2026-08-24 分离为独立包 flow-mcp(源 145f83e,tag pre-flow-separation):
+// 渠道内核/flow_status/flow_entity 工具随迁,契约文档见该包。本包回落 agnes/zhipu 双渠道;
+// 渠道优先级链与 requiresOptIn 准入框架保留(供未来 optIn 型 provider 复用,见 types.ts)。
 
 // pares7: glm-vision 多 key 违约警告(智谱 User Agreement §2/§3 禁多账号/共享;Code Plan key 不可用)
 {
@@ -101,15 +95,8 @@ function hasModality(p: MediaProvider, modality: "image" | "video"): boolean {
     : typeof p.createVideo === "function" && typeof p.videoConstraints === "function" && typeof p.listVideoModels === "function";
 }
 
-// C 任务:videoProviderPriority 显式列入 flow = 用户知情同意付费档,启动时强提示(积分红线)。
-{
-  const vPrio = config.videoProviderPriority;
-  if (vPrio?.includes("flow")) {
-    console.warn(
-      `[media-gen-mcp] ⚠️ videoProviderPriority 包含 "flow":Flow 视频消耗积分(abra 7-20 / veo 10-100 点每条)。仅当你在 config.json 显式如此配置时才会走到该链;未列入时 flow 视频只能显式 provider=flow 调用。`,
-    );
-  }
-}
+// (flow 在册时的「videoProviderPriority 显式列入 flow = 知情同意付费档」启动强提示随渠道
+// 一并迁入 flow-mcp;本包现有渠道均为免费直连,无 optIn 成员需要付费警示。)
 
 export function getProvider(name?: string): MediaProvider {
   const n = (name ?? config.defaultProvider).toLowerCase();
@@ -411,12 +398,13 @@ function capableOf(p: MediaProvider, modality: Modality, req?: FallbackReq): boo
  *
  * 候选过滤(vision 模态不受 priority 影响,保持 pares5 语义):
  *   - 排除 currentName
- *   - configured 过滤对「priority 链内成员」豁免(optIn provider 如 flow 首次探测前 configured=false,
+ *   - configured 过滤对「priority 链内成员」豁免(optIn provider 首次探测前可能 configured=false,
  *     显式列入即视为已同意,允许被尝试 —— 探测由尝试本身惰性触发)
  *   - cooldown 过滤(60s 熔断窗口内跳过,notifyUnavailable 置位)
  *   - capableOf 能力矩阵(capabilities() 事实声明)
  *   - 渠道准入:requiresOptIn(modality) 的 provider 仅在显式列入 priority 链时放行
- *     (默认 = 旧「不实现 capabilities()」门禁的等价物:flow 永不进隐式免费链)
+ *     (默认 = 旧「不实现 capabilities()」门禁的等价物:optIn provider 永不进隐式免费链;
+ *     框架随渠道优先级机制保留,供未来 optIn 型 provider 使用,现无成员)
  *
  * 排序(单一管线,优先级与 fallback 两机制在此统一):
  *   1. priority 链内按 list 位置升序(用户的偏好序)

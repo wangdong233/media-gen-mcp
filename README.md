@@ -150,50 +150,11 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 > 你:"这张图是用什么 prompt、什么参数生成的?能复现吗?"
 > 得到:结构化参数 —— 正向 / 负向 prompt、模型、采样步数、CFG、种子、尺寸(从 PNG 嵌入的 ComfyUI / A1111 元数据本地解析;Agnes 生成的图自带完整生成参数,拿到 prompt 可用 generate_image 一键复现)
 
-### Google Flow 渠道(Veo 3.1 / Nano Banana,免 API Key,生图 0 积分)
+### Google Flow 渠道(已分离为独立包 flow-mcp)
 
-**借本机 Chrome 的 Google Flow 登录态直接生图 / 生视频**(Google Labs 的 [labs.google/fx/tools/flow](https://labs.google/fx/tools/flow))—— 不用任何 API Key,也不占 Agnes / 智谱的免费配额;产物自动落盘,并带 `mediaId` 方便后续管理。
+Flow 渠道(Veo 3.1 / Nano Banana,借本机 Chrome 登录态直连、免 API Key)已于 2026-08 从本包分离为独立 MCP:**[flow-mcp](https://github.com/wangdong233/flow-mcp)** —— 0 积分生图 / 放大、按积分计费的视频(abra / Veo 3.1)、`flow_status` 积分与媒体查询、`flow_entity` 角色实体。
 
-**前置条件(一次性)**:本机 Chrome 登录过 Flow。
-
-```bash
-lasso launch-chrome --port 9223 --mode visible
-# 没装 lasso 先:npm i -g lasso-mcp
-# 弹出 Chrome 后打开 https://labs.google/fx/tools/flow 并登录,之后保持 Chrome 运行即可
-```
-
-Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 连不上 Chrome,S101 = 没有打开中的 Flow 页面),照提示启动一次就好 —— 绝不静默失败,也不偷偷换渠道。
-
-**这些全部 0 积分(放心用)**:
-
-- **生图**:Nano Banana Pro / Nano Banana 2(默认)/ Nano Banana 2 Lite;比例 16:9 / 9:16 / 1:1 / 3:4 / 4:3;seed 可复现;支持底图改图 + 最多 10 张参考图
-- **放大**:图片 2K 放大(model=`GEM_PIX_2_UPSAMPLE_2K`)、视频 1080p 超分(model=`veo_3_1_upsampler_1080p`)
-- **资产管理**:上传图片、批量删除、生成公开分享链接(`labs.google/fx/tools/flow/shared/…`)、取消生成中的视频、查积分 / 查媒体状态(`flow_status`);建角色实体并绑定 30 种预设语音(`flow_entity`)
-
-**生视频按积分计费(每条,提交前请知悉)**:
-
-| 模型 | key 举例 | 积分/条 |
-|---|---|---|
-| Omni Flash(abra)文生 / 图生 / 参考图 | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15(按时长 4/6/8/10 秒) |
-| Omni Flash 视频编辑(V2V) | `abra_edit` | 20 |
-| Veo 3.1 Lite(含延长、首尾帧) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
-| Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
-| Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
-| 视频超分 1080p | `veo_3_1_upsampler_1080p` | **0** |
-
-视频一次一条,时长 4 / 6 / 8 / 10 秒,比例仅 16:9 / 9:16;模式:文生视频(t2v)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images` 1–10 张)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令;wire 已定型,真实提交尚未线上验证,响应会带警示)/ 超分(`videoMediaId`)。
-
-**用法(显式 `provider="flow"`)**:
-
-```
-"画张赛博朋克猫,用 Flow,3:4 比例,seed 42"       → generate_image(provider="flow", aspect="3:4", seed=42)
-"用 Flow 生成 8 秒未来城市航拍视频"               → create_video(provider="flow", model="abra_t2v_8s")
-"查一下 Flow 积分余额 / 这个 mediaId 生成完没"     → flow_status() / flow_status(mediaId=…)
-```
-
-**`flow_status` 自省工具(全程 0 积分)**:不带参数返回全景 —— 登录账号、积分余额、动态模型目录(含每个 key 的参考耗时)、30 种预设语音、项目媒体列表;带 `mediaId` 查单个媒体状态并下载成品(`thumbnail=true` 取视频缩略图);`deleteMediaIds` 批量删除、`shareMediaIds` 生成公开分享链接、`cancelMediaIds` 取消生成中的视频(图片不可取消)。
-
-> **积分红线**:Flow 视频消耗积分,**默认绝不自动路由** —— 要么在 `videoProviderPriority` 显式列入(自担积分,启动时有强提示),要么每次显式 `provider="flow"`;生图想全自动白嫖,把 `flow` 配成 `imageProviderPriority` 链头即可(见下方「配置详解」)。
+两包**共享同一配置文件** `~/.media-gen-mcp/config.json`(flow 段:`enabled` 开关 / `imageRouting` / `videoRouting` 路由偏好,一处配置)。积分红线随迁:Flow 视频消耗积分,flow-mcp 默认 `explicit-only`,绝不自动路由。
 
 ### 看懂一张图 / 一份 PDF(把图和文档变数据)
 
@@ -283,7 +244,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 |---|---|---|
 | 画架构图 / 数据图表 / 卡片 / 二维码 / 公式 | **什么都不用配** | 本地引擎,装完即用 |
 | AI 写实图 / AI 视频(文生图、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
-| 用 Google Flow 生图(0 积分)/ 管理生成资产 | **不用配 Key**:本机 Chrome 登录 Flow 即可(`lasso launch-chrome` 启动) | 生图 / 放大 / 上传 / 删除 / 分享 / 取消 / 查询全 0 积分;视频按积分计费(7–100 积分/条) |
+| 用 Google Flow 生图(0 积分)/ 管理 Flow 资产 | 安装独立包 [flow-mcp](https://github.com/wangdong233/flow-mcp)(该渠道已从本包分离) | 生图 / 放大 / 资产管理全 0 积分;视频按积分计费(默认 explicit-only,绝不自动路由) |
 | OCR 文字识别(英文 / 验证码 / 数字 / 简单文档) | **什么都不用配** | 默认走进程内轻量引擎,装完即用 |
 | 中文 OCR / 发票表格 / 图表读数 / 看图问答 / 手写 / 公式 | **配一行智谱 GLM Key**(零部署,云端永久免费)**或** 自托管 PaddleX / vLLM | 配 GLM Key 即开即用;自托管服务跑起来后填一行 baseUrl |
 | **PDF 文字提取**(数字版 / 扫描件 / 多页) | 装两个依赖 `npm i pdfjs-dist @napi-rs/canvas`(首次用 PDF 时装) | 数字版 PDF 秒出;扫描件按上面 OCR 档位走(默认零配置也能跑) |
@@ -316,20 +277,18 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 **配两家更稳**:任一家临时挂掉(限流 / 服务波动),另一家自动顶上,你零感知、零重复扣费。
 
-**渠道优先级链(可选,一行让生图走 Google Flow 免费档)**:在 `config.json` 加 `imageProviderPriority` / `videoProviderPriority`,即「链头 → 回落顺序」;链头失败(限流/5xx)或环境不满足(如 Flow 需要本机 Chrome CDP 在开)时**按序自动回落**,你零感知:
+**渠道优先级链(可选,一行声明「链头 → 回落顺序」)**:在 `config.json` 加 `imageProviderPriority` / `videoProviderPriority`;链头失败(限流 / 5xx)时**按序自动回落**,你零感知:
 
 ```json
 {
-  "imageProviderPriority": ["flow", "agnes", "zhipu"],
+  "imageProviderPriority": ["agnes", "zhipu"],
   "videoProviderPriority": ["agnes", "zhipu"]
 }
 ```
 
-- **生图 flow 优先**:Flow 生图 0 积分;Chrome 没开/未登录时自动回落 agnes → 智谱(每次探测有 60 秒熔断,不反复重试)。调用时显式传 `provider` 则钉死该渠道,不回落。
-- **视频默认仍 agnes 优先**(免费);Flow 视频消耗积分,**刻意不进默认链**——要么在 `videoProviderPriority` 里显式写入(自担积分),要么每次显式 `provider="flow"`。
-- 不配置这两项 = 现行为(默认渠道 + agnes/智谱免费层自动互备),零影响。环境变量等价:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
-
-**Flow 资产管理(全 0 积分)**:`flow_status` 除了查积分 / 查媒体状态 / 下载,还支持三件零消耗操作——`shareMediaIds=[…]` 生成公开分享链接(形如 `labs.google/fx/tools/flow/shared/image/<id>`,含提示词)、`cancelMediaIds=[…]` 取消生成中的视频(注意:图片生成不可取消)、`deleteMediaIds=[…]` 批量删除。`flow_entity` 工具可创建角色实体并绑定预设语音(30 种声线,先 `generate_image(provider="flow")` 出形象图再绑),后续生成可复用该角色。
+- 调用时显式传 `provider`(或传 `model` —— model 本身即渠道归属声明)则**钉死该渠道不回落**,绝不静默换成他渠道产物。
+- 不配置这两项 = 现行为(默认渠道 + agnes / 智谱免费层自动互备),零影响。环境变量等价:`MEDIA_IMAGE_PROVIDER_PRIORITY="agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
+- Google Flow 渠道已分离为独立包 [flow-mcp](https://github.com/wangdong233/flow-mcp);两包共享本配置文件(其 `flow` 段管开关与路由偏好,见该包 README)。在本包链里写 `"flow"` 会被剔除并告警,其余链序照常生效。
 
 **配置文件位置**:`~/.media-gen-mcp/config.json`(macOS / Linux)或 `%USERPROFILE%\.media-gen-mcp\config.json`(Windows)。
 

@@ -2,9 +2,8 @@
   "defaultProvider": "agnes",
   "defaultImageProvider": "agnes",
   "defaultVideoProvider": "zhipu",
-  "_providerPriorityNote": "渠道优先级链(C 任务):imageProviderPriority/videoProviderPriority = [head, ...fallback 顺序],链头失败(限流/5xx)或环境前置不满足(如 flow 的 CDP 未开)时按序惰性回落;显式传 provider 参数则钉死该渠道不回落。不配置这两项 = 现行为(defaultImageProvider/defaultVideoProvider + agnes/zhipu 免费层自动 fallback)。flow 为 opt-in 渠道:只有写进这两个列表或显式 provider=flow 才会被路由(生图 0 积分;视频消耗积分,列入前请知悉)。env 等价:MEDIA_IMAGE_PROVIDER_PRIORITY=\"flow,agnes,zhipu\" / MEDIA_VIDEO_PROVIDER_PRIORITY。",
+  "_providerPriorityNote": "渠道优先级链:imageProviderPriority/videoProviderPriority = [head, ...fallback 顺序],链头失败(限流/5xx)时按序惰性回落;显式传 provider 或 model 则钉死该渠道不回落。不配置这两项 = 现行为(defaultImageProvider/defaultVideoProvider + agnes/zhipu 免费层自动 fallback)。env 等价:MEDIA_IMAGE_PROVIDER_PRIORITY=\"agnes,zhipu\" / MEDIA_VIDEO_PROVIDER_PRIORITY。注:Google Flow 渠道已分离为独立包 flow-mcp(github.com/wangdong233/flow-mcp),与本包共享本配置文件(其开关/路由偏好见该包的 flow 段);在本包链里写 \"flow\" 会被剔除并告警。",
   "imageProviderPriority": [
-    "flow",
     "agnes",
     "zhipu"
   ],

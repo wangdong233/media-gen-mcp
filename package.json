@@ -51,8 +51,7 @@
     "satori": "^0.10.14",
     "tesseract.js": "^7.0.0",
     "vega": "^5.30.0",
-    "vega-lite": "^5.22.0",
-    "ws": "^8.21.3"
+    "vega-lite": "^5.22.0"
   },
   "optionalDependencies": {
     "@napi-rs/canvas": "^1.0.2",
