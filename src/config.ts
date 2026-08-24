@@ -8,8 +8,11 @@ import os from "node:os";
  * 本地 node 开发同样读 home(一致)。
  *
  * 优先级:config.json > 环境变量 > 默认值。
+ *
+ * MEDIA_GEN_MCP_CONFIG env 可覆盖配置文件路径(测试注入缝,隔离本机 config 差异;
+ * 吸收自 flow-mcp 的 FLOW_MCP_CONFIG 同机制)。
  */
-export const CONFIG_FILE = path.join(os.homedir(), ".media-gen-mcp", "config.json");
+export const CONFIG_FILE = process.env.MEDIA_GEN_MCP_CONFIG || path.join(os.homedir(), ".media-gen-mcp", "config.json");
 
 function loadUserConfig(): Record<string, any> {
   try {
@@ -56,6 +59,26 @@ export function parseProviderPriority(fileVal: unknown, envName: string): string
     names.push(n);
   }
   return names.length ? names : undefined;
+}
+
+/**
+ * 渠道运行时开关段(顶级 "flow";2026-08-24 合包时吸收自 flow-mcp 同键同语义 ——
+ * 同一份 config.json 在单包/独立包两种形态下行为一致,「一份配置统一控制渠道」的物理载体)。
+ * 纯解析函数导出供单测白盒(与 parseProviderPriority 同范式:解析与 I/O 分离)。
+ *
+ *   - enabled:false = S000 硬门(仅显式 false 才禁用;缺省/类型错 = true,配置错误不 fatal):
+ *     ① 优先级链剔除(imageProviderPriority/videoProviderPriority 中的 flow 失效);
+ *     ② 显式 provider=flow / flow 模型 auto-route / flow_status / flow_entity → 结构化禁用错。
+ *   - toolDeadlineMs:flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,
+ *     防 stall 红线 ≤120s;默认 110s;超时转结构化 [flow] S410(底层操作不取消,诚实降级)。
+ */
+export function parseFlowSection(raw: unknown): { enabled: boolean; toolDeadlineMs: number } {
+  const s = (raw ?? {}) as Record<string, any>;
+  const deadline = num("FLOW_TOOL_DEADLINE_MS", 110_000, s.toolDeadlineMs);
+  return {
+    enabled: s.enabled !== false, // 仅显式 false 才禁用
+    toolDeadlineMs: Number.isFinite(deadline) && deadline > 0 ? deadline : 110_000,
+  };
 }
 
 /**
@@ -127,6 +150,12 @@ export const config = {
   get videoProviderChainHead(): string {
     return this.videoProviderPriority?.[0] ?? this.defaultVideoProvider;
   },
+
+  /**
+   * 顶级 "flow" 渠道运行时段(enabled 硬门 + toolDeadlineMs 防 stall)。
+   * 对象整体注入 FlowProvider(registry 传引用,测试可 live 翻转 enabled)。
+   */
+  flow: parseFlowSection(userCfg.flow),
 
   outDir: userCfg.outDir
     ? path.resolve(userCfg.outDir)

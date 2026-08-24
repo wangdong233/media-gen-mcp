@@ -71,6 +71,14 @@ const DEFAULT_PREFLIGHT_TTL_MS = 30_000;
 /** 单次页面 fetch(经 Runtime.evaluate)超时:状态/目录快;媒体下载大,单独放宽。 */
 const EVAL_TIMEOUT_MS = 45_000;
 const DOWNLOAD_TIMEOUT_MS = 180_000;
+/**
+ * 工具级截止默认值(2026-08-24 吸收自 flow-mcp withDeadline):flow 长操作(生图轮询内部
+ * 兜底 240s / 下载 180s)有界但不满足「单次调用 ≤120s」防 stall 红线 —— 本截止在 provider
+ * 边界把 generateImage/createVideo/getVideo/getMediaBytes 包进 Promise.race,超时转结构化
+ * [flow] S410;底层 promise 不取消(生成可能在服务端继续,稍后经 flow_status 可达 —— 诚实降级)。
+ * config 顶级 flow.toolDeadlineMs / env FLOW_TOOL_DEADLINE_MS 可调。
+ */
+const DEFAULT_TOOL_DEADLINE_MS = 110_000;
 const FLOW_PROJECT_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-project.json");
 /**
  * 角色实体本地镜像文件(§11.4:Flow 无实体读端点 → projectContents 无 entities 键,
@@ -620,6 +628,13 @@ export interface FlowProviderConfig {
   models?: { video?: { default?: string }; image?: { default?: string } };
   /** 测试注入 stub transport(零网络零消耗)。 */
   transport?: FlowTransport;
+  /**
+   * 顶级 flow 渠道运行时段(registry 注入 config.flow 对象引用):enabled=false = S000 硬门;
+   * toolDeadlineMs = 长操作截止。传引用(非解构)使测试可 live 翻转 enabled。
+   */
+  flowCfg?: { enabled?: boolean; toolDeadlineMs?: number };
+  /** 配置文件路径(S000 禁用错的修复提示文案用)。 */
+  configFile?: string;
 }
 
 export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProvider {
@@ -642,11 +657,16 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   /** 动态目录缓存(projectInitialData 派生;10 分钟)。 */
   private dynamicCatalog: { at: number; videoKeys: string[] } | null = null;
   private readonly dynamicCatalogTtlMs = 10 * 60_000;
+  /** 顶级 flow 段引用(enabled 硬门 + toolDeadlineMs;registry 注入 config.flow 对象)。 */
+  private readonly flowCfg?: { enabled?: boolean; toolDeadlineMs?: number };
+  private readonly cfgFile?: string;
 
   constructor(c: FlowProviderConfig = {}) {
     this.transport = c.transport ?? new CdpFlowTransport(c.cdpPort ?? DEFAULT_CDP_PORT);
     this.cfgProjectId = c.projectId;
     this.models = c.models;
+    this.flowCfg = c.flowCfg;
+    this.cfgFile = c.configFile;
   }
 
   // ── MediaProviderBase ──
@@ -663,6 +683,15 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     // image:0 积分但路由到 Google Flow 项目(隐私边界 + 模型语义变更须显式同意,防默认路由
     // 随「本机 Chrome 是否开着」漂移);video:消耗积分(误耗红线)。两模态统一「显式同意才介入」。
     return true;
+  }
+  /**
+   * S000 硬门(2026-08-24 吸收自 flow-mcp;config 顶级 flow.enabled=false 触发):
+   * 优先级链剔除 + 显式点名直抛(registry/handler 消费;provider 只陈述禁用事实)。
+   * 文案自带修复动作。缺省 / 类型错 = true(不禁用,配置错误不 fatal)。
+   */
+  disabledReason(): string | undefined {
+    if (this.flowCfg?.enabled !== false) return undefined;
+    return `[flow] S000 Flow 渠道已在配置中禁用;编辑 ${this.cfgFile ?? "~/.media-gen-mcp/config.json"} 将 flow.enabled 改回 true 并重启会话`;
   }
   listModels(): string[] { return [...this.listImageModels(), ...this.listVideoModels()]; }
   listImageModels(): string[] { return [...FLOW_IMAGE_MODELS]; }
@@ -688,6 +717,33 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     this.cooldownUntil = Date.now() + this.cooldownMs;
     this.cooldownError = e instanceof Error ? e : new Error(String(e));
     console.error(`[media-gen-mcp] flow 不可用(${(e as Error)?.message?.slice(0, 60)}),${Math.round(this.cooldownMs / 1000)}s 内优先级链跳过`);
+  }
+
+  // ── 防 stall 工具级截止(吸收自 flow-mcp withDeadline,2026-08-24 合包) ──
+
+  /** 截止取值:flow.toolDeadlineMs(config/env)> 默认 110s;非法值回默认。 */
+  private toolDeadlineMs(): number {
+    const v = this.flowCfg?.toolDeadlineMs;
+    return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : DEFAULT_TOOL_DEADLINE_MS;
+  }
+
+  /**
+   * 长操作截止:正常完成原样返回;超过 deadline 转 [flow] S410 结构化错。
+   * 底层 promise 不取消(诚实降级:生成可能在服务端继续,稍后经 flow_status(mediaId) 可达)。
+   */
+  private async withToolDeadline<T>(p: Promise<T>, label: string): Promise<T> {
+    const ms = this.toolDeadlineMs();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new FlowError("S410",
+        `${label} 超过工具层截止 ${Math.round(ms / 1000)}s(防 stall 红线)`,
+        { hint: "底层操作未取消 —— 不带参数调 flow_status 查看项目 media 列表(提交过的生成会继续);完成项可 flow_status(mediaId, download=true) 落盘" })), ms);
+    });
+    try {
+      return await Promise.race([p, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ── 工具层约束接口 ──
@@ -864,6 +920,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 无 type → 原始资产(video/mp4 流式 / image);thumbnail=true → MEDIA_URL_TYPE_THUMBNAIL(image/jpeg)。
    */
   async getMediaBytes(mediaId: string, opts: { thumbnail?: boolean } = {}): Promise<{ contentType: string; buf: Buffer }> {
+    // 防 stall:下载内部兜底 180s,超 120s 红线 —— 工具级截止 110s 封顶(S410 诚实降级)
+    return this.withToolDeadline(this.getMediaBytesUnbounded(mediaId, opts), `flow 下载 ${mediaId.slice(0, 8)}`);
+  }
+  private async getMediaBytesUnbounded(mediaId: string, opts: { thumbnail?: boolean } = {}): Promise<{ contentType: string; buf: Buffer }> {
     await this.ensureReady();
     const q = opts.thumbnail ? "&mediaUrlType=MEDIA_URL_TYPE_THUMBNAIL" : "";
     const f = await this.transport.pageFetch({
@@ -1441,6 +1501,11 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * images[1..] = references(IMAGE_INPUT_TYPE_REFERENCE;base+refs 合计上限 10,契约 §7.2)。
    */
   async generateImage(req: ImageRequest): Promise<ImageResult> {
+    // 防 stall:生图轮询内部兜底 240s,超 120s 红线 —— 工具级截止 110s 封顶(S410 诚实降级;
+    // 覆盖普通生图与 GEM_PIX_2_UPSAMPLE_2K 放大两条路径)
+    return this.withToolDeadline(this.generateImageUnbounded(req), "flow 生图");
+  }
+  private async generateImageUnbounded(req: ImageRequest): Promise<ImageResult> {
     await this.ensureReady();
     const model = req.model ?? this.models?.image?.default ?? "NARWHAL";
     if (!FLOW_IMAGE_MODELS.includes(model)) {
@@ -1597,6 +1662,11 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    *   - resolution/negativePrompt 被 flow 丢弃 → 必出 warning 不静默(audit finding-3/10)
    */
   async createVideo(req: VideoRequest): Promise<VideoTask> {
+    // 防 stall:提交虽是 submit-only,但 r2v 最多 10 张参考图逐张上传(每张 45s evaluate 兜底)
+    // 最坏路径超红线 —— 工具级截止 110s 封顶(S410;底层不取消,提交结果稍后经 flow_status 可达)
+    return this.withToolDeadline(this.createVideoUnbounded(req), "flow 视频提交");
+  }
+  private async createVideoUnbounded(req: VideoRequest): Promise<VideoTask> {
     await this.ensureReady();
     const model = req.model ?? this.models?.video?.default;
     if (!model) {
@@ -1796,6 +1866,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * Node fetch 原生支持 data: URI)。绝不 fallback、绝不重复提交。
    */
   async getVideo(handle: VideoHandle): Promise<VideoResult> {
+    // 防 stall:完成态下载内部兜底 180s,超 120s 红线 —— 工具级截止 110s 封顶(S410)
+    return this.withToolDeadline(this.getVideoUnbounded(handle), `flow 取件 ${handle.taskId ?? handle.videoId ?? ""}`.trim());
+  }
+  private async getVideoUnbounded(handle: VideoHandle): Promise<VideoResult> {
     const mediaId = handle.taskId ?? handle.videoId;
     if (!mediaId) throw new FlowError("S301", "getVideo 需要 taskId(mediaId)");
     await this.ensureReady();

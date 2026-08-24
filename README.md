@@ -328,6 +328,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **生图 flow 优先**:Flow 生图 0 积分;Chrome 没开/未登录时自动回落 agnes → 智谱(每次探测有 60 秒熔断,不反复重试)。调用时显式传 `provider` 则钉死该渠道,不回落。
 - **视频默认仍 agnes 优先**(免费);Flow 视频消耗积分,**刻意不进默认链**——要么在 `videoProviderPriority` 里显式写入(自担积分),要么每次显式 `provider="flow"`。
 - 不配置这两项 = 现行为(默认渠道 + agnes/智谱免费层自动互备),零影响。环境变量等价:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
+- **一键关闭 Flow(S000 硬门)**:`config.json` 顶级 `"flow": { "enabled": false }` —— Flow 从两条优先级链中剔除(链自动降级到下一渠道),显式 `provider="flow"` / Flow 模型 / `flow_status` / `flow_entity` 一律返回结构化 `[flow] S000` 禁用错(文案自带改回 `true` 的修复指引),绝不静默换渠道;配套 `"flow": { "toolDeadlineMs": 110000 }` = Flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,防卡死(单次调用 ≤120s),超时转 `[flow] S410` —— 底层操作不取消,稍后经 `flow_status(mediaId)` 复查落盘。
 
 **Flow 资产管理(全 0 积分)**:`flow_status` 除了查积分 / 查媒体状态 / 下载,还支持三件零消耗操作——`shareMediaIds=[…]` 生成公开分享链接(形如 `labs.google/fx/tools/flow/shared/image/<id>`,含提示词)、`cancelMediaIds=[…]` 取消生成中的视频(注意:图片生成不可取消)、`deleteMediaIds=[…]` 批量删除。`flow_entity` 工具可创建角色实体并绑定预设语音(30 种声线,先 `generate_image(provider="flow")` 出形象图再绑),后续生成可复用该角色。
 

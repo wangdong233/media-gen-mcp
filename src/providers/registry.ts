@@ -50,6 +50,10 @@ const registry: Record<string, MediaProvider> = {
     cdpPort: config.providers.flow?.settings?.cdpPort,
     projectId: config.providers.flow?.settings?.projectId,
     models: config.providers.flow?.models,
+    // 顶级 flow 段引用(2026-08-24 吸收自 flow-mcp):enabled=false = S000 硬门(链剔除 +
+    // 显式点名结构化错);toolDeadlineMs = 长操作防 stall 截止。传对象引用供测试 live 翻转。
+    flowCfg: config.flow,
+    configFile: config.configFile,
   }),
 };
 
@@ -76,6 +80,8 @@ const warnedUnknownPriority = new Set<string>();
  * per-modality 优先级链(config.imageProviderPriority / videoProviderPriority,已小写/去重)。
  * 校验:未知 provider 名剔除 + warn(不 fatal —— 配置错误不该杀死 server);已知但不具备该模态
  * 能力的项保留(list 头选择与 fallback 排序各自再按能力过滤)。未配置 = undefined(现行为)。
+ * 渠道硬禁用(disabledReason() 非空,如 flow.enabled=false)同样剔除 —— 链自动降级到下一渠道,
+ * 零静默(启动/首次解析时 warn 一次说明原因)。
  */
 export function getProviderPriority(modality: "image" | "video"): string[] | undefined {
   const override = __priorityOverrideForTests[modality];
@@ -84,12 +90,19 @@ export function getProviderPriority(modality: "image" | "video"): string[] | und
     : (modality === "image" ? config.imageProviderPriority : config.videoProviderPriority);
   if (!raw?.length) return undefined;
   const valid = raw.filter((n) => {
-    const ok = Object.prototype.hasOwnProperty.call(registry, n);
-    if (!ok && !warnedUnknownPriority.has(`${modality}:${n}`)) {
-      warnedUnknownPriority.add(`${modality}:${n}`);
-      console.warn(`[media-gen-mcp] ⚠️ ${modality}ProviderPriority 中的 "${n}" 不是已注册 provider,已忽略。Available: ${Object.keys(registry).join(", ")}`);
+    if (!Object.prototype.hasOwnProperty.call(registry, n)) {
+      if (!warnedUnknownPriority.has(`${modality}:${n}`)) {
+        warnedUnknownPriority.add(`${modality}:${n}`);
+        console.warn(`[media-gen-mcp] ⚠️ ${modality}ProviderPriority 中的 "${n}" 不是已注册 provider,已忽略。Available: ${Object.keys(registry).join(", ")}`);
+      }
+      return false;
     }
-    return ok;
+    const dis = registry[n].disabledReason?.();
+    if (dis && !warnedUnknownPriority.has(`${modality}:disabled:${n}`)) {
+      warnedUnknownPriority.add(`${modality}:disabled:${n}`);
+      console.warn(`[media-gen-mcp] ⚠️ ${modality}ProviderPriority 中的 "${n}" 已被配置禁用,已从链中剔除(${dis})`);
+    }
+    return !dis;
   });
   return valid.length ? valid : undefined;
 }
@@ -173,6 +186,21 @@ export type FallbackReq = { images?: string[]; image?: string; mode?: string; ke
  * 链全熔断/全无能力 → 落回 legacy 默认(defaultXxxProvider)。未配置 priority = 现行为零漂移。
  */
 export function resolveProvider(
+  name: string | undefined,
+  model: string | undefined,
+  modality: Modality,
+): { provider: MediaProvider; autoRouted: boolean; routedFrom?: string } {
+  const r = resolveProviderUngated(name, model, modality);
+  // 渠道硬禁用门(S000):显式 provider 点名 / model 归属 auto-route / config 显式默认
+  // 三种「明确指向被禁渠道」的到达路径统一在此拦截 —— 结构化禁用错自带修复动作,
+  // 绝不静默换成其他渠道(语义劫持防护)。链头/隐式 fallback 路径不经此(链已在
+  // getProviderPriority 剔除该渠道,天然到不了这里)。
+  const dis = r.provider.disabledReason?.();
+  if (dis) throw new Error(dis);
+  return r;
+}
+
+function resolveProviderUngated(
   name: string | undefined,
   model: string | undefined,
   modality: Modality,

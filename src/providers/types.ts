@@ -312,6 +312,17 @@ export interface MediaProviderBase {
    * 无法经 capableOf 谈判(迫使旁路);显式策略位让 fallback 与 priority 共用同一管线。
    */
   requiresOptIn?(modality: Modality): boolean;
+  /**
+   * 渠道级硬禁用门(2026-08-24 吸收自 flow-mcp S000;渠道无关的通用钩子):
+   * 返回非空字符串 = 该渠道被配置整体禁用,字符串即结构化禁用错(自带修复动作)。
+   * 生效点(registry/handler 消费,provider 只陈述事实):
+   *   - 显式点名(provider=X / model 归属 X)→ resolveProvider 直抛该错;
+   *   - 优先级链/fallback 候选 → 剔除(链自动降级到下一渠道,零静默);
+   *   - 渠道专属工具(flow_status 等)→ 入口即刻结构化报错(注册+门禁,禁用态自解释)。
+   * 未实现 / 返回 undefined = 无门。与 requiresOptIn 分工:requiresOptIn 管「默认可否被路由」,
+   * 本方法管「配置显式关掉后是否彻底不可用」。
+   */
+  disabledReason?(): string | undefined;
   /** 健康状态。未实现 → { configured: true, cooldown: false }。 */
   health?(): ProviderHealth;
   /** 优先级(数字大优先)。未实现 → 0。 */

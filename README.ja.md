@@ -330,6 +330,7 @@ Chrome が動いていない / 未ログインの場合、ツールは**構造�
 - **画像は flow 優先**:Flow の画像生成は 0 クレジット。Chrome が未起動 / 未ログインなら agnes → zhipu へ自動フォールバック(プローブには 60 秒のサーキットブレーカーがあり、リトライ嵐は起きません)。`provider` を明示指定するとそのプロバイダに固定 —— フォールバックなし。
 - **動画はデフォルトで agnes 優先**(無料)。Flow の動画はクレジットを消費するため、**意図的にデフォルトルーティングから外しています** —— `videoProviderPriority` に明示的に書く(クレジットは自己負担)か、毎回 `provider="flow"` を渡すか、どちらかです。
 - 両方未設定なら現行挙動のまま(デフォルトプロバイダ + agnes/zhipu 無料枠の相互フォールバック)。影響ゼロ。環境変数でも同等:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
+- **スイッチ 1 つで Flow を停止(S000 ハードゲート)**:`config.json` のトップレベルに `"flow": { "enabled": false }` —— Flow は両方の優先チェーンから除外され(チェーンは次のプロバイダへ自動降格)、明示的な `provider="flow"` / Flow モデル / `flow_status` / `flow_entity` の呼び出しはすべて構造化された `[flow] S000` 無効化エラーを返します(メッセージに修正手順:`true` に戻す——付き)。プロバイダの無言切り替えは決してしません。関連ノブ `"flow": { "toolDeadlineMs": 110000 }` は、Flow の長時間操作(画像ポーリング / 動画サブミット / ダウンロード)の上限で、スタール防止ルール(1 回 ≤120s)を遵守;タイムアウト時は `[flow] S410` を返します —— 底側の操作はキャンセルされず、後で `flow_status(mediaId)` で確認・保存できます。
 
 **Flow 資産管理(すべて 0 クレジット)**:`flow_status` はクレジット / メディア状態 / ダウンロードに加え、3 つの無料操作に対応 —— `shareMediaIds=[…]` は公開シェアリンクを作成(`labs.google/fx/tools/flow/shared/image/<id>` 形式、プロンプト付き)、`cancelMediaIds=[…]` は生成中の動画をキャンセル(注意:画像ジョブはキャンセル不可)、`deleteMediaIds=[…]` はメディアを一括削除。`flow_entity` ツールはキャラクターエンティティを作成し、30 種のプリセット音声をバインドします(先に `generate_image(provider="flow")` で外見を生成してから紐付け)。以降の生成でそのキャラクターを再利用できます。
 
