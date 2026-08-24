@@ -151,6 +151,51 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "What prompt and params was this image generated with? Can I reproduce it?"
 > Get: structured params — positive/negative prompt, model, sampling steps, CFG, seed, size (parsed locally from PNG-embedded ComfyUI/A1111 metadata; Agnes-generated images carry the full generation params — recover the prompt and reproduce with generate_image in one click)
 
+### Google Flow Provider (Veo 3.1 / Nano Banana — No API Key, 0-Credit Images)
+
+**Generate images / videos through Google Flow using your local Chrome login state** (Google Labs' [labs.google/fx/tools/flow](https://labs.google/fx/tools/flow)) — no API key needed, and it doesn't touch your Agnes / Zhipu free quota. Outputs download automatically and carry a `mediaId` for later management.
+
+**Prerequisite (one time)**: log into Flow once in your local Chrome.
+
+```bash
+lasso launch-chrome --port 9223 --mode visible
+# No lasso yet? npm i -g lasso-mcp
+# In the Chrome window that opens, visit https://labs.google/fx/tools/flow and log in; keep Chrome running afterwards
+```
+
+If Chrome isn't running / not logged in, the tools return a **structured error code + guidance** (S100 = can't reach Chrome, S101 = no open Flow page) — follow the hint, launch once, done. Never a silent failure, never a sneaky provider switch.
+
+**All of this is 0-credit (use freely)**:
+
+- **Image generation**: Nano Banana Pro / Nano Banana 2 (default) / Nano Banana 2 Lite; aspect ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproducible seeds; base-image edits + up to 10 reference images
+- **Upscaling**: 2K image upscale (model=`GEM_PIX_2_UPSAMPLE_2K`), 1080p video upscale (model=`veo_3_1_upsampler_1080p`)
+- **Asset management**: upload images, batch-delete, create public share links (`labs.google/fx/tools/flow/shared/…`), cancel in-flight videos, check credits / media status (`flow_status`); create character entities and bind one of 30 preset voices (`flow_entity`)
+
+**Video generation bills credits (per clip — know before you submit)**:
+
+| Model | Example keys | Credits per clip |
+|---|---|---|
+| Omni Flash (abra) text / image / reference | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15 (by 4/6/8/10s duration) |
+| Omni Flash video edit (V2V) | `abra_edit` | 20 |
+| Veo 3.1 Lite (incl. extend, first+last frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
+| Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
+| Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
+| Video upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
+
+One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Modes: text-to-video (t2v), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, 1–10), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction; wire is finalized but not yet live-submitted — the response carries a warning), upscale (`videoMediaId`).
+
+**Usage (explicit `provider="flow"`)**:
+
+```
+"Draw a cyberpunk cat via Flow, 3:4, seed 42"     → generate_image(provider="flow", aspect="3:4", seed=42)
+"Generate an 8s future-city flyover video via Flow" → create_video(provider="flow", model="abra_t2v_8s")
+"Check my Flow credits / is this mediaId done?"    → flow_status() / flow_status(mediaId=…)
+```
+
+**The `flow_status` introspection tool (0-credit throughout)**: with no arguments it returns a full snapshot — logged-in account, credit balance, the live model catalog (with per-key reference durations), 30 preset voices, and the project media list; with a `mediaId` it tracks one media and downloads the finished asset (`thumbnail=true` fetches the video thumbnail); `deleteMediaIds` batch-deletes, `shareMediaIds` creates public share links, `cancelMediaIds` cancels in-flight videos (images are not cancelable).
+
+> **Credit red line**: Flow video bills credits and is **never auto-routed by default** — either list it explicitly in `videoProviderPriority` (you own the credits; a loud warning fires at startup) or pass `provider="flow"` per call. For free automatic image generation, put `flow` at the head of `imageProviderPriority` (see Configuration below).
+
 ### Understand an Image / a PDF (Image & Document → Data)
 
 **Extract Text From a Screenshot**
@@ -239,6 +284,7 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 |---|---|---|
 | Draw architecture diagrams / data charts / cards / QR codes / formulas | **Nothing** | Local engine, works on install |
 | AI photorealistic images / AI video (text-to-image, text-to-video) | One free API Key (Agnes or Zhipu, pick one) | Online generation, saved to `output/` |
+| Generate images via Google Flow (0 credits) / manage Flow assets | **No key needed**: just log into Flow in local Chrome (launch via `lasso launch-chrome`) | Images / upscaling / upload / delete / share / cancel / queries all 0-credit; video bills credits (7–100 per clip) |
 | OCR text recognition (English / captchas / digits / simple documents) | **Nothing** | Falls back to the in-process lightweight engine by default, works on install |
 | Chinese OCR / invoice tables / chart reading / visual QA / handwriting / formulas | **Configure one line of Zhipu GLM Key** (zero deployment, permanently free on the cloud) **OR** self-host PaddleX / vLLM | GLM Key works immediately; for self-hosting, fill in one line of baseUrl once the service is running |
 | **PDF text extraction** (digital / scanned / multi-page) | Two deps: `npm i pdfjs-dist @napi-rs/canvas` (install on first PDF use) | Digital PDFs instant; scanned PDFs follow the OCR tiers above (default zero-config also works) |
@@ -270,6 +316,21 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 - **Zhipu**: https://open.bigmodel.cn/ → Sign up → API Keys (free models: `cogview-3-flash` / `cogvideox-flash`, permanently free)
 
 **Configuring Both Is More Reliable**: if either provider temporarily goes down (rate limits / service fluctuations), the other automatically takes over — invisible to you, with no duplicate charges.
+
+**Provider Priority Chain (optional, one line to route image generation through Google Flow's free tier)**: add `imageProviderPriority` / `videoProviderPriority` to `config.json` — an ordered `[head, ...fallback]` list. When the head fails (rate limit / 5xx) or its environment isn't ready (e.g. Flow needs a local Chrome CDP session), the chain **falls through in order**, invisibly:
+
+```json
+{
+  "imageProviderPriority": ["flow", "agnes", "zhipu"],
+  "videoProviderPriority": ["agnes", "zhipu"]
+}
+```
+
+- **Images flow-first**: Flow image generation is 0-credit; if Chrome isn't running / not logged in, it falls back agnes → zhipu (probes are circuit-broken for 60s, no retry storms). Passing an explicit `provider` pins that provider — no fallback.
+- **Video stays agnes-first** (free) by default; Flow video bills credits and is **deliberately excluded from default routing** — either list it in `videoProviderPriority` explicitly (you own the credits), or pass `provider="flow"` per call.
+- Omitting both keys keeps current behavior (default provider + agnes/zhipu free-tier mutual fallback), zero impact. Env equivalents: `MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
+
+**Flow asset management (all 0-credit)**: besides credits / media status / downloads, `flow_status` supports three zero-cost operations — `shareMediaIds=[…]` creates public share links (like `labs.google/fx/tools/flow/shared/image/<id>`, prompt included), `cancelMediaIds=[…]` cancels in-flight VIDEO generations (note: image jobs are not cancelable), and `deleteMediaIds=[…]` batch-deletes media. The `flow_entity` tool creates character entities and binds one of 30 preset voices (generate the look first via `generate_image(provider="flow")`, then attach it) for reuse in later generations.
 
 **Config File Location**: `~/.media-gen-mcp/config.json` (macOS / Linux) or `%USERPROFILE%\.media-gen-mcp\config.json` (Windows).
 

@@ -2,6 +2,16 @@
   "defaultProvider": "agnes",
   "defaultImageProvider": "agnes",
   "defaultVideoProvider": "zhipu",
+  "_providerPriorityNote": "渠道优先级链(C 任务):imageProviderPriority/videoProviderPriority = [head, ...fallback 顺序],链头失败(限流/5xx)或环境前置不满足(如 flow 的 CDP 未开)时按序惰性回落;显式传 provider 参数则钉死该渠道不回落。不配置这两项 = 现行为(defaultImageProvider/defaultVideoProvider + agnes/zhipu 免费层自动 fallback)。flow 为 opt-in 渠道:只有写进这两个列表或显式 provider=flow 才会被路由(生图 0 积分;视频消耗积分,列入前请知悉)。env 等价:MEDIA_IMAGE_PROVIDER_PRIORITY=\"flow,agnes,zhipu\" / MEDIA_VIDEO_PROVIDER_PRIORITY。",
+  "imageProviderPriority": [
+    "flow",
+    "agnes",
+    "zhipu"
+  ],
+  "videoProviderPriority": [
+    "agnes",
+    "zhipu"
+  ],
   "rateLimitTtlMs": 604800000,
   "providers": {
     "agnes": {
@@ -10,11 +20,16 @@
       "models": {
         "image": {
           "default": "agnes-image-2.1-flash",
-          "available": ["agnes-image-2.0-flash", "agnes-image-2.1-flash"]
+          "available": [
+            "agnes-image-2.0-flash",
+            "agnes-image-2.1-flash"
+          ]
         },
         "video": {
           "default": "agnes-video-v2.0",
-          "available": ["agnes-video-v2.0"]
+          "available": [
+            "agnes-video-v2.0"
+          ]
         }
       },
       "rateLimits": {}
@@ -26,11 +41,20 @@
       "models": {
         "image": {
           "default": "cogview-3-flash",
-          "available": ["cogview-3-flash", "cogview-4", "cogview-4-250304", "glm-image"]
+          "available": [
+            "cogview-3-flash",
+            "cogview-4",
+            "cogview-4-250304",
+            "glm-image"
+          ]
         },
         "video": {
           "default": "cogvideox-flash",
-          "available": ["cogvideox-flash", "cogvideox-2", "cogvideox-3"]
+          "available": [
+            "cogvideox-flash",
+            "cogvideox-2",
+            "cogvideox-3"
+          ]
         }
       },
       "rateLimits": {}

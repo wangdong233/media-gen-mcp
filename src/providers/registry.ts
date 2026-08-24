@@ -43,7 +43,9 @@ const registry: Record<string, MediaProvider> = {
     model: config.providers["glm-vision"]?.models?.default,
   }),
   flow: new FlowProvider({ // Google Flow(经本机 Chrome CDP 页面上下文;契约 doc/flow-api-contract.md)。
-    // 刻意不实现 capabilities() → 不进 agnes/zhipu 免费 fallback 链,防默认路由被破坏(审查铁律)。
+    // 渠道准入(C 任务):flow 实现 capabilities()(能力事实)+ requiresOptIn()=true(准入策略)——
+    // 未显式同意(provider/model 点名或 <modality>ProviderPriority 列入)时不进任何隐式 fallback 链
+    // (取代旧门禁「不实现 capabilities」,见 types.ts MediaProviderBase.requiresOptIn)。
     // 无默认视频模型:提交视频消耗积分,必须显式指定(或 config providers.flow.models.video.default)。
     cdpPort: config.providers.flow?.settings?.cdpPort,
     projectId: config.providers.flow?.settings?.projectId,
@@ -58,6 +60,53 @@ const registry: Record<string, MediaProvider> = {
   if (glmKeys.length > 1) {
     console.warn(
       `[media-gen-mcp] ⚠️ glm-vision 配置了 ${glmKeys.length} 个不重复 api_key(多 key 轮换)。智谱 User Agreement §2/§3 禁止多账号/账号共享,多 key 轮换可能违约(平台有权封号且订阅费不退)。请确认:(1) 所有 key 均为合规自有账号;(2) 非 Code Plan key(Code Plan 限 9 个白名单工具,media-gen-mcp 不在内)。`,
+    );
+  }
+}
+
+// ── C 任务:渠道优先级链(config 解析 + 测试注入缝)。 ──
+
+/** 测试注入缝:非 null 覆盖 config(隔离 ~/.media-gen-mcp/config.json 差异,保 CI 确定性)。仅供测试消费。 */
+export const __priorityOverrideForTests: { image?: string[] | null; video?: string[] | null } = {};
+
+/** 未知 provider 名的优先级项剔除时的告警(每模态至多一次,防刷屏)。 */
+const warnedUnknownPriority = new Set<string>();
+
+/**
+ * per-modality 优先级链(config.imageProviderPriority / videoProviderPriority,已小写/去重)。
+ * 校验:未知 provider 名剔除 + warn(不 fatal —— 配置错误不该杀死 server);已知但不具备该模态
+ * 能力的项保留(list 头选择与 fallback 排序各自再按能力过滤)。未配置 = undefined(现行为)。
+ */
+export function getProviderPriority(modality: "image" | "video"): string[] | undefined {
+  const override = __priorityOverrideForTests[modality];
+  const raw = override !== undefined
+    ? (override ?? undefined)
+    : (modality === "image" ? config.imageProviderPriority : config.videoProviderPriority);
+  if (!raw?.length) return undefined;
+  const valid = raw.filter((n) => {
+    const ok = Object.prototype.hasOwnProperty.call(registry, n);
+    if (!ok && !warnedUnknownPriority.has(`${modality}:${n}`)) {
+      warnedUnknownPriority.add(`${modality}:${n}`);
+      console.warn(`[media-gen-mcp] ⚠️ ${modality}ProviderPriority 中的 "${n}" 不是已注册 provider,已忽略。Available: ${Object.keys(registry).join(", ")}`);
+    }
+    return ok;
+  });
+  return valid.length ? valid : undefined;
+}
+
+/** provider 是否具备模态方法组(头选择用;窄化守卫 as*Provider 的宽松前置)。 */
+function hasModality(p: MediaProvider, modality: "image" | "video"): boolean {
+  return modality === "image"
+    ? typeof p.generateImage === "function" && typeof p.listImageModels === "function"
+    : typeof p.createVideo === "function" && typeof p.videoConstraints === "function" && typeof p.listVideoModels === "function";
+}
+
+// C 任务:videoProviderPriority 显式列入 flow = 用户知情同意付费档,启动时强提示(积分红线)。
+{
+  const vPrio = config.videoProviderPriority;
+  if (vPrio?.includes("flow")) {
+    console.warn(
+      `[media-gen-mcp] ⚠️ videoProviderPriority 包含 "flow":Flow 视频消耗积分(abra 7-20 / veo 10-100 点每条)。仅当你在 config.json 显式如此配置时才会走到该链;未列入时 flow 视频只能显式 provider=flow 调用。`,
     );
   }
 }
@@ -118,17 +167,17 @@ export type FallbackReq = { images?: string[]; image?: string; mode?: string; ke
  *
  * 消除"cogview-4 配 agnes → 503 No available channel"这类不透明错误,
  * 把 model→provider 的映射知识前置到工具层,不依赖调用方(CC)试错。
+ *
+ * C 任务:未显式指定 provider 且配置了 <modality>ProviderPriority 时,链头 = 优先级链上
+ * 首个「具备该模态能力且不在 60s 熔断窗口」的成员(惰性:不主动探测,只读本地 health);
+ * 链全熔断/全无能力 → 落回 legacy 默认(defaultXxxProvider)。未配置 priority = 现行为零漂移。
  */
 export function resolveProvider(
   name: string | undefined,
   model: string | undefined,
   modality: Modality,
 ): { provider: MediaProvider; autoRouted: boolean; routedFrom?: string } {
-  const targetName = name ?? (
-    modality === "image" ? config.defaultImageProvider :
-    modality === "video" ? config.defaultVideoProvider :
-    config.defaultVisionProvider
-  );
+  const targetName = name ?? defaultHead(modality);
   const target = getProvider(targetName);
   if (!model) return { provider: target, autoRouted: false };
 
@@ -160,6 +209,28 @@ export function resolveProvider(
   throw new Error(
     `model "${model}" 不属于 provider "${targetName}",且同时属于多个 provider:${owners.map((o) => o.name).join(", ")}。请显式指定 provider。`,
   );
+}
+
+/**
+ * C 任务:模态默认链头。priority 链存在时 = 链上首个「有该模态能力 && 非熔断」成员;
+ * 否则 = legacy 默认。只读本地状态(health/cooldown),零网络零探测 —— 探测只发生在
+ * 「轮到该 provider 真正尝试」时(provider 自身 ensureReady,30s 正缓存),满足惰性化约束。
+ */
+function defaultHead(modality: Modality): string {
+  if (modality === "image" || modality === "video") {
+    const prio = getProviderPriority(modality);
+    if (prio?.length) {
+      for (const n of prio) {
+        const p = registry[n];
+        if (!p || !hasModality(p, modality)) continue;
+        if (p.health?.().cooldown === true) continue; // 60s 熔断窗口内跳过(链自动降级)
+        return n;
+      }
+    }
+  }
+  return modality === "image" ? config.defaultImageProvider :
+    modality === "video" ? config.defaultVideoProvider :
+    config.defaultVisionProvider;
 }
 
 /**
@@ -336,18 +407,36 @@ function capableOf(p: MediaProvider, modality: Modality, req?: FallbackReq): boo
 }
 
 /**
- * 免费 Provider 自动 Fallback(pares3):当前 provider 不可用时,找另一个免费 provider 承接。
- * 排除 currentName → 按 health(configured & !cooldown) + capableOf 能力矩阵过滤 → 按 tier 降序。
- * 返回 undefined 表示无可用 fallback(两家都挂/无能力承接)。
+ * Provider 自动 Fallback(pares3;C 任务统一进优先级机制):当前 provider 不可用时,找下一个候选承接。
+ *
+ * 候选过滤(vision 模态不受 priority 影响,保持 pares5 语义):
+ *   - 排除 currentName
+ *   - configured 过滤对「priority 链内成员」豁免(optIn provider 如 flow 首次探测前 configured=false,
+ *     显式列入即视为已同意,允许被尝试 —— 探测由尝试本身惰性触发)
+ *   - cooldown 过滤(60s 熔断窗口内跳过,notifyUnavailable 置位)
+ *   - capableOf 能力矩阵(capabilities() 事实声明)
+ *   - 渠道准入:requiresOptIn(modality) 的 provider 仅在显式列入 priority 链时放行
+ *     (默认 = 旧「不实现 capabilities()」门禁的等价物:flow 永不进隐式免费链)
+ *
+ * 排序(单一管线,优先级与 fallback 两机制在此统一):
+ *   1. priority 链内按 list 位置升序(用户的偏好序)
+ *   2. 链外成员按 tier 降序(legacy 免费链行为,未配置时全走此序 → 零回归)
  */
 export function getFallbackProvider(currentName: string, modality: Modality, req?: FallbackReq): MediaProvider | undefined {
+  const prio = modality === "image" || modality === "video" ? getProviderPriority(modality) : undefined;
+  const pos = (n: string) => {
+    const i = prio?.indexOf(n.toLowerCase()) ?? -1;
+    return i === -1 ? Number.POSITIVE_INFINITY : i;
+  };
+  const inPriority = (n: string) => prio?.includes(n.toLowerCase()) === true;
   const candidates = listProviders()
     .filter((n) => n.toLowerCase() !== currentName.toLowerCase())
     .map((n) => getProvider(n))
-    .filter((p) => p.health?.().configured !== false)
+    .filter((p) => p.health?.().configured !== false || inPriority(p.name))
     .filter((p) => p.health?.().cooldown !== true)
-    .filter((p) => capableOf(p, modality, req));
+    .filter((p) => capableOf(p, modality, req))
+    .filter((p) => !p.requiresOptIn?.(modality) || inPriority(p.name));
   if (!candidates.length) return undefined;
-  candidates.sort((a, b) => (b.tier?.() ?? 0) - (a.tier?.() ?? 0));
+  candidates.sort((a, b) => (pos(a.name) - pos(b.name)) || ((b.tier?.() ?? 0) - (a.tier?.() ?? 0)));
   return candidates[0];
 }

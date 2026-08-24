@@ -151,6 +151,51 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 > Você: «Com qual prompt e parâmetros esta imagem foi gerada? Dá para reproduzir?»
 > Recebe: parâmetros estruturados — prompt positivo/negativo, modelo, passos de amostragem, CFG, seed, tamanho (analisado localmente dos metadados ComfyUI/A1111 embutidos no PNG; imagens geradas pelo Agnes trazem os parâmetros completos — recupere o prompt e reproduza com generate_image num clique)
 
+### Provider Google Flow (Veo 3.1 / Nano Banana — sem API Key, imagens 0 créditos)
+
+**Gere imagens / vídeos através do Google Flow usando a sessão do seu Chrome local** (o [labs.google/fx/tools/flow](https://labs.google/fx/tools/flow) do Google Labs) — não precisa de nenhuma API Key e não consome a sua cota gratuita Agnes / Zhipu. Os resultados são guardados automaticamente e vêm com um `mediaId` para gestão posterior.
+
+**Pré-requisito (uma vez)**: ter iniciado sessão no Flow no Chrome local.
+
+```bash
+lasso launch-chrome --port 9223 --mode visible
+# Ainda sem lasso? npm i -g lasso-mcp
+# Na janela do Chrome que abrir, entre em https://labs.google/fx/tools/flow e faça login; depois mantenha o Chrome a correr
+```
+
+Se o Chrome não estiver a correr / sem sessão, as ferramentas devolvem um **código de erro estruturado + orientação** (S100 = não consegue ligar ao Chrome, S101 = não há página do Flow aberta) — siga a dica, arranque uma vez e está feito. Nunca falha em silêncio nem troca de provider às escondidas.
+
+**Tudo isto custa 0 créditos (use à vontade)**:
+
+- **Geração de imagens**: Nano Banana Pro / Nano Banana 2 (padrão) / Nano Banana 2 Lite; proporções 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reprodutíveis; edição com imagem base + até 10 imagens de referência
+- **Upscale**: imagem em 2K (model=`GEM_PIX_2_UPSAMPLE_2K`), vídeo em 1080p (model=`veo_3_1_upsampler_1080p`)
+- **Gestão de ativos**: carregar imagens, apagar em lote, criar links públicos de partilha (`labs.google/fx/tools/flow/shared/…`), cancelar vídeos em geração, consultar créditos / estado dos média (`flow_status`); criar entidades de personagem e vincular uma das 30 vozes predefinidas (`flow_entity`)
+
+**A geração de vídeo consome créditos (por clip — saiba antes de submeter)**:
+
+| Modelo | Exemplos de keys | Créditos por clip |
+|---|---|---|
+| Omni Flash (abra) texto / imagem / referência | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15 (consoante a duração 4/6/8/10 s) |
+| Omni Flash edição de vídeo (V2V) | `abra_edit` | 20 |
+| Veo 3.1 Lite (inclui prolongar, primeiro+último frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
+| Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
+| Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
+| Upscale de vídeo 1080p | `veo_3_1_upsampler_1080p` | **0** |
+
+Um clip por chamada; durações 4 / 6 / 8 / 10 segundos; apenas 16:9 / 9:16. Modos: texto-para-vídeo (t2v), imagem-para-vídeo (`image`, o upload é 0 créditos), imagens-de-referência-para-vídeo (`images`, 1–10), primeiro+último frame (`keyframes`, exatamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrução de edição; wire finalizado mas ainda sem submissão real verificada — a resposta traz um aviso), upscale (`videoMediaId`).
+
+**Utilização (explícito `provider="flow"`)**:
+
+```
+"Desenha um gato cyberpunk via Flow, 3:4, seed 42"       → generate_image(provider="flow", aspect="3:4", seed=42)
+"Gera via Flow um vídeo de 8 s de uma cidade futurista"   → create_video(provider="flow", model="abra_t2v_8s")
+"Quantos créditos Flow me restam / este mediaId já acabou?" → flow_status() / flow_status(mediaId=…)
+```
+
+**A ferramenta de introspeção `flow_status` (0 créditos do início ao fim)**: sem argumentos devolve um retrato completo — conta com sessão, saldo de créditos, o catálogo de modelos em tempo real (com duração de referência por key), 30 vozes predefinidas e a lista de média do projeto; com um `mediaId` segue o estado de um média e descarrega o resultado concluído (`thumbnail=true` obtém a miniatura do vídeo); `deleteMediaIds` apaga em lote, `shareMediaIds` cria links públicos de partilha, `cancelMediaIds` cancela vídeos em geração (imagens não são canceláveis).
+
+> **Linha vermelha dos créditos**: o vídeo do Flow consome créditos e **nunca é roteado automaticamente por defeito** — ou o lista explicitamente em `videoProviderPriority` (os créditos são por sua conta; um aviso enfático surge no arranque), ou passa `provider="flow"` em cada chamada. Para imagens grátis em automático, coloque `flow` à cabeça de `imageProviderPriority` (ver Configuração abaixo).
+
 ### Entender uma imagem / um PDF (transformar imagem e documento em dados)
 
 **Extrair texto de uma captura de ecrã**
@@ -239,6 +284,7 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 |---|---|---|
 | Desenhar arquiteturas / gráficos de dados / cards / QR codes / fórmulas | **Nada** | Motor local, instala e usa |
 | Imagens / vídeos fotorrealistas por IA (texto-para-imagem, texto-para-vídeo) | Uma API Key gratuita (Agnes ou Zhipu, uma das duas) | Geração online, guardada em `output/` |
+| Gerar imagens via Google Flow (0 créditos) / gerir ativos do Flow | **Sem Key**: basta iniciar sessão no Flow no Chrome local (arranque via `lasso launch-chrome`) | Imagens / upscale / upload / eliminação / partilha / cancelamento / consultas tudo a 0 créditos; vídeo cobra créditos (7–100 por clip) |
 | OCR de texto (inglês / captcha / números / documentos simples) | **Nada** | Motor leve dentro do processo por padrão, instala e usa |
 | OCR chinês / tabelas de faturas / leitura de gráficos / QA visual / manuscrito / fórmulas | **Configurar uma linha de GLM Key da Zhipu** (zero deploy, gratuita na nuvem para sempre) **OU** auto-hospedar PaddleX / vLLM | Com GLM Key, fica a funcionar imediatamente; para auto-hospedar, preencha uma linha de baseUrl depois de o serviço estar a correr |
 | **Extração de texto de PDF** (PDF digital / digitalização / várias páginas) | Instalar duas dependências `npm i pdfjs-dist @napi-rs/canvas` (na primeira utilização de PDF) | PDF digital sai num instante; digitalizações seguem o nível de OCR acima (também funciona com zero config) |
@@ -270,6 +316,21 @@ O motor leve padrão dá conta de inglês / números, mas a precisão em chinês
 - **Zhipu**: https://open.bigmodel.cn/ → registar → API Keys (modelos gratuitos: `cogview-3-flash` / `cogvideox-flash`, gratuitos para sempre)
 
 **Configurar os dois é mais robusto**: se um cair temporariamente (rate limit / instabilidade), o outro assume automaticamente — sem que você dê por isso, sem cobrança duplicada.
+
+**Cadeia de prioridade de providers (opcional, uma linha para rotear a geração de imagens pelo nível gratuito do Google Flow)**: adicione `imageProviderPriority` / `videoProviderPriority` ao `config.json` — uma lista ordenada `[cabeça, ...fallback]`. Quando a cabeça falha (rate limit / 5xx) ou o ambiente não está pronto (ex.: o Flow precisa de uma sessão CDP do Chrome local), a cadeia **cai em ordem**, de forma invisível:
+
+```json
+{
+  "imageProviderPriority": ["flow", "agnes", "zhipu"],
+  "videoProviderPriority": ["agnes", "zhipu"]
+}
+```
+
+- **Imagens flow-first**: gerar imagens no Flow custa 0 créditos; se o Chrome não estiver a correr / sem sessão, cai automaticamente para agnes → zhipu (as sondas têm um disjuntor de 60 segundos, sem tempestades de retries). Passar um `provider` explícito fixa esse provider — sem fallback.
+- **O vídeo continua agnes-first por defeito** (grátis); o vídeo do Flow cobra créditos e fica **deliberadamente fora do roteamento por defeito** — ou o lista explicitamente em `videoProviderPriority` (os créditos são por sua conta), ou passa `provider="flow"` em cada chamada.
+- Sem ambas as chaves, o comportamento atual mantém-se (provider por defeito + fallback mútuo do nível gratuito agnes/zhipu), impacto zero. Equivalentes de ambiente: `MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
+
+**Gestão de ativos do Flow (tudo 0 créditos)**: além de créditos / estado dos média / downloads, o `flow_status` suporta três operações sem custo — `shareMediaIds=[…]` cria links públicos de partilha (tipo `labs.google/fx/tools/flow/shared/image/<id>`, prompt incluído), `cancelMediaIds=[…]` cancela gerações de VÍDEO em curso (atenção: trabalhos de imagem não são canceláveis) e `deleteMediaIds=[…]` apaga média em lote. A ferramenta `flow_entity` cria entidades de personagem e vincula uma das 30 vozes predefinidas (gere primeiro o visual via `generate_image(provider="flow")` e depois anexe-o) para reutilizar em gerações posteriores.
 
 **Localização do ficheiro de configuração**: `~/.media-gen-mcp/config.json` (macOS / Linux) ou `%USERPROFILE%\.media-gen-mcp\config.json` (Windows).
 

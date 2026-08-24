@@ -23,6 +23,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
+import os from "node:os";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const require_ = createRequire(import.meta.url);
@@ -39,6 +41,8 @@ const {
   sizeToImageAspect,
   estimateVideoCredits,
   isFlowMediaIdLike,
+  EDIT_WIRE_WARNING,
+  OPEN_VIDEO_MODES,
 } = require_(path.join(distDir, "providers/flow.js"));
 
 // ── StubTransport:零网络零消耗;记录所有出站请求供断言 ──
@@ -50,6 +54,13 @@ class StubTransport {
   uploadCount = 0;
   upsampleCount = 0;
   deleteBodies: any[] = [];
+  shareBodies: any[] = [];
+  cancelBodies: any[] = [];
+  entityCreates: any[] = [];
+  entityPatches: any[] = [];
+  entityResp: any = { projectId: "proj-test", entityId: "ent-new-1", entityInfo: { entityType: "CHARACTER", displayName: "Untitled Character", characterInfo: {} }, createTime: "2026-08-23T17:59:29.918917Z" };
+  workflows: any[] = [];
+  externalRef: any[] = [];
   media: any[];
   submitMedia: any[];
   openError: any;
@@ -67,6 +78,8 @@ class StubTransport {
     this.downloadB64 = opts.downloadB64 ?? Buffer.concat([fake, Buffer.alloc(2351072 - fake.length)]).toString("base64");
     this.downloadCt = opts.downloadCt ?? "video/mp4";
     this.modelConfig = opts.modelConfig ?? { videoModelFamilies: [], imageModelFamilies: [] };
+    this.workflows = opts.workflows ?? [];
+    this.externalRef = opts.externalRef ?? [];
   }
   async open() {
     if (this.openError) throw this.openError;
@@ -80,7 +93,7 @@ class StubTransport {
     }
     if (args.url.includes("credits?key=")) return this.json({ credits: 868, serviceTier: "SERVICE_TIER_INTERMEDIATE" });
     if (args.url.includes("flow.projectInitialData")) {
-      return this.json({ result: { data: { json: { projectContents: { media: this.media }, modelConfig: this.modelConfig } } } });
+      return this.json({ result: { data: { json: { projectContents: { media: this.media, workflows: this.workflows, externalReferenceMedia: this.externalRef }, modelConfig: this.modelConfig } } } });
     }
     if (args.url.includes("media.getMediaUrlRedirect")) {
       return { ok: true, status: 200, contentType: this.downloadCt, bodyB64: this.downloadB64 };
@@ -92,6 +105,22 @@ class StubTransport {
     }
     if (args.method === "POST" && args.url.includes("/video:")) {
       return this.json({ remainingCredits: 856, media: this.submitMedia });
+    }
+    if (args.method === "POST" && args.url.includes("flowMedia:cancelGeneration")) {
+      this.cancelBodies.push(JSON.parse(Buffer.from(args.bodyB64, "base64").toString("utf8")));
+      return this.json({});
+    }
+    if (args.method === "POST" && args.url.includes("flow.share.shareMedia")) {
+      this.shareBodies.push(JSON.parse(Buffer.from(args.bodyB64, "base64").toString("utf8")));
+      return this.json({ result: { data: { json: { result: { mediaShareId: "share-" + (this.shareBodies.length) + "-uuid" } } } } });
+    }
+    if (args.method === "POST" && args.url.includes("flow.createEntity")) {
+      this.entityCreates.push(JSON.parse(Buffer.from(args.bodyB64, "base64").toString("utf8")));
+      return this.json({ result: { data: { json: this.entityResp } } });
+    }
+    if (args.method === "PATCH" && args.url.includes("/v1/flow/entities")) {
+      this.entityPatches.push(JSON.parse(Buffer.from(args.bodyB64, "base64").toString("utf8")));
+      return this.json({ entity: this.entityResp });
     }
     if (args.method === "POST" && args.url.includes("flowMedia:")) {
       return this.json({ media: this.submitMedia });
@@ -540,8 +569,22 @@ describe("getMediaBytes thumbnail(2026-08-23 F 轮 live 勘误回归)", () => {
 // ═══ 8. fallback 安全(不破坏 agnes 默认路由) ═══
 
 describe("fallback 安全", () => {
-  test("flow 无 capabilities() → 任何模态的免费 fallback 都不会选中 flow", () => {
-    const { getFallbackProvider } = require_(path.join(distDir, "providers/registry.js"));
+  // C 任务:隔离 ~/.media-gen-mcp/config.json(本机已配 imageProviderPriority 含 flow)——
+  // 显式置 null = 强制「未配置优先级」语义,断言 legacy 免费链行为(与 CI 无 config 环境逐字节一致)。
+  const reg = require_(path.join(distDir, "providers/registry.js"));
+  reg.__priorityOverrideForTests.image = null;
+  reg.__priorityOverrideForTests.video = null;
+
+  test("flow 实现 capabilities()(能力事实)+ requiresOptIn(准入策略)→ 未显式同意时任何模态的免费 fallback 都不选 flow", () => {
+    const { getFallbackProvider, getProvider } = reg;
+    // 能力事实:capableOf 谈判可用(优先级链经同一管线);准入策略:两模态都 optIn-only
+    const flow = getProvider("flow");
+    assert.deepEqual(flow.capabilities(), {
+      image: { textToImage: true, imageToImage: true },
+      video: { textToVideo: true, imageToVideo: true, keyframes: true },
+    });
+    assert.equal(flow.requiresOptIn("image"), true);
+    assert.equal(flow.requiresOptIn("video"), true);
     const scenarios = [
       ["image", {}], ["image", { images: ["https://a/b.png"] }],
       ["video", {}], ["video", { mode: "text-to-video" }], ["video", { mode: "image-to-video", image: "https://a/b.png" }], ["video", { mode: "keyframes", keyframes: ["https://a/b.png"] }],
@@ -557,6 +600,17 @@ describe("fallback 安全", () => {
   test("health().configured 初始 false(CDP 从未就绪前不宣称可用)", () => {
     const p = new FlowProvider({ transport: new StubTransport() });
     assert.equal(p.health().configured, false);
+  });
+  test("环境前置错误带 precondition 标记(isChainAdvanceable 依据;业务错不带)", () => {
+    const { isChainAdvanceable } = require_(path.join(distDir, "providers/http.js"));
+    const mk = (code: string, opts?: any) => new FlowError(code, "x", opts);
+    assert.equal(mk("S100", { precondition: true }).precondition, true);
+    assert.equal(mk("S102", { precondition: true }).precondition, true);
+    assert.equal(isChainAdvanceable(mk("S100", { precondition: true })), true, "S100 链推进");
+    assert.equal(isChainAdvanceable(mk("S102", { precondition: true })), true, "S102 链推进");
+    assert.equal(isChainAdvanceable(mk("S301")), false, "参数业务错不推进");
+    assert.equal(isChainAdvanceable(mk("S103")), false, "S103 无 flowStatus 语义保留(不推进)");
+    assert.equal(isChainAdvanceable(mk("S201", { flowStatus: 500 })), true, "上游 5xx 推进");
   });
 });
 
@@ -599,11 +653,10 @@ describe("generateImage(stub 隔离,零真实消耗)", () => {
   });
 });
 
-// ═══ 10. 模式门禁(契约 §7.3/§9:2026-08-23 E 轮开放 r2v/extension/upsampler;edit 仍拒绝) ═══
+// ═══ 10. 模式门禁(契约 §7.3/§9:E 轮开放 r2v/extension/upsampler;E-parity 轮开放 edit §11.1) ═══
 
 describe("非开放模式门禁(S303 带依据,零提交)", () => {
   const notOpen: Array<[string, RegExp]> = [
-    ["abra_edit", /EditVideo/],
     ["veo_3_1_upsampler_4k", /UNAVAILABLE/],
   ];
   for (const [key, why] of notOpen) {
@@ -616,15 +669,20 @@ describe("非开放模式门禁(S303 带依据,零提交)", () => {
       assert.ok(!t.calls.some((c) => c.method === "POST"), "拒绝路径不得有提交");
     });
   }
-  test("E 轮新开放模式不再 S303(r2v/extension/upsampler 形状/提交均已 live 验证)", async () => {
+  test("E 轮新开放模式不再 S303(r2v/extension/upsampler 形状/提交均已 live 验证;edit 已在 E-parity 放行 §11.1)", async () => {
     const { p } = newProvider({ media: [doneMedia("vid-src-1")] });
     // r2v 带 images / extension·upsampler 带 videoMediaId 均应走到 stub 提交(不再抛 S303)
     await p.createVideo({ prompt: "x", model: "abra_r2v_4s", images: [PNG_1PX] });
     await p.createVideo({ prompt: "x", model: "veo_3_1_extension_lite", videoMediaId: "vid-src-1" });
     await p.createVideo({ prompt: "x", model: "veo_3_1_upsampler_1080p", videoMediaId: "vid-src-1" });
+    // edit(E-parity §11.1):wire 探针定型 → 不再 S303;缺 videoMediaId → S301 指路(不是模式拒绝)
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "abra_edit" }),
+      (e: any) => e.code === "S301" && e.message.includes("videoMediaId"),
+    );
   });
   test("开放集 key 直传可解析(resolveVideoModelKey 纯解析,i2v/interpolation 不再在 key 层 S303)", () => {
-    for (const k of ["abra_i2v_8s", "veo_3_1_interpolation_lite", "veo_3_1_i2v_s_fast_fl", "veo_3_1_i2v_lite", "abra_r2v_8s", "veo_3_1_extension_lite", "veo_3_1_upsampler_1080p"]) {
+    for (const k of ["abra_i2v_8s", "veo_3_1_interpolation_lite", "veo_3_1_i2v_s_fast_fl", "veo_3_1_i2v_lite", "abra_r2v_8s", "veo_3_1_extension_lite", "veo_3_1_upsampler_1080p", "abra_edit"]) {
       assert.equal(resolveVideoModelKey(k).key, k, `${k} 应可解析`);
     }
     assert.equal(resolveVideoModelKey("abra_i2v", 8).key, "abra_i2v_8s", "mnemonic abra_i2v + 8 → 完整 key");
@@ -1033,5 +1091,177 @@ describe("isFlowMediaIdLike(UUID 或 UUID 派生名)", () => {
     for (const bad of ["/Users/local/a.png", "img-exist", "a b c", "x:y", "../etc/passwd", ""]) {
       assert.ok(!isFlowMediaIdLike(bad), `应拒绝:${JSON.stringify(bad)}`);
     }
+  });
+});
+
+// ═══ 20. E-parity 轮(2026-08-23):分享/取消/edit/实体(契约 §11;stub 隔离零真实消耗) ═══
+
+describe("E-parity:分享 shareMedia(契约 §8.3 live + §11.2 URL 模板 bundle 解码)", () => {
+  const doneImage = { name: "img-1", image: { generatedImage: { seed: 1, model: "NARWHAL" } } };
+  const doneVideo = doneMedia("vid-1");
+  test("逐 id 提交 tRPC body 形状(includePrompt true / inputMediaIds [] / inputEntityIds [] —— §8.3 空数组铁律)+ shareUrl 模板", async () => {
+    const { t, p } = newProvider({ media: [doneImage, doneVideo] });
+    const r = await p.shareMedia(["img-1", "vid-1"]);
+    assert.equal(r.shared.length, 2);
+    assert.deepEqual(t.shareBodies, [
+      { json: { mediaId: "img-1", includePrompt: true, inputMediaIds: [], inputEntityIds: [] } },
+      { json: { mediaId: "vid-1", includePrompt: true, inputMediaIds: [], inputEntityIds: [] } },
+    ]);
+    // URL 模板(bundle 0x2828/0xad1/0xb06):/fx/tools/flow/shared/{image|video}/<mediaShareId>
+    assert.match(r.shared[0].shareUrl, /labs\.google\/fx\/tools\/flow\/shared\/image\/share-1-uuid$/);
+    assert.match(r.shared[1].shareUrl, /labs\.google\/fx\/tools\/flow\/shared\/video\/share-2-uuid$/);
+    assert.equal(r.shared[0].kind, "image");
+    assert.equal(r.shared[1].kind, "video");
+  });
+  test("未知 id → S400 整批不提交", async () => {
+    const { t, p } = newProvider({ media: [doneImage] });
+    await assert.rejects(() => p.shareMedia(["img-1", "ghost"]), (e: any) => e.code === "S400" && e.message.includes("ghost"));
+    assert.equal(t.shareBodies.length, 0, "整批拒绝,零提交");
+  });
+  test("空数组 → S301", async () => {
+    await assert.rejects(() => newProvider().p.shareMedia([]), (e: any) => e.code === "S301");
+  });
+});
+
+describe("E-parity:取消生成 cancelGenerations(契约 §11.3;bundle body={mediaId} 单值)", () => {
+  const inFlight = { name: "job-1", mediaMetadata: { mediaStatus: { mediaGenerationStatus: "MEDIA_GENERATION_STATUS_ACTIVE" } } };
+  test("in_progress → 逐 id POST body {mediaId}(单值,非数组)+ 取消后复查状态", async () => {
+    const { t, p } = newProvider({ media: [inFlight] });
+    const r = await p.cancelGenerations(["job-1"]);
+    assert.deepEqual(r.canceled, ["job-1"]);
+    assert.deepEqual(t.cancelBodies, [{ mediaId: "job-1" }], "body 是单值 mediaId(bundle 提交构造器明文)");
+    assert.equal(r.statusAfter.length, 1);
+    assert.equal(r.notCancelable.length, 0);
+  });
+  test("已完成 → notCancelable 零提交(服务端不可取消,前端先验免 4xx)", async () => {
+    const { t, p } = newProvider({ media: [doneMedia("v1")] });
+    const r = await p.cancelGenerations(["v1"]);
+    assert.deepEqual(r.canceled, []);
+    assert.equal(r.notCancelable[0].mediaId, "v1");
+    assert.equal(t.cancelBodies.length, 0, "非生成中不提交");
+  });
+  test("未知 id → S400 整批不提交;空数组 → S301", async () => {
+    const { t, p } = newProvider({ media: [inFlight] });
+    await assert.rejects(() => p.cancelGenerations(["job-1", "ghost"]), (e: any) => e.code === "S400");
+    assert.equal(t.cancelBodies.length, 0);
+    await assert.rejects(() => p.cancelGenerations([]), (e: any) => e.code === "S301");
+  });
+});
+
+describe("E-parity:CANCELED 状态映射(§11.3;枚举经 bundle 字符串表实证)", () => {
+  test("MEDIA_GENERATION_STATUS_CANCELED → failed 终态(取消生效的落点)", () => {
+    const r = mapMediaStatus({ mediaMetadata: { mediaStatus: { mediaGenerationStatus: "MEDIA_GENERATION_STATUS_CANCELED" } } });
+    assert.equal(r.status, "failed");
+    assert.equal(r.rawStatus, "MEDIA_GENERATION_STATUS_CANCELED");
+    assert.match(r.error ?? "", /取消/);
+  });
+});
+
+describe("E-parity:V2V edit 模式 wire(契约 §11.1;bundle Zod + 假 key 404 探针定型,live 未验证)", () => {
+  test("OPEN_VIDEO_MODES 含 edit;abra_edit + videoMediaId + prompt → EditVideo 端点且顶层无 useV2ModelConfig", async () => {
+    assert.ok(OPEN_VIDEO_MODES.has("edit"));
+    const { t, p } = newProvider({ media: [doneMedia("vid-src-1")] });
+    const r = await p.createVideo({ prompt: "make it snow", model: "abra_edit", videoMediaId: "vid-src-1" });
+    assert.equal(r.status, "queued");
+    assert.ok(r.warnings?.some((w: string) => w.includes(EDIT_WIRE_WARNING)), "提交响应必须带 live-未验证警示");
+    const call = t.calls.find((c) => c.method === "POST" && c.url.includes("batchAsyncGenerateVideoEditVideo"));
+    assert.ok(call, "命中 EditVideo 独立端点");
+    const body = JSON.parse(Buffer.from(call.bodyB64, "base64").toString("utf8"));
+    assert.equal(body.useV2ModelConfig, undefined, "§11.1:edit 是唯一不带 useV2ModelConfig 的端点(bundle 提交构造器明文)");
+    const item = body.requests[0];
+    assert.equal(item.videoModelKey, "abra_edit");
+    assert.equal(item.videoInput.mediaId, "vid-src-1");
+    assert.equal(item.textInput.prompt, "make it snow");
+    assert.equal(item.promptExpansionInput, undefined, "edit item schema(_0x457c52)无 promptExpansionInput");
+    assert.equal(item.outputSpec, undefined, "edit 不带 outputSpec(extension 同款;aspectRatio 按源继承)");
+    assert.match(item.aspectRatio, /^VIDEO_ASPECT_RATIO_/);
+  });
+  test("edit 缺 prompt(编辑指令)→ S301;edit 缺 videoMediaId → S301 指路", async () => {
+    const { t, p } = newProvider({ media: [doneMedia("vid-src-1")] });
+    await assert.rejects(
+      () => p.createVideo({ model: "abra_edit", videoMediaId: "vid-src-1" }),
+      (e: any) => e.code === "S301" && /prompt/.test(e.message),
+    );
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "abra_edit" }),
+      (e: any) => e.code === "S301" && /videoMediaId/.test(e.message),
+    );
+    assert.ok(!t.calls.some((c) => c.method === "POST" && c.url.includes("/video:")), "拒绝路径零提交");
+  });
+  test("edit 源守卫沿用:非视频源/生成中源 → S301(与 extension/upsampler 共用)", async () => {
+    const imgMedia = { name: "img-only", image: { generatedImage: { seed: 1 } } };
+    const { p } = newProvider({ media: [imgMedia] });
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "abra_edit", videoMediaId: "img-only" }),
+      (e: any) => e.code === "S301" && /image/.test(e.message),
+    );
+  });
+});
+
+describe("E-parity:角色实体(契约 §8.1 + §11.4/§11.5;createEntity 空串 collectionId live 实证)", () => {
+  const VOICES = [
+    { mediaId: "achernar", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Achernar", description: "Female, soft, high pitch", isPresetAudioSample: true, audioSamplePath: "https://gstatic.com/aitestkitchen/voices/samples/Achernar.wav" } } } },
+    { mediaId: "charon", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Charon", description: "Male", isPresetAudioSample: true } } } },
+  ];
+  const IMG_DONE = { name: "img-face", image: { generatedImage: { seed: 7 } } };
+  const WORKFLOWS = [{ name: "wf-1", metadata: { primaryMediaId: "img-face" } }];
+  function entityProvider(opts: any = {}) {
+    const r = newProvider({ media: [IMG_DONE], workflows: WORKFLOWS, externalRef: VOICES, ...opts });
+    (r.p as any).entitiesFile = path.join(os.tmpdir(), `flow-entities-test-${crypto.randomUUID()}.json`);
+    return r;
+  }
+  test("createEntity:tRPC body {json:{projectId, collectionId:\"\"}}(空串过 zod,§11.4 live;无需先建集合)", async () => {
+    const { t, p } = entityProvider();
+    const r = await p.createEntity({ displayName: "测试角色", presetVoiceId: "charon", imageMediaIds: ["img-face"] });
+    assert.equal(r.entityId, "ent-new-1");
+    assert.deepEqual(t.entityCreates, [{ json: { projectId: "proj-test", collectionId: "" } }]);
+    assert.equal(r.presetVoiceId, "charon");
+    assert.deepEqual(r.imageWorkflowIds, ["wf-1"], "imageMediaIds 经 workflows.primaryMediaId 映射为 workflowId");
+    // 一次 PATCH 补齐 displayName + 语音 + 形象(dotted updateMask)
+    const patch = t.entityPatches[0];
+    assert.equal(patch.updateMask, "entityInfo.displayName,entityInfo.characterInfo.audioReferences,entityInfo.characterInfo.imageReferences");
+    assert.equal(patch.entity.entityInfo.displayName, "测试角色");
+    assert.deepEqual(patch.entity.entityInfo.characterInfo.audioReferences, [{ presetVoiceId: "charon" }]);
+    assert.deepEqual(patch.entity.entityInfo.characterInfo.imageReferences, [{ workflowId: "wf-1" }]);
+    // 镜像落盘可 list
+    assert.equal(p.listEntities().length, 1);
+    assert.equal(p.listEntities()[0].entityId, "ent-new-1");
+  });
+  test("非法 presetVoiceId → S301 零提交(语音清单前置校验)", async () => {
+    const { t, p } = entityProvider();
+    await assert.rejects(
+      () => p.createEntity({ presetVoiceId: "no-such-voice" }),
+      (e: any) => e.code === "S301" && e.message.includes("no-such-voice"),
+    );
+    assert.equal(t.entityCreates.length, 0, "校验先于创建,零提交");
+  });
+  test("imageMediaIds 非已完成图片 → S301", async () => {
+    const { p } = entityProvider({ media: [{ name: "m-unknown" }], workflows: [] });
+    await assert.rejects(
+      () => p.createEntity({ imageMediaIds: ["m-unknown"] }),
+      (e: any) => e.code === "S301" && /不是已生成的图片/.test(e.message),
+    );
+  });
+  test("updateEntity:镜像外 entityId → S400(Flow 无实体读端点,只可更新本工具创建的实体)", async () => {
+    const { p } = entityProvider();
+    await assert.rejects(() => p.updateEntity("ghost", { displayName: "x" }), (e: any) => e.code === "S400");
+  });
+  test("updateEntity:改 displayName 只 PATCH 对应 mask 字段(§11.5:mask 外字段被服务端忽略)", async () => {
+    const { t, p } = entityProvider();
+    await p.createEntity({ displayName: "初名" });
+    const r = await p.updateEntity("ent-new-1", { displayName: "新名" });
+    assert.equal(r.displayName, "新名");
+    const patch = t.entityPatches[t.entityPatches.length - 1];
+    assert.equal(patch.updateMask, "entityInfo.displayName");
+    assert.equal(p.listEntities()[0].displayName, "新名", "镜像同步");
+  });
+  test("listPresetVoices:路径 e.media.audio.generatedAudio(§11.4 纠偏:非条目顶层)", async () => {
+    const { p } = entityProvider();
+    const voices = await p.listPresetVoices();
+    assert.equal(voices.length, 2);
+    assert.equal(voices[0].id, "achernar");
+    assert.equal(voices[0].displayName, "Achernar");
+    assert.equal(voices[0].description, "Female, soft, high pitch");
+    assert.match(voices[0].sampleUrl ?? "", /Achernar\.wav$/);
   });
 });

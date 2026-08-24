@@ -1,10 +1,16 @@
-// schema 真源锁:断言 create_video 的 numFrames/frameRate enum === 当前 defaultVideoProvider 的 videoConstraints()。
-// 自适应(agnes/zhipu 均可),不硬编码。入库(scripts/,非 _ 前缀),接入 npm test + prepublishOnly,防 schema↔运行时漂移进发版。
+// schema 真源锁:断言 create_video 的 numFrames/frameRate enum === 视频链头的 videoConstraints()。
+// 自适应(agnes/zhipu/flow 均可),不硬编码。入库(scripts/,非 _ 前缀),接入 npm test + prepublishOnly,防 schema↔运行时漂移进发版。
+// C 任务:链头 = videoProviderPriority[0](若配置且具备 video 能力,与 src/index.ts buildTools 同真源)→ 否则 defaultVideoProvider。
 import { spawn } from "node:child_process";
 import { config } from "../dist/config.js";
-import { getProvider } from "../dist/providers/registry.js";
+import { getProvider, asVideoProvider } from "../dist/providers/registry.js";
 
-const effProvider = config.defaultVideoProvider;
+let effProvider = config.videoProviderChainHead;
+try {
+  effProvider = asVideoProvider(getProvider(effProvider)).name;
+} catch {
+  effProvider = config.defaultVideoProvider; // 链头无 video 能力(配置异常)→ 回落 legacy 默认
+}
 const vc = getProvider(effProvider).videoConstraints();
 console.log(`默认 video provider = ${effProvider} → allowedNumFrames ${JSON.stringify(vc.allowedNumFrames)} / allowedFrameRates ${JSON.stringify(vc.allowedFrameRates)}\n`);
 
@@ -45,8 +51,8 @@ try {
     eq(cv.inputSchema.properties.frameRate.enum, vc.allowedFrameRates, `frameRate.enum === ${effProvider} allowedFrameRates`);
   }
 
-  console.log("[G2] 23 工具齐全(pares5 M2 +extract_table/analyze_chart/describe_image;pares6 +list_vision_capabilities/extract_pdf/get_pdf;P0-5 +generate_interactive_diagram;P0-5B +generate_nested_diagram;P0-6 +extract_image_meta;flow +flow_status)");
-  eq(tools.map((t) => t.name).sort(), ["analyze_chart", "create_video", "describe_image", "extract_image_meta", "extract_pdf", "extract_table", "extract_text", "flow_status", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_interactive_diagram", "generate_nested_diagram", "generate_qrcode", "get_pdf", "get_video", "list_models", "list_vision_capabilities", "render_svg", "render_video"], "23 工具齐全");
+  console.log("[G2] 24 工具齐全(pares5 M2 +extract_table/analyze_chart/describe_image;pares6 +list_vision_capabilities/extract_pdf/get_pdf;P0-5 +generate_interactive_diagram;P0-5B +generate_nested_diagram;P0-6 +extract_image_meta;flow +flow_status;E-parity +flow_entity)");
+  eq(tools.map((t) => t.name).sort(), ["analyze_chart", "create_video", "describe_image", "extract_image_meta", "extract_pdf", "extract_table", "extract_text", "flow_entity", "flow_status", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_interactive_diagram", "generate_nested_diagram", "generate_qrcode", "get_pdf", "get_video", "list_models", "list_vision_capabilities", "render_svg", "render_video"], "24 工具齐全");
 
   console.log("[G3] mode/resolution schema enum 与共享常量一致(0.8.1 单一真源)");
   if (cv) {

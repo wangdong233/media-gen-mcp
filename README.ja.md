@@ -152,6 +152,51 @@ Claude に一言だけ伝えます:
 > あなた:「この画像、どんなプロンプトとパラメータで生成された? 再現できる?」
 > 手に入るもの:構造化パラメータ —— ポジティブ/ネガティブ prompt・モデル・サンプリングステップ・CFG・シード・サイズ(PNG に埋め込まれた ComfyUI/A1111 メタデータをローカル解析;Agnes 生成画像は完全な生成パラメータを保持 —— prompt を取り出して generate_image でワンクリック再現)
 
+### Google Flow プロバイダ(Veo 3.1 / Nano Banana —— API Key 不要、画像生成 0 クレジット)
+
+**ローカル Chrome の Google Flow ログイン状態を借りてそのまま画像 / 動画を生成**(Google Labs の [labs.google/fx/tools/flow](https://labs.google/fx/tools/flow))—— API Key は一切不要で、Agnes / 智谱の無料枠も消費しません。成果物は自動で保存され、後から管理できる `mediaId` が付きます。
+
+**前提条件(一度だけ)**:ローカル Chrome で Flow にログイン済みであること。
+
+```bash
+lasso launch-chrome --port 9223 --mode visible
+# lasso 未導入なら:npm i -g lasso-mcp
+# 開いた Chrome で https://labs.google/fx/tools/flow を開いてログイン。以降は Chrome を起動したままにするだけ
+```
+
+Chrome が動いていない / 未ログインの場合、ツールは**構造化エラーコード + ガイド**を返します(S100 = Chrome に接続できない、S101 = Flow のページが開いていない)。指示に従って一度起動すれば完了。黙って失敗したり、勝手に別プロバイダへ切り替わったりしません。
+
+**以下はすべて 0 クレジット(安心して利用可)**:
+
+- **画像生成**:Nano Banana Pro / Nano Banana 2(デフォルト)/ Nano Banana 2 Lite。比率は 16:9 / 9:16 / 1:1 / 3:4 / 4:3、seed 再現可、ベース画像による編集 + 参考画像最大 10 枚に対応
+- **アップスケール**:画像の 2K アップスケール(model=`GEM_PIX_2_UPSAMPLE_2K`)、動画の 1080p アップスケール(model=`veo_3_1_upsampler_1080p`)
+- **アセット管理**:画像アップロード、一括削除、公開シェアリンク作成(`labs.google/fx/tools/flow/shared/…`)、生成中の動画のキャンセル、クレジット / メディア状態の照会(`flow_status`)。キャラクターエンティティ作成と 30 種のプリセット音声のバインド(`flow_entity`)
+
+**動画生成はクレジット消費(1 本あたり、送信前に把握を)**:
+
+| モデル | key 例 | 1 本あたりのクレジット |
+|---|---|---|
+| Omni Flash(abra)テキスト / 画像 / 参考画像 | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15(長さ 4/6/8/10 秒で変動) |
+| Omni Flash 動画編集(V2V) | `abra_edit` | 20 |
+| Veo 3.1 Lite(延長・最初と最後のフレームを含む) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
+| Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
+| Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
+| 動画 1080p アップスケール | `veo_3_1_upsampler_1080p` | **0** |
+
+1 回の呼び出しで 1 本。長さは 4 / 6 / 8 / 10 秒、比率は 16:9 / 9:16 のみ。モード:テキストから動画(t2v)、画像から動画(`image`、アップロードは 0 クレジット)、参考画像から動画(`images`、1〜10 枚)、最初と最後のフレーム(`keyframes`、ちょうど 2 枚)、延長(`videoMediaId`)、編集(`videoMediaId` + 編集指示。wire は確定済みだが実際の送信は未検証 —— レスポンスに警告が付きます)、アップスケール(`videoMediaId`)。
+
+**使い方(明示的に `provider="flow"`)**:
+
+```
+「Flow でサイバーパンクの猫を 3:4・seed 42 で描いて」          → generate_image(provider="flow", aspect="3:4", seed=42)
+「Flow で 8 秒の近未来都市フライオーバー動画を生成」            → create_video(provider="flow", model="abra_t2v_8s")
+「Flow のクレジット残高 / この mediaId はできた?」            → flow_status() / flow_status(mediaId=…)
+```
+
+**`flow_status` 内省ツール(終始 0 クレジット)**:引数なしで全体スナップショット —— ログインアカウント、クレジット残高、動的なモデルカタログ(key ごとの参考所要時間付き)、30 種のプリセット音声、プロジェクトのメディア一覧。`mediaId` 指定なら 1 件の状態を追跡し、完成した素材をダウンロード(`thumbnail=true` で動画サムネイル)。`deleteMediaIds` で一括削除、`shareMediaIds` で公開シェアリンク作成、`cancelMediaIds` で生成中の動画をキャンセル(画像はキャンセル不可)。
+
+> **クレジットのレッドライン**:Flow の動画はクレジットを消費するため、**デフォルトでは絶対に自動ルートしません** —— `videoProviderPriority` に明示的に書く(クレジットは自己負担、起動時に強い警告が出ます)か、毎回明示的に `provider="flow"` を渡すか、どちらかです。画像を無料で全自動にしたい場合は `imageProviderPriority` の先頭に `flow` を置くだけで OK(下の「設定ガイド」参照)。
+
 ### 1 枚の画像 / 1 部の PDF を理解する(画像とドキュメントをデータに)
 
 **スクショからテキストを抽出**
@@ -240,6 +285,7 @@ Claude に一言だけ伝えます:
 |---|---|---|
 | アーキテクチャ図 / データチャート / カード / QR コード / 数式を描く | **何も設定不要** | ローカルエンジン、入れれば即利用 |
 | AI 写実画像 / AI 動画(文生図、文生動画) | 無料 API Key を 1 社設定(Agnes または智谱、どちらか一方) | ネット接続で生成、`output/` に保存 |
+| Google Flow で画像生成(0 クレジット)/ Flow 資産の管理 | **Key 不要**:ローカル Chrome で Flow にログインするだけ(`lasso launch-chrome` で起動) | 画像 / アップスケール / アップロード / 削除 / シェア / キャンセル / 照会はすべて 0 クレジット。動画はクレジット制(1 本 7〜100) |
 | OCR テキスト認識(英語 / CAPTCHA / 数字 / 簡単な書類) | **何も設定不要** | デフォルトはプロセス内の軽量エンジン、入れれば即利用 |
 | 中文 OCR / 請求書テーブル / チャート読み取り / 画像 QA / 手書き / 数式 | **智谱 GLM Key を 1 行**(ゼロデプロイ、クラウド永久無料)**または** PaddleX / vLLM をセルフホスト | GLM Key を設定すればすぐ利用可、セルフホストはサービス起動後に baseUrl を 1 行記述 |
 | **PDF テキスト抽出**(デジタル版 / スキャン / 複数ページ) | 依存パッケージを 2 つインストール `npm i pdfjs-dist @napi-rs/canvas`(初回 PDF 利用時にインストール) | デジタル版 PDF は瞬時、スキャン版は上記 OCR 段階に従います(デフォルトゼロ設定でも駆動可) |
@@ -271,6 +317,21 @@ Claude に一言だけ伝えます:
 - **智谱**:https://open.bigmodel.cn/ → 登録 → API Keys(無料モデル:`cogview-3-flash` / `cogvideox-flash`、永久無料)
 
 **2 社設定でさらに安定**:どちらかが一時的にダウン(レート制限 / サービス変動)しても、もう一方が自動でカバー。あなたは何も感じず、二重課金も発生しません。
+
+**プロバイダ優先チェーン(任意、1 行で画像生成を Google Flow の無料枠へ)**:`config.json` に `imageProviderPriority` / `videoProviderPriority` を追加 —— 順序付きの `[先頭, ...フォールバック]` リストです。先頭が失敗(レート制限 / 5xx)するか、環境が整っていない(例:Flow にはローカル Chrome の CDP セッションが必要)場合、チェーンは**順番に自動フォールバック**します。利用者は意識しません:
+
+```json
+{
+  "imageProviderPriority": ["flow", "agnes", "zhipu"],
+  "videoProviderPriority": ["agnes", "zhipu"]
+}
+```
+
+- **画像は flow 優先**:Flow の画像生成は 0 クレジット。Chrome が未起動 / 未ログインなら agnes → zhipu へ自動フォールバック(プローブには 60 秒のサーキットブレーカーがあり、リトライ嵐は起きません)。`provider` を明示指定するとそのプロバイダに固定 —— フォールバックなし。
+- **動画はデフォルトで agnes 優先**(無料)。Flow の動画はクレジットを消費するため、**意図的にデフォルトルーティングから外しています** —— `videoProviderPriority` に明示的に書く(クレジットは自己負担)か、毎回 `provider="flow"` を渡すか、どちらかです。
+- 両方未設定なら現行挙動のまま(デフォルトプロバイダ + agnes/zhipu 無料枠の相互フォールバック)。影響ゼロ。環境変数でも同等:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
+
+**Flow 資産管理(すべて 0 クレジット)**:`flow_status` はクレジット / メディア状態 / ダウンロードに加え、3 つの無料操作に対応 —— `shareMediaIds=[…]` は公開シェアリンクを作成(`labs.google/fx/tools/flow/shared/image/<id>` 形式、プロンプト付き)、`cancelMediaIds=[…]` は生成中の動画をキャンセル(注意:画像ジョブはキャンセル不可)、`deleteMediaIds=[…]` はメディアを一括削除。`flow_entity` ツールはキャラクターエンティティを作成し、30 種のプリセット音声をバインドします(先に `generate_image(provider="flow")` で外見を生成してから紐付け)。以降の生成でそのキャラクターを再利用できます。
 
 **設定ファイルの場所**:`~/.media-gen-mcp/config.json`(macOS / Linux)、または `%USERPROFILE%\.media-gen-mcp\config.json`(Windows)。
 

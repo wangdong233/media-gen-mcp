@@ -299,6 +299,19 @@ export interface MediaProviderBase {
   listModels(): string[];
   /** 能力矩阵,供 fallback 路由判断能否承接。未实现 → 保守默认(不承接 fallback)。 */
   capabilities?(): ProviderCapabilities;
+  /**
+   * 渠道准入策略(C 任务:渠道优先级链):true = 该模态仅经「显式同意」介入 ——
+   * (a) 调用方显式 provider=X / model 归属该 provider,或
+   * (b) 用户在 `<modality>ProviderPriority`(config.json / env)中显式列入。
+   * 未实现 / false = 免费直连 provider,默认可进隐式免费 fallback 链(agnes/zhipu 现行为)。
+   *
+   * 语义分工:capabilities() 陈述「能做什么」(能力事实);本方法陈述「默认可否被路由」(准入策略)。
+   * flow 对 image/video 都返回 true:image 零积分但路由到 Google Flow 项目(隐私边界 + 模型语义
+   * 变更须显式同意,防默认路由随「本机 Chrome 是否开着」漂移);video 消耗积分(误耗红线)。
+   * 取代旧门禁「flow 刻意不实现 capabilities()」—— 用缺失表达策略是语义超载,且让优先级链
+   * 无法经 capableOf 谈判(迫使旁路);显式策略位让 fallback 与 priority 共用同一管线。
+   */
+  requiresOptIn?(modality: Modality): boolean;
   /** 健康状态。未实现 → { configured: true, cooldown: false }。 */
   health?(): ProviderHealth;
   /** 优先级(数字大优先)。未实现 → 0。 */

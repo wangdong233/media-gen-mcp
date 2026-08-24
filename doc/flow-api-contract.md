@@ -169,7 +169,7 @@ UNAVAILABLE = 当前 tier 不可用(4K/ultra 等)。
 | 首尾帧 | `batchAsyncGenerateVideoStartAndEndImage` | `startImage`+`endImage` | ✅ live 200(veo_3_1_interpolation_lite,-10 点) |
 | r2v | `batchAsyncGenerateVideoReferenceImages` | `referenceImages[]` | 形状 404 探针 ✓(未提交验证,暂不开放) |
 | 延长 | `batchAsyncGenerateVideoExtendVideo` | `videoInput`(需视频上传) | 未实现 |
-| 编辑 | `batchAsyncGenerateVideoEditVideo` | (EditVideo 不加 useV2ModelConfig) | 未实现 |
+| 编辑 | `batchAsyncGenerateVideoEditVideo` | (EditVideo 不加 useV2ModelConfig) | 形状定型+假 key 404 ✓(§11.1;live 待授权) |
 | 重拍 | `batchAsyncGenerateVideoReshootVideo` | | 未实现 |
 | 超分 | `batchAsyncGenerateVideoUpsampleVideo` | 分辨率编码在 key(§9.1 证伪 outputSpec.videoUpsampleResolution) | ✅ 已实现+live(§10.7) |
 | 物体插入/移除 | `...ObjectInsertion` / `...ObjectRemoval` | | 未实现 |
@@ -288,7 +288,7 @@ achernar(女·soft·high)/achird/algenib/algieba/alnilam/aoede/autonoe/callirrho
 1. `flow.createEntity {collectionId:null}` → zod 400 "Expected string, received null"(§8.1 的 live 记录不可复现,collectionId 必须是真实字符串 → 先有 collection)。
 2. `batchGenerateImages` requests[0] **无 metadata 字段**(Unknown name)→ "collectionId 联动生图"捷径证伪;实体挂图只能是客户端编排(生图 → PATCH entityInfo.imageReferences=[{workflowId}],此路径未端到端验证)。
 3. `projectContents` 键 = workflows/media/externalReferenceMedia/scenes/agentInfo——**无 entities/collections 读面**;`/v1/flowCollections/` 根 GET 页面上下文 CORS 拒绝 → 实体读侧还需另行逆向。
-→ 结论:entities 是多段未验证 wire 的 M+ 级工程,当前轮次 skip。
+→ 结论(当轮):entities 是多段未验证 wire 的 M+ 级工程,当前轮次 skip。【E-parity 轮解除:collectionId 空串可过(§11.4),实体三件套 createEntity/PATCH/语音绑定已全 live,读侧退化本地镜像;见 §11.4/§11.5】
 
 ### 9.7 台账
 §7 结余 894 → 2026-08-23 回升至 **918**(订阅续期/退款);本轮全部 probe 零积分。项目现存 30 media(25 图/5 视频,0 in-flight),projectContents 载荷 46KB——永久复用项目下随 media 线性膨胀,删除能力是 flow_status 轮询卫生前提(非伪需求)。
@@ -364,3 +364,51 @@ POST /v1/flow/upsampleImage
 - **wire 事实**:`flow_status(mediaId, thumbnail=true)` 对已完成视频(1c1f6235…,mediaBlobSize=2,508,689B)拉取 `getMediaUrlRedirect?mediaUrlType=MEDIA_URL_TYPE_THUMBNAIL` → **43,007B raw JPEG**(FF D8 开头,content-type image/jpeg)—— §2.6 旧记录 "base64 文本" 勘误为 raw 字节流。
 - **工程推论(已修)**:缩略图是服务端另行生成的 JPEG,字节数与本资产 mediaBlobSize 本就不同 → 工具层字节完整性闸门(audit finding-18)只对**原始资产**下载生效;旧版不区分分支,已完成视频取缩略图 100% 误报 `[flow] S402 下载不完整`。
 - **派生 mediaId 命名回顾(§10.7 补充适用面)**:超分产物 `<源id>_upsampled` 非 UUID 形状 → 工具层对放大链式引用的 mediaId 形状校验须放宽为「UUID 或 UUID 派生名」,存在性/类型校验交给 provider findMedia 的结构化 S400/S301。
+
+## 11. E-parity 轮 wire 实证(2026-08-23,分享/取消/edit/实体;方法:bundle Zod 明文 key + 字符串表解码(§10.1 升级:shuffle IIFE + string-aware 括号平衡切片)+ 页面上下文 live;积分 901→901 零消耗)
+
+### 11.1 V2V edit 请求形状 ✅(bundle Zod + 假 key 404 探针双定型;live 未验证)
+
+- **端点**:`POST /v1/video:batchAsyncGenerateVideoEditVideo`(端点族 §7.3 表内)。
+- **顶层构造器明文(bundle 提交函数逐字)**:`{mediaGenerationContext:{batchId,…extra}, clientContext:{…,recaptchaContext}, requests:[item], ...('batchAsyncGenerateVideoEditVideo'!==apiPathname && {useV2ModelConfig:true})}` —— **edit 是唯一不带 useV2ModelConfig 的端点**(§7.3 表的推断升级为构造器明文实证)。
+- **item schema(bundle Zod `_0x457c52`,全字段 optional)**:`{aspectRatio, metadata, outputSpec, referenceAudio, referenceEntities, referenceImages, referenceLikenesses, requestContext, seed, structuredPrompt, textInput, videoInput, videoModelKey}` —— **无 promptExpansionInput**(与 extension 的关键差异);实现采用 `{aspectRatio(源继承), metadata, seed, textInput, videoInput:{mediaId}, videoModelKey}`。
+- **假 key 探针**:`videoModelKey:"abra_edit_fake_nonexistent_key"` + 真实源 videoInput → **404 NOT_FOUND**(形状全过、零调度、零积分)。🔴 真实付费提交(abra_edit 20 点)未做 —— 工具提交响应固定带警示(EDIT_WIRE_WARNING),live 待用户授权。
+- reCAPTCHA action:VIDEO_GENERATION(同族端点共用,§7.4)。
+
+### 11.2 分享 shareMedia ✅(live 200;0 点)
+
+- **请求**:tRPC `flow.share.shareMedia` POST `{json:{mediaId, includePrompt:true, inputMediaIds:[], inputEntityIds:[]}}`(inputEntityIds 必须 `[]`,null → zod 400,§8.3 铁律复验)。
+- **响应**:`{result:{data:{json:{result:{mediaShareId:"<uuid>"}, status:200}}}}`(tRPC 三层嵌套,比 §8.3 记录的浅层多两层)。
+- **分享 URL 模板(bundle 字符串表解码 0x2828/0xad1/0xb06)**:`https://labs.google/fx/tools/flow/shared/{image|video}/<mediaShareId>`(image/video 按媒体 kind;`/fx` 前缀 + shareMediaType 段)。provider 代码路径 live 复验:已完成图片 → `…/shared/image/d55527f0-…` 200。
+
+### 11.3 取消生成 cancelGeneration(🔴 形状定型 + 适用面 live 边界;E2E 视频取消未验证)
+
+- **wire(bundle 提交函数明文)**:`POST https://aisandbox-pa.googleapis.com/v1/flowMedia:cancelGeneration` Bearer body **`{mediaId: <提交响应 media.name>}`**(单值非数组);客户端调用方 = VideoService 的 processingRequests 队列(传提交响应的 media.name)。
+- **假 id 404 探针** ✓(形状过、零副作用);**枚举**:`MEDIA_GENERATION_STATUS_CANCELED`(字符串表 0x126a)+ `PUBLIC_ERROR_MEDIA_GENERATION_CANNOT_BE_CANCELED`(0x11ce)—— mapMediaStatus 已补 CANCELED → failed 终态。
+- **🔴 图片不可取消(live 实证)**:对真实 in-flight 的**图片** mediaId(提交 200 后立即取消)→ **404 "Requested entity was not found"** —— cancelable registry 只登记视频生成(bundle 调用方只有 VideoService 与此一致)。
+- **未验证(待授权)**:视频 in-flight 的 E2E 取消(需 ≥7 点提交,本轮零积分纪律不做)。
+- **🔴 读侧可见性(live)**:同一 GET `flow.projectInitialData?input={projectId}` URL 疑似被 HTTP 缓存 —— 提交后 42s 内轮询(3s 间隔)始终看不到 in_flight 条目,但生成照常完成;意味着「读侧等 in-flight 出现再取消」的编排对快生成(图片)不可行。视频生成 ~2min,窗口远大于缓存 TTL(E 轮 extension 轮询成功佐证)。
+
+### 11.4 实体 createEntity ✓(live 200;collectionId 空串 —— §9.6 阻塞解除;0 点)
+
+- `tRPC flow.createEntity` POST `{json:{projectId, collectionId:""}}` → **200** `{result:{data:{json:{projectId, entityId, entityInfo:{entityType:"CHARACTER", displayName:"Untitled Character", characterInfo:{}}, createTime, updateTime}}}}`。
+- 🔴 **§9.6 修正**:zod 只拒 `null`("Expected string, received null");**空串 "" 直接建实体,无需先建 collection** → 集合 wire(/v1/flowCollections/)依赖蒸发,不实施。
+- **projectContents 顶层键(live 复核)**:`projectName/projectId/projectContents/modelConfig/appConfig/userData/agentInfo`;projectContents 键 = `workflows/media/externalReferenceMedia/scenes/agentInfo` —— 确认无 entities 读面,本地镜像(~/.media-gen-mcp/flow-entities.json)是唯一读侧。
+- **workflows 映射**:`workflows[].{name, metadata.primaryMediaId}` —— imageMediaIds → imageReferences 用的 workflowId 经此映射(live:workflow 0976f24a ↔ media 0aa9c5ea)。
+
+### 11.5 实体 PATCH ✓(live 200;0 点;无需 reCAPTCHA)
+
+- `PATCH /v1/flow/entities` Bearer body `{entity:{projectId, entityId, entityInfo:{entityType:"CHARACTER", displayName, characterInfo:{audioReferences:[{presetVoiceId}], imageReferences:[{workflowId}]}}}, updateMask:"entityInfo.displayName,entityInfo.characterInfo.audioReferences,…"}`。
+- **updateMask 语义(live)**:mask 外字段被服务端忽略(发 imageReferences 但 mask 不含 → 响应无该字段、不落库)—— 增量更新只 PATCH 变更字段。
+- entry schema(bundle Zod):audioReference = `{presetVoiceId?, workflowId?}`;imageReference = `{workflowId?}`。
+- provider 代码路径 live 全链:建(默认名)→ PATCH 改名+绑 charon → 再 PATCH 只改 displayName(mask 单字段)→ 镜像落盘,全程积分 901 恒定。
+
+### 11.6 30 预设语音路径纠偏(§8.8 补充;live)
+
+- externalReferenceMedia 条目形状:`{mediaId:"achernar", mediaType:"AUDIO", workflowDisplayName:"Achernar", media:{name, audio:{generatedAudio:{name, description, isPresetAudioSample:true, audioSamplePath}}}}` —— **audio 嵌在 entry.media 下**(§8.8 未记录层级);30 条恒在(live 复核),已折入 flow_status `preset_voices` 段 + flow_entity(action=voices)。
+
+### 11.7 字符串表解码方法沉淀(§10.1 的工程化补全)
+
+- `a1_0x4290` 数组抽取须 **string-aware 括号平衡**(朴素计数会被 CSS/正则字符串内的花括号破坏;正确切片 ~1.4MB,尾部 `return a1_0x4290();}`)。
+- 解码前必须先跑 **shuffle IIFE**(`(function(_0x1b8ff4,_0x104e7c){…rotate…})(a1_0x4290,0x767d6)`;校验和循环 shift/push 直至平衡)—— 不跑则全部索引错位(症状:解码值风马牛不相及)。
+- 关键索引:0x2425=aisandbox 根 URL / 0x1de3=cancelGeneration 端点 / 0x2828=`/tools/flow/shared/` / 0xad1=`image` / 0xb06=`video`(share URL 模板)/ 0x126a=CANCELED / 0x11ce=CANNOT_BE_CANCELED。

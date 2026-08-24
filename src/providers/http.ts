@@ -30,6 +30,21 @@ export function isFallbackWorthy(e: any): boolean {
   return e?.name === "TypeError";
 }
 
+/**
+ * C 任务:渠道链推进判定(isFallbackWorthy 的超集,仅优先级链 walk 消费)。
+ *
+ * 增补一类:provider 自声明的「环境前置未就绪」错误(e.precondition === true,如 flow 的
+ * S100 CDP 不可连 / S101 无页面 / S102 未登录 / S104 reCAPTCHA 失败)—— 请求从未提交,
+ * 不是业务错误,链头是「默认路由」(非显式点名)时应推进到下一渠道,而非把环境错误抛给用户。
+ *
+ * 与 isFallbackWorthy 分开而未合并:单跳 fallback 既有路径(vision/pdf 等)语义保持逐字节不变;
+ * 本函数仅供 generate_image 链式 walk 与 create_video 的链头(非钉死)路径使用。
+ * 显式点名的 provider(如 provider=flow)在调用方先被钉死守卫拦下,永不走到这里。
+ */
+export function isChainAdvanceable(e: any): boolean {
+  return isFallbackWorthy(e) || e?.precondition === true;
+}
+
 /** 判断错误是否为"瞬时"(值得重试):5xx、网络层错误(fetch TypeError / status=0)。 */
 export function isTransient(e: any): boolean {
   const s = e?.status ?? 0;

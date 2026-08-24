@@ -35,6 +35,30 @@ function num(envName: string, def: number, fileVal?: number): number {
 }
 
 /**
+ * C 任务(渠道优先级链):解析 per-modality provider 优先级列表。
+ * 来源:config.json 数组 > env 逗号分隔(如 MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu")。
+ * 未配置 = undefined → 走 legacy 行为(defaultXxxProvider + tier 免费链,零回归)。
+ * 非字符串/空项剔除、小写归一、去重(保序);结果为空数组也按未配置处理。
+ * 导出供单测白盒(与 num 同范式)。
+ */
+export function parseProviderPriority(fileVal: unknown, envName: string): string[] | undefined {
+  let raw: unknown[] | undefined;
+  if (Array.isArray(fileVal)) raw = fileVal;
+  else if (process.env[envName]) raw = String(process.env[envName]).split(",");
+  if (!raw?.length) return undefined;
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const n = x.trim().toLowerCase();
+    if (!n || seen.has(n)) continue;
+    seen.add(n);
+    names.push(n);
+  }
+  return names.length ? names : undefined;
+}
+
+/**
  * 动态构造 providers:遍历 config.json 的 providers 块,字段通用化。
  * 新增 provider 只需 config.json 加块 + registry.ts 注册 + 实现文件 —— config.ts 零改动。
  * env 回退按约定 `<UPPER(NAME)>_API_KEY` 等。
@@ -81,6 +105,28 @@ export const config = {
 
   /** pares5: 识别模态默认 provider(未显式指定时);M1 起注册 tesseract 进程内兜底。与 image/video 一致,不暴露 per-modality env。 */
   defaultVisionProvider: userCfg.defaultVisionProvider ?? "tesseract",
+
+  /**
+   * C 任务:渠道优先级链(image 模态)。priority[0] = 未显式指定 provider 时的链头;
+   * 链头失败(fallback-worthy / 环境前置失败)按序惰性推进。未配置 = undefined → 现行为
+   * (defaultImageProvider + agnes/zhipu tier 免费链,零回归)。optIn provider(如 flow)
+   * 只有显式列入本链才可被默认路由/链内回落选中。
+   */
+  imageProviderPriority: parseProviderPriority(userCfg.imageProviderPriority, "MEDIA_IMAGE_PROVIDER_PRIORITY"),
+
+  /** C 任务:渠道优先级链(video 模态)。语义同上;默认不配置(agnes 免费),flow 需显式列入(视频消耗积分)。 */
+  videoProviderPriority: parseProviderPriority(userCfg.videoProviderPriority, "MEDIA_VIDEO_PROVIDER_PRIORITY"),
+
+  /**
+   * C 任务:静态链头(仅供 schema 展示与 check 脚本;运行时解析以 registry.resolveProvider
+   * 为准 —— 那里还叠加 60s 熔断跳过)。未配 priority 时 = defaultXxxProvider(现值,零漂移)。
+   */
+  get imageProviderChainHead(): string {
+    return this.imageProviderPriority?.[0] ?? this.defaultImageProvider;
+  },
+  get videoProviderChainHead(): string {
+    return this.videoProviderPriority?.[0] ?? this.defaultVideoProvider;
+  },
 
   outDir: userCfg.outDir
     ? path.resolve(userCfg.outDir)
