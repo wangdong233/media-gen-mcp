@@ -14,18 +14,47 @@
  *      (agnes/zhipu)显式点名 → 不钉死(失败按链回落带 warning)—— 与收窄后的 schema 契约一致
  *
  * 导入方式:与 flow.test.ts 同范式(createRequire 引编译产物 dist/;npm test 先 build 再 build:tests)。
- * 测试隔离铁律:__priorityOverrideForTests 置 null,隔离 ~/.media-gen-mcp/config.json 的本机差异
- * (本机已配 imageProviderPriority 含 flow;CI 无 config)—— 两环境断言结果逐字节一致。
+ * 测试隔离铁律(2026-08-24 CI #18/#19 红后加固)双层隔离:
+ *   ① __priorityOverrideForTests 置 null,隔离本机 imageProviderPriority 差异;
+ *   ② 本文件进程内写 tmp fixture 并经 MEDIA_GEN_MCP_CONFIG(config.ts 官方测试注入缝,
+ *     同 flow-gate.integration 先例)在 require dist 之前设 env —— 本文件绝不读
+ *     ~/.media-gen-mcp/config.json(CI 无该文件时 zhipu configured=false + models 空,
+ *     模型归属路由 / 视频回落链两用例曾因此依赖本机状态而 false-fail)。
+ *   fixture 后本地/CI 断言逐字节一致;「测试环境自足性」用例机械化盯防该缝被回退
+ *   (守卫再丢失会立刻在此炸出,而非两条下游用例莫名红)。
  */
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
+
+// ── 自足 fixture(必须先落盘 + 设 env,再 require dist:config.ts 模块加载时读此 env)──
+// 零网络零积分:key 为哑值,只为 health().configured=true 与模型目录非空两项路由前提成立;
+// 本文件全程 override 注入 / Stub transport,从不发真实请求。node --test 每文件独立进程,
+// 此 env 不外泄到其他测试文件。
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "provider-priority-"));
+const cfgPath = path.join(tmpDir, "config.json");
+fs.writeFileSync(cfgPath, JSON.stringify({
+  defaultImageProvider: "agnes",
+  providers: {
+    agnes: { apiKey: "test-agnes-key" },
+    zhipu: {
+      apiKey: "test-zhipu-key",
+      models: {
+        image: { available: ["cogview-3-flash", "cogview-4", "cogview-4-250304", "glm-image"] },
+        video: { available: ["cogvideox-flash", "cogvideox-2", "cogvideox-3"] },
+      },
+    },
+  },
+}, null, 2));
+process.env.MEDIA_GEN_MCP_CONFIG = cfgPath;
 
 const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
-const { parseProviderPriority } = require_(path.join(distDir, "config.js"));
+const { parseProviderPriority, CONFIG_FILE } = require_(path.join(distDir, "config.js"));
 const reg = require_(path.join(distDir, "providers/registry.js"));
 const { getProviderPriority, getFallbackProvider, resolveProvider, getProvider } = reg;
 const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
@@ -37,6 +66,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 before(() => {
   reg.__priorityOverrideForTests.image = null;
   reg.__priorityOverrideForTests.video = null;
+});
+
+// ═══ 0. 测试环境自足性(CI #18/#19 根因回归:无 ~/.media-gen-mcp/config.json 环境不依赖本机状态)═══
+
+describe("测试环境自足性(fixture 注入缝机械化盯防)", () => {
+  test("CONFIG_FILE 指向本文件 tmp fixture;zhipu configured + 模型目录非空(路由两前提)", () => {
+    assert.equal(CONFIG_FILE, cfgPath, "fixture 注入失效 = 隔离缝被回退,下游用例将退化为依赖本机状态");
+    assert.equal(getProvider("zhipu").health().configured, true, "zhipu 须 configured(CI 无 config 时为 false,曾致视频回落链用例 false-fail)");
+    assert.ok((getProvider("zhipu").listImageModels() as string[]).includes("cogview-4"), "cogview-4 须在 zhipu 图像目录(模型归属路由前提)");
+    assert.ok((getProvider("zhipu").listVideoModels() as string[]).length > 0, "zhipu 视频目录须非空");
+    assert.equal(getProvider("agnes").health().configured, true);
+  });
 });
 
 // ═══ 1. 配置解析 ═══
