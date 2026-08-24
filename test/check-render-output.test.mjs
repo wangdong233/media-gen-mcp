@@ -358,20 +358,20 @@ describe("CLI check-render-output.mjs", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("handler 钩子覆盖完整性 meta", () => {
-  test("src/index.ts 中 assertOutputClean 调用数 === 11(渲染工具数;generate_interactive_diagram + generate_nested_diagram 跳过)", () => {
+  test("src/index.ts 中 assertOutputClean 调用数 === 12(渲染工具数 + flow_status;generate_interactive_diagram + generate_nested_diagram 跳过)", () => {
     const src = readFileSync(path.join(ROOT, "src/index.ts"), "utf8");
     const calls = (src.match(/assertOutputClean\(/g) || []).length;
     // 11 个有 local_path 的 raster/vector 渲染工具(generate_image / create_video / get_video /
     // generate_diagram / generate_qrcode / generate_chart / generate_formula / generate_icon /
-    // generate_card / render_svg / render_video)。
-    // flow_status 的媒体下载钩子已随 Google Flow 渠道分离至 flow-mcp(24→22 工具,12→11 处调用)。
+    // generate_card / render_svg / render_video)+ flow_status 的媒体下载(第 4 条落盘路径,
+    // flow audit finding-12 补齐:视频传 mp4 容器探活,图片走 magic 路由)。
     // P0-5 generate_interactive_diagram + P0-5B generate_nested_diagram 均产 local_path 但**故意跳过**
     // assertOutputClean(HTML 是 viewer 容器,非 raster/vector;契约 asserts S2/S4/S9/S11/S_NESTED 在
     // renderInteractiveHtml / buildNestedHtml 内部做)。若未来新增 raster/vector 渲染工具,同步插入钩子并更新此断言。
     assert.equal(
       calls,
-      11,
-      `assertOutputClean 调用数=${calls},预期 11;若新增 raster/vector 渲染工具,需同步插入钩子并更新此断言。`,
+      12,
+      `assertOutputClean 调用数=${calls},预期 12;若新增 raster/vector 渲染工具,需同步插入钩子并更新此断言。`,
     );
   });
 

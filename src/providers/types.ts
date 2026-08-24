@@ -26,6 +26,18 @@ export interface ImageRequest {
   /** 图生图输入:公网 URL 或 data URI;base64 直传也可(取决于 provider)。 */
   images?: string[];
   mode?: ImageMode;
+  /**
+   * 比例直传("16:9"/"9:16"/"1:1"/"3:4"/"4:3")。provider 支持时消费(flow 映射到 5 种
+   * IMAGE_ASPECT_RATIO_* 枚举);不支持的 provider(agnes/zhipu)由工具层告警后忽略
+   * (项目纪律:provider 丢弃参数必须出 warning,不静默)。
+   */
+  aspect?: string;
+  /**
+   * 复现/锁定结果用 seed。provider 支持时消费(flow 直入请求体 seed 字段);
+   * 不支持的 provider 由工具层告警后忽略。绝不经 extra 透传(extra 会被
+   * agnes/zhipu 的 Object.assign(body, extra) 直透上游请求体)。
+   */
+  seed?: number;
   /** provider 私有字段透传口(如 Agnes 的 return_base64 / extra_body.response_format)。 */
   extra?: Record<string, unknown>;
 }
@@ -33,6 +45,10 @@ export interface ImageRequest {
 export interface ImageOutput {
   url?: string;
   b64?: string;
+  /** flow:该张对应的 Flow mediaId(经 flow_status(mediaId) 可复下载/对账;其他 provider 不填)。 */
+  mediaId?: string;
+  /** flow:该张的实际生成 seed(响应侧回读,复现用)。 */
+  seed?: number;
 }
 
 export interface ImageResult {
@@ -53,6 +69,10 @@ export interface VideoRequest {
   image?: string;
   /** 关键帧:多图 URL 数组。 */
   keyframes?: string[];
+  /** 参考图:多图 URL 数组(flow r2v 模式;上传后作 referenceImages 引用)。 */
+  images?: string[];
+  /** 视频源 mediaId(flow extension/upsampler 模式:项目内已有视频的引用,无需上传)。 */
+  videoMediaId?: string;
   resolution?: Resolution;
   ratio?: string;
   numFrames?: number;
@@ -280,15 +300,16 @@ export interface MediaProviderBase {
   /** 能力矩阵,供 fallback 路由判断能否承接。未实现 → 保守默认(不承接 fallback)。 */
   capabilities?(): ProviderCapabilities;
   /**
-   * 渠道准入策略(渠道优先级链机制):true = 该模态仅经「显式同意」介入 ——
+   * 渠道准入策略(C 任务:渠道优先级链):true = 该模态仅经「显式同意」介入 ——
    * (a) 调用方显式 provider=X / model 归属该 provider,或
    * (b) 用户在 `<modality>ProviderPriority`(config.json / env)中显式列入。
    * 未实现 / false = 免费直连 provider,默认可进隐式免费 fallback 链(agnes/zhipu 现行为)。
    *
    * 语义分工:capabilities() 陈述「能做什么」(能力事实);本方法陈述「默认可否被路由」(准入策略)。
-   * 语义来源(flow 已分离,框架保留):optIn 用于「零积分但改变隐私边界/产物语义」或「消耗积分」的
-   * 渠道 —— 用缺失 capabilities() 表达策略是语义超载,且让优先级链无法经 capableOf 谈判;
-   * 显式策略位让 fallback 与 priority 共用同一管线。本包现无 optIn 成员,机制留给未来渠道。
+   * flow 对 image/video 都返回 true:image 零积分但路由到 Google Flow 项目(隐私边界 + 模型语义
+   * 变更须显式同意,防默认路由随「本机 Chrome 是否开着」漂移);video 消耗积分(误耗红线)。
+   * 取代旧门禁「flow 刻意不实现 capabilities()」—— 用缺失表达策略是语义超载,且让优先级链
+   * 无法经 capableOf 谈判(迫使旁路);显式策略位让 fallback 与 priority 共用同一管线。
    */
   requiresOptIn?(modality: Modality): boolean;
   /** 健康状态。未实现 → { configured: true, cooldown: false }。 */

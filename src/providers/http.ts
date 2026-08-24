@@ -31,38 +31,18 @@ export function isFallbackWorthy(e: any): boolean {
 }
 
 /**
- * 渠道链推进判定(isFallbackWorthy 的超集,仅优先级链 walk 消费)。
+ * C 任务:渠道链推进判定(isFallbackWorthy 的超集,仅优先级链 walk 消费)。
  *
- * 增补一类:provider 自声明的「环境前置未就绪」错误(e.precondition === true,如
- * CDP/登录态未就绪类环境错)—— 请求从未提交,不是业务错误,链头是「默认路由」
- * (非显式点名)时应推进到下一渠道,而非把环境错误抛给用户。
+ * 增补一类:provider 自声明的「环境前置未就绪」错误(e.precondition === true,如 flow 的
+ * S100 CDP 不可连 / S101 无页面 / S102 未登录 / S104 reCAPTCHA 失败)—— 请求从未提交,
+ * 不是业务错误,链头是「默认路由」(非显式点名)时应推进到下一渠道,而非把环境错误抛给用户。
  *
  * 与 isFallbackWorthy 分开而未合并:单跳 fallback 既有路径(vision/pdf 等)语义保持逐字节不变;
  * 本函数仅供 generate_image 链式 walk 与 create_video 的链头(非钉死)路径使用。
- * 显式点名的 provider 在调用方先被钉死守卫拦下,永不走到这里。
+ * 显式点名的 provider(如 provider=flow)在调用方先被钉死守卫拦下,永不走到这里。
  */
 export function isChainAdvanceable(e: any): boolean {
   return isFallbackWorthy(e) || e?.precondition === true;
-}
-
-/**
- * 钉死守卫(纯函数,导出供 provider-priority.test.ts 白盒):请求是否「钉死」目标渠道 ——
- * 链式 walk 失败时直抛原始错误,绝不静默换成他渠道产物。
- *
- * 【行为决策记录 2026-08-24(Flow 分离审查 finding-3,选项 b)】
- * 分离前基线(flow 在册)仅对 flow 钉死:flowPinned = (name==="flow" && (provider!=null || model!=null));
- * agnes/zhipu 显式点名失败仍会回落。现泛化为全渠道统一:显式传 provider **或 model 归属路由**
- * (model 本身即渠道归属声明)→ 钉死。理由:
- *   1. 兑现工具描述长期发布的契约(generate_image provider 参数:"explicitly naming a provider
- *      pins it (no silent substitution)")—— 旧码只对 flow 兑现,属文档/代码错位修复;
- *   2. model 被静默换成他渠道默认模型 = 语义劫持(不同模型产物特性不同),warning 不能免除;
- *   3. flow 名字条件在本包已无对应 provider,保留即死代码。
- * 可观测行为变更:如 generate_image(model="cogview-4") 命中 zhipu 5xx,旧码带 warning 回落
- * agnes 成功,现直抛。该变更已在分离 commit message 显式声明(非静默)。
- * 仅「默认路由」(未传 provider 且未传 model,经链头到达)失败仍按序推进 —— 见 isChainAdvanceable。
- */
-export function isRequestPinned(explicitProvider: string | null | undefined, model: string | null | undefined): boolean {
-  return explicitProvider != null || model != null;
 }
 
 /** 判断错误是否为"瞬时"(值得重试):5xx、网络层错误(fetch TypeError / status=0)。 */

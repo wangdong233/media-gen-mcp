@@ -1,0 +1,1946 @@
+/**
+ * Google Flow provider —— 经本机 Chrome(lasso CDP)页面上下文驱动 labs.google/fx Flow。
+ *
+ * 一切契约依据 doc/flow-api-contract.md(2026-08-22 白盒逆向,重放实证;§7/§9/§10 为后续轮次 live wire 补遗)。
+ * 本文件不重新探索:端点/字段/状态机全部按契约 §0-§5 + §7/§9/§10 wire 落地。
+ *
+ * 架构(契约 §0):一切网络调用经 CDP Runtime.evaluate 页面上下文 fetch,不裸调 API:
+ *   - reCAPTCHA enterprise token 必须真实页面环境生成(grecaptcha.enterprise.execute)
+ *   - 认证全自动:labs.google 同源 cookie(tRPC)+ Bearer access_token(aisandbox,现取 session)
+ *   - 页面上下文无 CORS 问题(同源;aisandbox 端点允许 labs.google origin,实测 200)
+ *
+ * 前置检测(契约 §0,允许才用):CDP /json/version 可连 → 存在 labs.google page target →
+ * session 有 access_token。检测结果缓存 TTL 30s(避免每次工具调用都探测)。
+ *
+ * 错误契约:所有错误统一 `[flow] S<code> <消息> Hint: <修复提示>`(对齐 [nested-diagram] S_NESTED 风格):
+ *   S1xx 环境(CDP/页面/登录)| S2xx 页面 fetch 失败 | S3xx 参数/模型校验 | S4xx 媒体/下载
+ *
+ * 铁律(审查 03 安全约束):
+ *   - 🔴 createVideo = 消耗积分的提交点(abra 7-20 点/条,veo 10-100 点/条)—— 入口有显式标记
+ *   - 🔴 generateImage = 0 点生成(契约 §3 图片全部 0 点),仍是提交点 —— 入口有显式标记
+ *   - getVideo/mediaStatus/getMediaBytes/getCredits = 零消耗只读路径(状态轮询/下载)
+ *   - 渠道准入(C 任务):实现 capabilities()(能力事实)+ requiresOptIn()=true(准入策略)——
+ *     未显式同意(点名 provider/model 或 <modality>ProviderPriority 列入)时,flow 永不进入
+ *     任何模态的隐式 fallback 链(取代旧门禁「不实现 capabilities()」,见 types.ts 注释)
+ */
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import WebSocket from "ws";
+import type {
+  MediaProviderBase,
+  ImageProvider,
+  VideoProvider,
+  ImageRequest,
+  ImageResult,
+  VideoRequest,
+  VideoTask,
+  VideoHandle,
+  VideoResult,
+  TaskStatus,
+  ProviderCapabilities,
+  ProviderHealth,
+  Modality,
+} from "./types.js";
+
+// ── 常量(契约 §1,白盒实证值) ──
+
+const DEFAULT_CDP_PORT = 9223;
+const CDP_HOST = "127.0.0.1";
+const LABS_ORIGIN = "https://labs.google";
+const AISANDBOX_ORIGIN = "https://aisandbox-pa.googleapis.com";
+/** 部分 aisandbox 调用的公开 API key(GET credits 用 ?key=;契约 §1 实测值)。 */
+const FLOW_API_KEY = "AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY";
+/** reCAPTCHA enterprise(invisible)site key —— 必须在 labs.google 页面上下文 execute。 */
+const RECAPTCHA_SITE_KEY = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV";
+/**
+ * reCAPTCHA action 名(2026-08-22 从页面 bundle 实证:_app/7874 chunk 的 hw('<ACTION>') 调用点)。
+ * execute 必须带 action,否则上游 403 "reCAPTCHA evaluation failed"(0 点生图重放实测确认)。
+ * 'IMAGE_GENERATION' / 'VIDEO_GENERATION' 均已 live 双 200 实证(契约 §7.4:i2v/t2v/r2v/interpolation/
+ * extension/upsampler 全模式走 VIDEO_GENERATION);2K 图片放大同用 IMAGE_GENERATION(§10.8 live 拦截实证:
+ * 经页面 patch grecaptcha.enterprise.execute + 真实 UI 2K 菜单单次触发捕获;D 轮"IMAGE_UPSAMPLING
+ * 独立 action"是误判 —— 该字符串在 bundle 中仅作 OUT_OF_CREDITS 错误类目键,提交会连 403)。
+ */
+const RECAPTCHA_ACTION_IMAGE = "IMAGE_GENERATION";
+const RECAPTCHA_ACTION_VIDEO = "VIDEO_GENERATION";
+/** Flow 工具内部名(契约 §1)。 */
+const TOOL_INTERNAL_NAME = "PINHOLE";
+/** 前置检测结果缓存 TTL:30s(硬约束:避免每次工具调用都探测 CDP)。 */
+const DEFAULT_PREFLIGHT_TTL_MS = 30_000;
+/** 单次页面 fetch(经 Runtime.evaluate)超时:状态/目录快;媒体下载大,单独放宽。 */
+const EVAL_TIMEOUT_MS = 45_000;
+const DOWNLOAD_TIMEOUT_MS = 180_000;
+const FLOW_PROJECT_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-project.json");
+/**
+ * 角色实体本地镜像文件(§11.4:Flow 无实体读端点 → projectContents 无 entities 键,
+ * /v1/flowCollections/ REST 页面上下文 CORS 拒绝;镜像对齐 flow-project.json 先例)。
+ */
+const FLOW_ENTITIES_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-entities.json");
+
+/** 实体镜像记录(flow_entity 工具的读侧真源;写侧 = createEntity/updateEntity live wire)。 */
+export interface FlowEntityRecord {
+  entityId: string;
+  projectId: string;
+  displayName: string;
+  /** 绑定的预设语音(契约 §8.8,30 选 1;audioReferences.presetVoiceId)。 */
+  presetVoiceId?: string;
+  /** 形象图引用(workflowId;经 workflows[].metadata.primaryMediaId 从 imageMediaIds 解析)。 */
+  imageWorkflowIds?: string[];
+  /** 形象图 mediaId(镜像冗余,便于 flow_status 交叉查)。 */
+  imageMediaIds?: string[];
+  created?: string;
+  updated?: string;
+}
+
+const LAUNCH_HINT =
+  "启动:lasso launch-chrome --port 9223 --mode visible,打开 https://labs.google/fx/tools/flow 项目页并确认已登录(Chrome 需保持运行)";
+
+// ── 错误类型:所有 flow 错误统一 [flow] S<code> 前缀(项目错误前缀规范) ──
+
+export class FlowError extends Error {
+  /** S 码(S1xx 环境/S2xx 网络/S3xx 参数/S4xx 媒体),供测试与调用方机读。 */
+  readonly code: string;
+  /**
+   * 环境前置未就绪标记(C 任务):true = 请求从未提交(CDP 不可连/无页面/未登录/reCAPTCHA 失败)。
+   * isChainAdvanceable 据此让「链头为默认路由(非显式点名 flow)」的优先级链推进到下一渠道,
+   * 而非把环境错误抛给用户;显式 provider=flow 仍被钉死守卫拦下(语义劫持防护)。
+   */
+  readonly precondition?: true;
+  /**
+   * HTTP 风格 status(供 http.ts isTransient/isFallbackWorthy 复用既有语义):
+   * - 0 = 瞬时网络错(值得同 provider 重试)
+   * - 上游真实 HTTP 状态 = 按既有 4xx/5xx 语义
+   * - 不设置 = 环境未就绪/参数校验错(非瞬时,不该被重试或 fallback 掩盖)
+   */
+  readonly flowStatus?: number;
+
+  constructor(code: string, message: string, opts?: { hint?: string; flowStatus?: number; precondition?: boolean }) {
+    super(`[flow] ${code} ${message}${opts?.hint ? ` Hint: ${opts.hint}` : ""}`);
+    this.name = "FlowError";
+    this.code = code;
+    this.flowStatus = opts?.flowStatus;
+    if (opts?.precondition) this.precondition = true;
+    if (opts?.flowStatus !== undefined) (this as any).status = opts.flowStatus;
+  }
+}
+
+// ── 传输层:页面上下文 fetch(唯一网络出口) ──
+
+export interface PageFetchArgs {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  /** 请求体(base64;页面侧 atob → Uint8Array,避免 JSON 内嵌二进制转义问题)。 */
+  bodyB64?: string;
+}
+
+export interface PageFetchResp {
+  ok: boolean;
+  status: number;
+  contentType: string;
+  bodyB64: string;
+}
+
+/**
+ * Flow 传输抽象。生产实现 = CDP Runtime.evaluate;测试注入 stub(零网络零消耗)。
+ * pageFetch/recaptchaToken 之外的都从这两个原语派生。
+ */
+export interface FlowTransport {
+  /** 前置检测第 1/2 步:CDP 可连 + 定位 labs.google page target(失败抛 S100/S101)。 */
+  open(): Promise<{ pageUrl: string }>;
+  /** 在 labs.google 页面上下文执行 fetch(失败抛 S200/S201/S103)。 */
+  pageFetch(args: PageFetchArgs, timeoutMs?: number): Promise<PageFetchResp>;
+  /** 在页面上下文执行 grecaptcha.enterprise.execute(siteKey,{action}) 取 token(失败抛 S104)。 */
+  recaptchaToken(siteKey: string, action: string): Promise<string>;
+}
+
+/** JSON 字面量安全内嵌 JS 源码(U+2028/2029 在 JS 字符串里合法但 JSON.parse 页面侧无碍,预防性转义)。 */
+function jsonLiteral(v: unknown): string {
+  return JSON.stringify(v).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
+
+/**
+ * 页面上下文 fetch 表达式(Runtime.evaluate + awaitPromise + returnByValue)。
+ * 返回值形状恒定:{__flowFetch:{ok,status,contentType,bodyB64}} 或 {__flowFetchError},
+ * 把页面侧异常变成数据回来(而非 CDP protocol exception),错误信息更完整。
+ * bodyB64 = btoa(二进制串) —— 大文件(视频 mp4)分块累积后整体 btoa(实测 2.3MB 正常)。
+ */
+const FETCH_EXPR = (a: PageFetchArgs) =>
+  `(async()=>{const a=${jsonLiteral(a)};try{const init={method:a.method,headers:a.headers};` +
+  `if(a.bodyB64!=null){const bin=atob(a.bodyB64);const bytes=new Uint8Array(bin.length);` +
+  `for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);init.body=bytes;}` +
+  `const r=await fetch(a.url,init);const buf=await r.arrayBuffer();let bin="";const u8=new Uint8Array(buf);` +
+  `for(let i=0;i<u8.length;i+=0x8000)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));` +
+  `return{__flowFetch:{ok:r.ok,status:r.status,contentType:r.headers.get("content-type")||"",bodyB64:btoa(bin)}}` +
+  `}catch(e){return{__flowFetchError:String(e&&e.message||e)};}})()`;
+
+const RECAPTCHA_EXPR = (siteKey: string, action: string) =>
+  `(async()=>{try{if(typeof grecaptcha!=="object"||!grecaptcha.enterprise){return{__rcErr:"grecaptcha.enterprise 未加载"}}` +
+  `const t=await grecaptcha.enterprise.execute(${jsonLiteral(siteKey)},{action:${jsonLiteral(action)}});return{__rcTok:t};}catch(e){return{__rcErr:String(e&&e.message||e)};}})()`;
+
+/** CDP WebSocket 客户端:懒连接 + 消息路由 + 超时;连接断开自动失效,下次调用重连。 */
+class CdpConnection {
+  private ws: WebSocket | null = null;
+  private opening: Promise<void> | null = null;
+  private nextId = 0;
+  private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  /** 页面导航/关闭导致 WS 断开时,把存活页 URL 记下来供 S103 诊断。 */
+  lastCloseReason = "";
+
+  constructor(private readonly wsUrl: string) {}
+
+  private connect(): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return Promise.resolve();
+    if (this.opening) return this.opening;
+    this.opening = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const ws = new WebSocket(this.wsUrl, { perMessageDeflate: false });
+      const onOpenTimeout = setTimeout(() => {
+        if (!settled) { settled = true; ws.terminate(); reject(new FlowError("S103", "CDP WebSocket 连接超时")); }
+      }, 10_000);
+      ws.once("open", () => {
+        if (settled) return;
+        settled = true; clearTimeout(onOpenTimeout);
+        this.ws = ws; resolve();
+      });
+      ws.once("error", (e: Error) => {
+        if (settled) return;
+        settled = true; clearTimeout(onOpenTimeout);
+        reject(new FlowError("S103", `CDP WebSocket 错误: ${e.message}`, { hint: LAUNCH_HINT }));
+      });
+      ws.once("close", () => {
+        this.lastCloseReason = this.lastCloseReason || "closed";
+        this.ws = null;
+        for (const [, p] of this.pending) p.reject(new FlowError("S103", "CDP 连接已断开(页面可能被导航/关闭)", { hint: LAUNCH_HINT, flowStatus: 0 }));
+        this.pending.clear();
+      });
+      ws.on("message", (raw: WebSocket.RawData) => {
+        try {
+          const m = JSON.parse(raw.toString());
+          if (m?.id != null && this.pending.has(m.id)) {
+            const p = this.pending.get(m.id)!;
+            this.pending.delete(m.id);
+            if (m.error) p.reject(new Error(m.error.message ?? "CDP error"));
+            else p.resolve(m.result);
+          }
+        } catch { /* 非 JSON 帧忽略 */ }
+      });
+    }).finally(() => { this.opening = null; });
+    return this.opening;
+  }
+
+  async evaluate(expression: string, timeoutMs: number): Promise<unknown> {
+    await this.connect();
+    const id = ++this.nextId;
+    return new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new FlowError("S103", `CDP evaluate 超时(>${Math.round(timeoutMs / 1000)}s)`, { flowStatus: 0 }));
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      try {
+        this.ws!.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression, awaitPromise: true, returnByValue: true } }));
+      } catch (e: any) {
+        clearTimeout(timer); this.pending.delete(id);
+        reject(new FlowError("S103", `CDP 发送失败: ${e?.message ?? e}`, { flowStatus: 0 }));
+      }
+    });
+  }
+}
+
+/** 生产传输:CDP /json/version 探活 + /json/list 定位 labs.google page target + Runtime.evaluate。 */
+export class CdpFlowTransport implements FlowTransport {
+  private conn: CdpConnection | null = null;
+  private pageUrl = "";
+
+  constructor(private readonly port: number = DEFAULT_CDP_PORT) {}
+
+  /** 前置检测 1/2:CDP 可连 + labs.google page target 存在。 */
+  async open(): Promise<{ pageUrl: string }> {
+    if (this.conn) return { pageUrl: this.pageUrl };
+    let targets: Array<{ type: string; url: string; webSocketDebuggerUrl?: string }>;
+    try {
+      const res = await fetch(`http://${CDP_HOST}:${this.port}/json/list`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      targets = (await res.json()) as any;
+    } catch (e: any) {
+      throw new FlowError("S100", `CDP ${CDP_HOST}:${this.port} 不可连(${e?.message ?? e})`, { hint: LAUNCH_HINT, precondition: true });
+    }
+    const pages = targets.filter((t) => t.type === "page" && t.url.startsWith(`${LABS_ORIGIN}/`));
+    if (!pages.length) {
+      throw new FlowError("S101", `CDP 可连但无 labs.google page target(现有 page:${targets.filter(t => t.type === "page").map(t => t.url.slice(0, 60)).join(" | ") || "无"})`, {
+        hint: `在 Chrome 打开 https://labs.google/fx/tools/flow 的任意 Flow 项目页(当前项目页 https://labs.google/fx/zh/tools/flow/project/c36ca3e2-192b-41e5-9e5b-700130e3d324)`,
+        precondition: true,
+      });
+    }
+    // 优先 Flow 项目页;否则任一 labs.google 页(同源即可发 tRPC/aisandbox 请求)
+    const page = pages.find((t) => t.url.includes("/tools/flow")) ?? pages[0];
+    if (!page.webSocketDebuggerUrl) {
+      throw new FlowError("S103", "page target 无 webSocketDebuggerUrl(页面可能正在关闭)");
+    }
+    this.pageUrl = page.url;
+    this.conn = new CdpConnection(page.webSocketDebuggerUrl);
+    return { pageUrl: this.pageUrl };
+  }
+
+  private async eval(expr: string, timeoutMs: number): Promise<unknown> {
+    if (!this.conn) throw new FlowError("S103", "CDP 未连接(先 open())");
+    let r: any;
+    try {
+      r = await this.conn.evaluate(expr, timeoutMs);
+    } catch (e) {
+      if (e instanceof FlowError) throw e;
+      // evaluate 协议层异常(表达式语法/页面上下文销毁)
+      this.conn = null;
+      throw new FlowError("S103", `CDP evaluate 失败: ${(e as Error)?.message ?? e}`, { hint: LAUNCH_HINT, flowStatus: 0 });
+    }
+    if (r?.exceptionDetails) {
+      const d = r.exceptionDetails;
+      this.conn = null;
+      throw new FlowError("S103", `页面执行异常: ${String(d.exception?.description ?? d.text).slice(0, 300)}`, { hint: "页面可能已被导航/关闭;重开 Flow 项目页后重试", flowStatus: 0 });
+    }
+    return r?.result?.value;
+  }
+
+  async pageFetch(args: PageFetchArgs, timeoutMs = EVAL_TIMEOUT_MS): Promise<PageFetchResp> {
+    const v = await this.eval(FETCH_EXPR(args), timeoutMs);
+    if (!v || typeof v !== "object") throw new FlowError("S103", "页面 fetch 返回空(evaluate 结果丢失)", { flowStatus: 0 });
+    if ((v as any).__flowFetchError) {
+      throw new FlowError("S200", `页面 fetch 异常: ${String((v as any).__flowFetchError).slice(0, 200)}(url: ${args.url.slice(0, 120)})`, { flowStatus: 0 });
+    }
+    const f = (v as any).__flowFetch;
+    if (!f || typeof f.bodyB64 !== "string") throw new FlowError("S103", "页面 fetch 返回形状异常(无 __flowFetch)", { flowStatus: 0 });
+    return { ok: !!f.ok, status: f.status, contentType: String(f.contentType ?? ""), bodyB64: f.bodyB64 };
+  }
+
+  async recaptchaToken(siteKey: string, action: string): Promise<string> {
+    const v = (await this.eval(RECAPTCHA_EXPR(siteKey, action), 30_000)) as any;
+    if (v?.__rcErr) throw new FlowError("S104", `reCAPTCHA token 获取失败: ${String(v.__rcErr).slice(0, 200)}`, { hint: "确认停留在 labs.google Flow 页面(enterprise 脚本由页面加载)", precondition: true });
+    if (!v?.__rcTok || typeof v.__rcTok !== "string") throw new FlowError("S104", "reCAPTCHA token 为空", { precondition: true });
+    return v.__rcTok;
+  }
+}
+
+// ── 模型目录(契约 §3 + 2026-08-22 projectInitialData 实测快照,全部 usage key 逐字核对) ──
+
+// 真实 wire 枚举名(2026-08-22 实测纠偏:live bundle 逐字为 PORTRAIT_THREE_FOUR / LANDSCAPE_FOUR_THREE,
+// 缩写形式 PORTRAIT_3_4 / LANDSCAPE_4_3 会被上游 400 "Invalid value at image_aspect_ratio" 拒收)
+const IMAGE_ASPECTS = ["SQUARE", "PORTRAIT", "LANDSCAPE", "PORTRAIT_THREE_FOUR", "LANDSCAPE_FOUR_THREE"] as const;
+export type FlowImageAspect = (typeof IMAGE_ASPECTS)[number];
+
+/** 生图模型 key(契约 §3:全部 0 点)。 */
+export const FLOW_IMAGE_MODELS: string[] = [
+  "GEM_PIX_2", // Nano Banana Pro(10 refs)
+  "NARWHAL", // Nano Banana 2(默认)
+  "HARBOR_SEAL", // Nano Banana 2 Lite
+  "GEM_PIX_2_UPSAMPLE_2K", // 2K 放大(0 点)
+];
+
+/** 生视频模型 usage key(实测快照;动态目录可经 flowStatus() 获取最新值)。 */
+function buildVideoModelCatalog(): string[] {
+  const abra = ["abra_edit"];
+  for (const mode of ["t2v", "r2v", "i2v"]) for (const d of [4, 6, 8, 10]) abra.push(`abra_${mode}_${d}s`);
+  const lite = [
+    "veo_3_1_t2v_lite", "veo_3_1_i2v_lite", "veo_3_1_r2v_lite", "veo_3_1_interpolation_lite", "veo_3_1_extension_lite",
+    "veo_3_1_t2v_lite_4s", "veo_3_1_t2v_lite_6s", "veo_3_1_i2v_s_lite_4s", "veo_3_1_i2v_s_lite_6s",
+    "veo_3_1_i2v_s_lite_4s_fl", "veo_3_1_i2v_s_lite_6s_fl",
+  ];
+  const fast = [
+    "veo_3_1_t2v_fast", "veo_3_1_t2v_fast_ultra", "veo_3_1_t2v_fast_portrait", "veo_3_1_t2v_fast_portrait_ultra",
+    "veo_3_1_r2v_fast_landscape", "veo_3_1_r2v_fast_landscape_ultra", "veo_3_1_r2v_fast_portrait", "veo_3_1_r2v_fast_portrait_ultra",
+    "veo_3_1_i2v_s_fast", "veo_3_1_i2v_s_fast_ultra", "veo_3_1_i2v_s_fast_portrait", "veo_3_1_i2v_s_fast_portrait_ultra",
+    "veo_3_1_i2v_s_fast_fl", "veo_3_1_i2v_s_fast_ultra_fl", "veo_3_1_i2v_s_fast_portrait_fl", "veo_3_1_i2v_s_fast_portrait_ultra_fl",
+    "veo_3_1_extend_fast_landscape", "veo_3_1_extend_fast_landscape_ultra", "veo_3_1_extend_fast_portrait", "veo_3_1_extend_fast_portrait_ultra",
+    "veo_3_1_t2v_fast_4s", "veo_3_1_i2v_s_fast_4s", "veo_3_1_i2v_s_fast_4s_fl",
+    "veo_3_1_t2v_fast_6s", "veo_3_1_i2v_s_fast_6s", "veo_3_1_i2v_s_fast_6s_fl",
+  ];
+  const quality = [
+    "veo_3_1_t2v", "veo_3_1_t2v_portrait", "veo_3_1_i2v_s", "veo_3_1_i2v_s_portrait",
+    "veo_3_1_i2v_s_fl", "veo_3_1_i2v_s_portrait_fl", "veo_3_1_extend_landscape", "veo_3_1_extend_portrait",
+    "veo_3_1_t2v_quality_4s", "veo_3_1_i2v_s_quality_4s", "veo_3_1_i2v_s_quality_4s_fl",
+    "veo_3_1_t2v_quality_6s", "veo_3_1_i2v_s_quality_6s", "veo_3_1_i2v_s_quality_6s_fl",
+  ];
+  const upsamplers = ["veo_3_1_upsampler_1080p", "veo_3_1_upsampler_4k"];
+  return [...abra, ...lite, ...lite.map((k) => `${k}_low_priority`), ...fast, ...quality, ...upsamplers];
+}
+
+export const FLOW_VIDEO_MODELS: string[] = buildVideoModelCatalog();
+/** 视频 duration 合法集(秒;usage key 后缀)。 */
+export const FLOW_VIDEO_DURATIONS = [4, 6, 8, 10] as const;
+/** 通用工具层 numFrames 语义(24fps)↔ Flow duration(秒)换算。 */
+export const FLOW_FRAME_RATE = 24;
+
+/** 估算一条视频的积分消耗(契约 §3 表;仅用于提交前 warning,非计费真值)。 */
+export function estimateVideoCredits(key: string): number | undefined {
+  // abra t2v/i2v/r2v 同按时长 7/10/12/15 计(契约 §3;修"i2v/r2v 恒 15"的 4s 高估一倍)
+  const abra = /^abra_(?:t2v|i2v|r2v)_(\d+)s$/.exec(key);
+  if (abra) {
+    const d = Number(abra[1]);
+    return d <= 4 ? 7 : d <= 6 ? 10 : d <= 8 ? 12 : 15;
+  }
+  if (key === "abra_edit") return 20;
+  if (key.includes("_lite")) return 10;
+  if (key.includes("_fast")) return 20;
+  if (key === "veo_3_1_upsampler_1080p") return 0;
+  if (key.startsWith("veo_3_1_")) return 100; // quality 档(t2v/i2v_s/extend 及 _quality_ 变体)
+  return undefined;
+}
+
+/** 图片比例直传枚举(UI 语义;映射到 Flow IMAGE_ASPECT_RATIO_*)。 */
+export const FLOW_IMAGE_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "3:4", "4:3"] as const;
+const ASPECT_TO_ENUM: Record<string, FlowImageAspect> = {
+  "16:9": "LANDSCAPE",
+  "9:16": "PORTRAIT",
+  "1:1": "SQUARE",
+  "3:4": "PORTRAIT_THREE_FOUR",
+  "4:3": "LANDSCAPE_FOUR_THREE",
+};
+
+/** aspect("16:9" 等 UI 语义)→ Flow 图像比例枚举;非法值 → S301(列合法值)。导出供单测。 */
+export function aspectRatioToImageAspect(aspect: string): FlowImageAspect {
+  const mapped = ASPECT_TO_ENUM[String(aspect ?? "").trim()];
+  if (!mapped) {
+    throw new FlowError("S301", `aspect 非法:"${aspect}"(合法:${FLOW_IMAGE_ASPECT_RATIOS.join(" / ")})`);
+  }
+  return mapped;
+}
+
+// ── 视频 v2 wire(契约 §7.3 + §9.1/§9.2/§9.3,2026-08-23 live/404 探针实证):每模式独立端点 + requests[]/videoModelKey ──
+
+/** 模式 → 端点 apiPathname(契约 §7.3/§9 端点表;i2v/首尾帧/r2v/extension/upsampler 形状均经 404 探针或 live 200 验证;edit 见 §11.1)。 */
+export const VIDEO_API_ENDPOINTS: Readonly<Record<string, string>> = {
+  t2v: "batchAsyncGenerateVideoText",
+  i2v: "batchAsyncGenerateVideoStartImage",
+  interpolation: "batchAsyncGenerateVideoStartAndEndImage",
+  r2v: "batchAsyncGenerateVideoReferenceImages",
+  extension: "batchAsyncGenerateVideoExtendVideo",
+  edit: "batchAsyncGenerateVideoEditVideo",
+  upsampler: "batchAsyncGenerateVideoUpsampleVideo",
+};
+
+/**
+ * v2 已开放提交的模式:
+ * t2v/i2v/interpolation/r2v/extension/upsampler_1080p 全部 live 提交验证(§7/§9/§10);
+ * edit(E 轮 parity 放行):wire 经 bundle Zod + 假 key 404 探针双定型(§11.1,形状全过、零调度),
+ * 但**真实付费提交未做**(abra_edit 20 点,待用户授权)→ 提交响应固定带警示。
+ */
+export const OPEN_VIDEO_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "interpolation", "r2v", "extension", "edit", "upsampler"]);
+
+/** 未开放模式的拒绝依据(S303 消息组成部分 —— 错误里说明依据,不静默)。 */
+const NOT_OPEN_REASONS: Readonly<Record<string, string>> = {
+  "upsampler-4k": "veo_3_1_upsampler_4k 在 INTERMEDIATE tier UNAVAILABLE(契约 §9.1:需 ADVANCED 50 点);当前 tier 只开放 1080p(0 点)",
+};
+
+/** edit 模式固定警示(E 轮 parity:wire 探针定型但 live 未验证,首次使用异常请回报契约 §11.1)。 */
+export const EDIT_WIRE_WARNING = "edit 模式 wire 已探针定型(bundle Zod + 假 key 404,契约 §11.1)但真实提交未 live 验证(abra_edit 20 点);首次使用若报 4xx/5xx 请回报契约文档。";
+
+/** 视频 usage key 的模式段 → 中文标签(S303/S301 报错用)。 */
+const VIDEO_MODE_LABELS: Record<string, string> = {
+  t2v: "文生视频",
+  i2v: "图生视频(起始图)",
+  r2v: "参考图",
+  interpolation: "首尾帧",
+  extension: "延长",
+  edit: "编辑",
+  upsampler: "超分(独立端点)",
+};
+
+/**
+ * 从 usage key 提取生成模式段。返回 undefined = 无法判定(目录新增的未知家族,放行交给上游)。
+ * 检测顺序:upsampler → interpolation → extend(覆盖 extend/extension)→
+ * fl 尾缀(首尾帧变体;须在 i2v 前 —— veo_3_1_i2v_s_*_fl 的 requirements 是 START+END,属首尾帧)→
+ * i2v → r2v → t2v。
+ */
+export function videoModeOfKey(key: string): string | undefined {
+  const abra = /^abra_(t2v|i2v|r2v)_\d+s$/.exec(key);
+  if (abra) return abra[1];
+  if (key === "abra_edit") return "edit";
+  if (key.startsWith("veo_3_1_")) {
+    if (key.includes("_upsampler")) return "upsampler";
+    if (key.includes("_interpolation")) return "interpolation";
+    if (key.includes("_exten")) return "extension"; // veo_3_1_extend_* / veo_3_1_extension_*(注意 extension=exten+sion,非 extend+ion)
+    if (/(^|_)fl($|_)/.test(key)) return "interpolation"; // _fl = 首尾帧(first-last)变体;先于 _i2v 判定
+    if (key.includes("_i2v")) return "i2v";
+    if (key.includes("_r2v")) return "r2v";
+    if (key.includes("_t2v")) return "t2v";
+  }
+  return undefined;
+}
+
+/**
+ * 开放集外模式 → S303(错误消息带依据)。mode=undefined(未知家族)放行交给上游。
+ * 开放集 = t2v / i2v / interpolation / r2v / extension / upsampler(契约 §7.3 + §9,2026-08-23 全部 live 提交验证)。
+ * 特例:veo_3_1_upsampler_4k 属 upsampler 模式但被 INTERMEDIATE tier 锁(§9.1)→ 单独 S303。
+ */
+function assertModeOpen(key: string, mode: string | undefined): void {
+  if (mode === "upsampler" && key.includes("_4k")) {
+    throw new FlowError("S303", `模型 "${key}" ${NOT_OPEN_REASONS["upsampler-4k"]}`, {
+      hint: "视频超分请用 veo_3_1_upsampler_1080p(0 点);4K 需升级 ADVANCED 会员后开放",
+    });
+  }
+  if (mode == null || OPEN_VIDEO_MODES.has(mode)) return;
+  throw new FlowError(
+    "S303",
+    `模型 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式的 key,当前未开放:${NOT_OPEN_REASONS[mode] ?? "该模式请求形状未实证"}`,
+    {
+      hint: "已开放:文生视频(t2v,如 abra_t2v_8s)、图生视频(i2v + image,如 abra_i2v_8s)、参考图(r2v + images,如 abra_r2v_8s)、首尾帧(interpolation/_fl + keyframes 2 张)、延长(extension + videoMediaId,如 veo_3_1_extension_lite)、编辑(edit + videoMediaId + prompt,abra_edit,20 点,wire 定型未 live)、视频超分(upsampler + videoMediaId,veo_3_1_upsampler_1080p,0 点);全集见 flow_status",
+    },
+  );
+}
+
+/** 宽高比数值 → 最近似 Flow 图像比例枚举(比例表契约 §3:1:1/9:16/16:9/3:4/4:3)。 */
+function ratioToImageAspect(w: number, h: number): FlowImageAspect {
+  const r = w / h;
+  const table: Array<[FlowImageAspect, number]> = [
+    ["SQUARE", 1], ["PORTRAIT", 9 / 16], ["LANDSCAPE", 16 / 9], ["PORTRAIT_THREE_FOUR", 3 / 4], ["LANDSCAPE_FOUR_THREE", 4 / 3],
+  ];
+  let best: FlowImageAspect = "LANDSCAPE", bestDelta = Infinity;
+  for (const [k, v] of table) { const d = Math.abs(r - v); if (d < bestDelta) { bestDelta = d; best = k; } }
+  return best;
+}
+
+/** size("WxH")→ 最近似 Flow 图像比例枚举(契约 §3:1:1/9:16/16:9/3:4/4:3;wire 枚举名见 IMAGE_ASPECTS 实测纠偏注释)。 */
+export function sizeToImageAspect(size?: string): FlowImageAspect {
+  const m = size ? /^\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*$/i.exec(size) : null;
+  if (!m) return "LANDSCAPE";
+  const w = Number(m[1]), h = Number(m[2]);
+  if (!w || !h) return "LANDSCAPE";
+  return ratioToImageAspect(w, h);
+}
+
+/**
+ * 视频模型 key 解析:mnemonic(abra_t2v)+ duration → 完整 usage key;显式 key 与 duration 冲突 → S301。
+ * 纯解析(不做模式门禁 —— 门禁在 createVideo 按 image/keyframes 交叉校验,依据契约 §7.3 每模式独立端点)。
+ * allowedKeys:校验目录(默认静态快照;createVideo 传 listVideoModels() = 动态目录优先、静态兜底,
+ * 与 resolveProvider 的 model→provider 归属判断同源,消除动态/静态错位 —— audit finding-7)。
+ * 纯函数(导出供单测白盒)。
+ */
+export function resolveVideoModelKey(
+  model: string,
+  durationSeconds?: number,
+  allowedKeys: string[] = FLOW_VIDEO_MODELS,
+): { key: string; duration: number; warnings: string[] } {
+  const warnings: string[] = [];
+  if (durationSeconds != null && !FLOW_VIDEO_DURATIONS.includes(durationSeconds as any)) {
+    throw new FlowError("S301", `durationSeconds=${durationSeconds} 非法(视频时长仅 ${FLOW_VIDEO_DURATIONS.join("/")}s)`);
+  }
+  const duration = snapDuration(durationSeconds);
+  const m = /^(abra)_(t2v|i2v|r2v)$/.exec(model);
+  if (m) {
+    const key = `${model}_${duration}s`;
+    if (!allowedKeys.includes(key)) {
+      throw new FlowError("S300", `组合出的模型 key "${key}" 不在目录中`);
+    }
+    return { key, duration, warnings };
+  }
+  if (!allowedKeys.includes(model)) {
+    throw new FlowError("S300", `未知视频模型 "${model}"。可用:${summarizeModels()}。完整动态目录可调 flow_status 查看`);
+  }
+  const embedded = /_(\d+)s(?:$|_)/.exec(model);
+  if (embedded) {
+    const keyDur = Number(embedded[1]);
+    if (durationSeconds != null && keyDur !== durationSeconds) {
+      throw new FlowError("S301", `模型 "${model}" 自带 ${keyDur}s 时长,与 durationSeconds=${durationSeconds} 冲突(二选一)`);
+    }
+    return { key: model, duration: keyDur, warnings };
+  }
+  // 无时长后缀的 key(veo 家族默认 8s):请求 4/6s 时若目录有对应变体则自动切换
+  if (duration === 4 || duration === 6) {
+    const variant = `${model}_${duration}s`;
+    if (allowedKeys.includes(variant)) {
+      warnings.push(`按 durationSeconds=${duration}s 自动切换到变体 "${variant}"(原 key "${model}" 默认 8s)。`);
+      return { key: variant, duration, warnings };
+    }
+    warnings.push(`模型 "${model}" 无 ${duration}s 变体,按默认时长生成(Flow 端决定)。`);
+  } else if (duration === 10 && model.startsWith("veo_")) {
+    throw new FlowError("S301", `veo 家族无 10s 时长(仅 4/6/8s 或默认);abra 家族支持 4/6/8/10s`);
+  }
+  return { key: model, duration, warnings };
+}
+
+function snapDuration(seconds?: number): number {
+  if (seconds == null) return 8;
+  let best = 8, bestDelta = Infinity;
+  for (const d of FLOW_VIDEO_DURATIONS) { const delta = Math.abs(d - seconds); if (delta < bestDelta) { bestDelta = delta; best = d; } }
+  return best;
+}
+
+function summarizeModels(): string {
+  const abra = FLOW_VIDEO_MODELS.filter((k) => k.startsWith("abra_"));
+  const rest = FLOW_VIDEO_MODELS.filter((k) => !k.startsWith("abra_"));
+  return `${abra.length} 个 abra key(abra_{t2v,i2v,r2v}_{4,6,8,10}s / abra_edit)+ ${rest.length} 个 veo key(veo_3_1_*_{lite,fast,quality…},见 flow_status 动态目录)`;
+}
+
+/**
+ * Flow mediaId 形状启发(供工具层放行判断;存在性/类型校验归 findMedia 的结构化 S400/S301):
+ * 标准 UUID,或 UUID 派生名 —— Flow 对派生媒体用「源 id + 后缀」命名(§10.7 live 实证:<源id>_upsampled,
+ * 非 UUID),只认标准 UUID 会把派生 id 挡在工具层到不了 provider。仅作非路径启发(拒绝 / : 空白),
+ * 绝不做存在性判断。导出供单测白盒。
+ */
+export function isFlowMediaIdLike(u: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[-_][a-z0-9_-]+)?$/i.test(u);
+}
+
+/**
+ * 媒体生成状态映射(契约 §2.3/§5 + §10.5 + §11.3):
+ * - 含 SUCCESSFUL → completed
+ * - 含 SCHEDULED / PENDING / ACTIVE → in_progress(提交后初始态 SCHEDULED;PENDING = 排队后处理前、
+ *   ACTIVE = 生成中 —— 两枚举均为 2026-08-23 E 轮 live 首次观察,§10.5;旧版把它们误判 failed 的 bug 于此修复)
+ * - 含 CANCELED → failed(终态;枚举名经 bundle 字符串表实证 §11.3,cancelGenerations 落点)
+ * - 无 mediaStatus 但已有 generatedImage/generatedVideo → completed(实测:已完成图片不带 mediaStatus)
+ * - 其余(含 FAILED 等未观察枚举)→ 一律当失败处理并回传原文(契约 §5 预答)
+ * 导出供单测白盒。
+ */
+export function mapMediaStatus(media: any): { status: TaskStatus; rawStatus?: string; error?: string } {
+  const raw = media?.mediaMetadata?.mediaStatus?.mediaGenerationStatus as string | undefined;
+  if (raw == null) {
+    if (media?.image?.generatedImage || media?.video?.generatedVideo) return { status: "completed" };
+    return { status: "failed", rawStatus: undefined, error: "媒体无 mediaGenerationStatus 且无生成结果(疑似失败或未观察状态)" };
+  }
+  if (raw.includes("SUCCESSFUL")) return { status: "completed", rawStatus: raw };
+  if (raw.includes("SCHEDULED") || raw.includes("PENDING") || raw.includes("ACTIVE")) return { status: "in_progress", rawStatus: raw };
+  if (raw.includes("CANCELED")) return { status: "failed", rawStatus: raw, error: "生成已被取消(MEDIA_GENERATION_STATUS_CANCELED)" };
+  return { status: "failed", rawStatus: raw, error: `Flow 媒体状态非成功:${raw}` };
+}
+
+// ── Provider ──
+
+export interface FlowProviderConfig {
+  /** CDP 端口(lasso launch-chrome --port;默认 9223)。 */
+  cdpPort?: number;
+  /** 指定 Flow projectId(缺省读 ~/.media-gen-mcp/flow-project.json,再缺省自动新建并落盘)。 */
+  projectId?: string;
+  /** config providers.flow.models.video.default:视频默认模型(无默认 → 显式要求传 model,防误耗积分)。 */
+  models?: { video?: { default?: string }; image?: { default?: string } };
+  /** 测试注入 stub transport(零网络零消耗)。 */
+  transport?: FlowTransport;
+}
+
+export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProvider {
+  readonly name = "flow";
+  private readonly transport: FlowTransport;
+  private readonly cfgProjectId?: string;
+  private readonly models?: FlowProviderConfig["models"];
+  /** 前置检测缓存(TTL 30s;避免每次工具调用都探测 CDP)。 */
+  private preflightCache: { at: number; pageUrl: string; email: string } | null = null;
+  preflightTtlMs = DEFAULT_PREFLIGHT_TTL_MS; // 实例字段便于测试调短
+  private lastReadyAt: number | null = null;
+  /**
+   * C 任务:60s 软熔断(对齐 agnes.notifyUnavailable)。冷却窗口内 ensureReady 直接抛缓存错误
+   * (零探测)——「链头跳过」(registry resolveProvider)+「再次尝试快速失败」双通道共用此状态,
+   * 使 flow-first 用户在 Chrome 未开时每个窗口至多付一次 CDP 连接尝试(本地 ECONNREFUSED ~ms 级)。
+   */
+  private cooldownUntil = 0;
+  private cooldownError: Error | null = null;
+  cooldownMs = 60_000; // 实例字段便于测试调短
+  /** 动态目录缓存(projectInitialData 派生;10 分钟)。 */
+  private dynamicCatalog: { at: number; videoKeys: string[] } | null = null;
+  private readonly dynamicCatalogTtlMs = 10 * 60_000;
+
+  constructor(c: FlowProviderConfig = {}) {
+    this.transport = c.transport ?? new CdpFlowTransport(c.cdpPort ?? DEFAULT_CDP_PORT);
+    this.cfgProjectId = c.projectId;
+    this.models = c.models;
+  }
+
+  // ── MediaProviderBase ──
+  // 能力事实与准入策略分离(C 任务,types.ts MediaProviderBase.requiresOptIn 注释):
+  // capabilities() 如实陈述(全部 2026-08-23 live 实证开放的模式);
+  // requiresOptIn()=true 承担旧门禁职责 —— 未显式同意时 flow 不进任何隐式 fallback 链。
+  capabilities(): ProviderCapabilities {
+    return {
+      image: { textToImage: true, imageToImage: true }, // 契约 §2.4/§7.2(t2v + 带图 base/references)
+      video: { textToVideo: true, imageToVideo: true, keyframes: true }, // 契约 §7.3(t2v/i2v/StartAndEndImage;extension/upsampler 走 videoMediaId 特化)
+    };
+  }
+  requiresOptIn(_modality: Modality): boolean {
+    // image:0 积分但路由到 Google Flow 项目(隐私边界 + 模型语义变更须显式同意,防默认路由
+    // 随「本机 Chrome 是否开着」漂移);video:消耗积分(误耗红线)。两模态统一「显式同意才介入」。
+    return true;
+  }
+  listModels(): string[] { return [...this.listImageModels(), ...this.listVideoModels()]; }
+  listImageModels(): string[] { return [...FLOW_IMAGE_MODELS]; }
+  listVideoModels(): string[] {
+    return this.dynamicCatalog && Date.now() - this.dynamicCatalog.at < this.dynamicCatalogTtlMs
+      ? [...this.dynamicCatalog.videoKeys]
+      : [...FLOW_VIDEO_MODELS];
+  }
+  supportsImageToImage(): boolean {
+    // 2026-08-23 开放(契约 §7.2 live 实证):images 经 /v1/flow/uploadImage 上传为项目内媒体,
+    // 再以 imageInputs[{imageInputType, name=mediaId}] 引用 —— images[0]=base,images[1..]=references(上限 10)。
+    return true;
+  }
+  health(): ProviderHealth {
+    return {
+      configured: this.lastReadyAt != null,
+      cooldown: this.cooldownUntil > Date.now(),
+    };
+  }
+  tier(): number { return 0; }
+  notifyUnavailable(e: any): void {
+    // 60s 软熔断(对齐 agnes);缓存错误供 ensureReady 冷却窗口内零探测快速失败。
+    this.cooldownUntil = Date.now() + this.cooldownMs;
+    this.cooldownError = e instanceof Error ? e : new Error(String(e));
+    console.error(`[media-gen-mcp] flow 不可用(${(e as Error)?.message?.slice(0, 60)}),${Math.round(this.cooldownMs / 1000)}s 内优先级链跳过`);
+  }
+
+  // ── 工具层约束接口 ──
+
+  videoConstraints() {
+    // numFrames 语义换算:duration(4/6/8/10s)× 24fps = 96/144/192/240(见 FLOW_FRAME_RATE)
+    return {
+      allowedNumFrames: FLOW_VIDEO_DURATIONS.map((d) => d * FLOW_FRAME_RATE),
+      defaultNumFrames: 8 * FLOW_FRAME_RATE,
+      defaultFrameRate: FLOW_FRAME_RATE,
+      allowedFrameRates: [FLOW_FRAME_RATE],
+    };
+  }
+  /** 保守估计(实测 abra ~120s / veo lite ~110s / fast ~100s;quality 可达 260s)。 */
+  estimateGenerationSeconds(_numFrames: number): number { return 130; }
+  maxFramesFor(): number | undefined { return undefined; }
+
+  // ── 前置检测(契约 §0;TTL 30s 缓存) ──
+
+  /**
+   * 前置检测:CDP 可连(S100)→ labs.google page target(S101)→ session 有 access_token(S102)。
+   * 结果缓存 TTL preflightTtlMs(默认 30s)。access_token 不缓存(契约 §5:~1h 过期,每次现取)。
+   * C 任务:冷却窗口(notifyUnavailable 置位,60s)内直接抛缓存错误 —— 零探测快速失败,
+   * 使优先级链在 Chrome 未开时每窗口至多付一次连接尝试。
+   */
+  async ensureReady(force = false): Promise<{ pageUrl: string; email: string }> {
+    if (this.cooldownUntil > Date.now() && this.cooldownError) {
+      throw this.cooldownError;
+    }
+    if (this.cooldownUntil <= Date.now()) this.cooldownError = null; // 窗口过期,清缓存错误
+    if (!force && this.preflightCache && Date.now() - this.preflightCache.at < this.preflightTtlMs) {
+      return this.preflightCache;
+    }
+    const { pageUrl } = await this.transport.open(); // S100 / S101
+    const sess = await this.fetchSession(); // S102
+    const cached = { at: Date.now(), pageUrl, email: sess.email ?? "" };
+    this.preflightCache = cached;
+    this.lastReadyAt = cached.at;
+    return { pageUrl: cached.pageUrl, email: cached.email };
+  }
+
+  /** GET /fx/api/auth/session(同源 cookie;契约 §2.1)。未登录抛 S102。 */
+  private async fetchSession(): Promise<{ email?: string; accessToken: string }> {
+    const f = await this.transport.pageFetch({ url: `${LABS_ORIGIN}/fx/api/auth/session`, method: "GET", headers: {} });
+    if (!f.ok) throw new FlowError("S201", `session 查询 HTTP ${f.status}`, { flowStatus: f.status });
+    let sess: any;
+    try { sess = JSON.parse(bufToUtf8(f.bodyB64)); } catch {
+      throw new FlowError("S202", "session 响应体非 JSON", { flowStatus: 0 });
+    }
+    if (!sess?.access_token) {
+      throw new FlowError("S102", "labs.google 会话未登录(session 无 access_token)", { hint: "在该 Chrome 里打开 https://labs.google/fx 完成登录(账号 wdong4036@gmail.com),再重试", precondition: true });
+    }
+    return { email: sess?.user?.email, accessToken: sess.access_token };
+  }
+
+  /** access_token 现取现用(契约 §5:每次从 session 取,不缓存)。 */
+  private async getAccessToken(): Promise<string> {
+    return (await this.fetchSession()).accessToken;
+  }
+
+  // ── 项目管理(契约 §2.7 / ~/.media-gen-mcp/flow-project.json) ──
+
+  /** 解析 projectId:config → flow-project.json → 自动新建(POST project.createProject,零积分)。 */
+  async ensureProjectId(): Promise<string> {
+    if (this.cfgProjectId) return this.cfgProjectId;
+    try {
+      const raw = fs.readFileSync(FLOW_PROJECT_FILE, "utf-8");
+      const pid = JSON.parse(raw)?.projectId;
+      if (typeof pid === "string" && pid) return pid;
+    } catch { /* 文件不存在/损坏 → 走新建 */ }
+    await this.ensureReady();
+    const body = JSON.stringify({ json: { projectTitle: `media-gen-mcp ${new Date().toISOString().slice(0, 10)}`, toolName: TOOL_INTERNAL_NAME } });
+    const f = await this.transport.pageFetch({
+      url: `${LABS_ORIGIN}/fx/api/trpc/project.createProject`,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      bodyB64: utf8ToB64(body),
+    });
+    if (!f.ok) throw new FlowError("S201", `project.createProject HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 160)}`, { flowStatus: f.status });
+    let created: any;
+    try { created = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "createProject 响应体非 JSON", { flowStatus: 0 }); }
+    const pid = created?.result?.data?.json?.result?.projectId;
+    if (!pid) throw new FlowError("S202", `createProject 响应无 projectId:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
+    try {
+      fs.mkdirSync(path.dirname(FLOW_PROJECT_FILE), { recursive: true });
+      fs.writeFileSync(FLOW_PROJECT_FILE, JSON.stringify({
+        provider: "flow", projectId: pid, createdAt: new Date().toISOString(),
+        note: "media-gen-mcp flow provider 自动新建;复用此项目,失效再删让其重建",
+      }, null, 2));
+    } catch { /* 落盘失败不阻断(下次会再新建);projectId 已在返回值里 */ }
+    return pid;
+  }
+
+  // ── 只读数据面(零消耗;契约 §2.2/§2.3/§2.6) ──
+
+  /** GET /v1/credits?key=(Bearer;契约 §2.2)。 */
+  async getCredits(): Promise<{ credits?: number; serviceTier?: string; userPaygateTier?: string; subscriptionCredits?: number; sku?: string }> {
+    await this.ensureReady();
+    const token = await this.getAccessToken();
+    const f = await this.transport.pageFetch({
+      url: `${AISANDBOX_ORIGIN}/v1/credits?key=${FLOW_API_KEY}`,
+      method: "GET",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!f.ok) throw new FlowError("S201", `credits 查询 HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 160)}`, { flowStatus: f.status });
+    try { return JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "credits 响应体非 JSON", { flowStatus: 0 }); }
+  }
+
+  /** GET flow.projectInitialData(契约 §2.3;状态轮询 + 模型目录单一数据源)。 */
+  private async getProjectData(projectId?: string): Promise<any> {
+    const pid = projectId ?? await this.ensureProjectId();
+    await this.ensureReady();
+    const input = encodeURIComponent(JSON.stringify({ json: { projectId: pid } }));
+    const f = await this.transport.pageFetch({
+      url: `${LABS_ORIGIN}/fx/api/trpc/flow.projectInitialData?input=${input}`,
+      method: "GET",
+      headers: {},
+    });
+    if (!f.ok) throw new FlowError("S201", `projectInitialData HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 160)}`, { flowStatus: f.status });
+    let j: any;
+    try { j = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "projectInitialData 响应体非 JSON", { flowStatus: 0 }); }
+    const data = j?.result?.data?.json ?? j;
+    if (!data?.projectContents) throw new FlowError("S202", `projectInitialData 响应缺 projectContents:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
+    this.cacheDynamicCatalog(data);
+    return data;
+  }
+
+  /** 从 projectInitialData 缓存动态 usage key 目录(供 listVideoModels/校验;静态快照为兜底)。 */
+  private cacheDynamicCatalog(data: any): void {
+    const keys: string[] = [];
+    for (const fam of data?.modelConfig?.videoModelFamilies ?? []) {
+      for (const u of fam?.usages ?? []) if (typeof u?.key === "string") keys.push(u.key);
+    }
+    if (keys.length) this.dynamicCatalog = { at: Date.now(), videoKeys: keys };
+  }
+
+  private async findMedia(mediaId: string): Promise<any> {
+    const data = await this.getProjectData();
+    const media = (data?.projectContents?.media ?? []).find((m: any) => m?.name === mediaId);
+    if (!media) {
+      throw new FlowError("S400", `mediaId "${mediaId}" 不在本项目 media 列表(可能属于其他项目或已删除)`, { hint: "不带参数调 flow_status 可查看本项目全部 media" });
+    }
+    return media;
+  }
+
+  /** 媒体状态查询(零消耗):getVideo 的底层,也供 flow_status 工具直查。 */
+  async mediaStatus(mediaId: string): Promise<{
+    mediaId: string; status: TaskStatus; rawStatus?: string; kind: "video" | "image" | "unknown";
+    model?: string; seed?: number; durationSeconds?: number; bytes?: number; created?: string; prompt?: string;
+  }> {
+    await this.ensureReady();
+    const m = await this.findMedia(mediaId);
+    const mapped = mapMediaStatus(m);
+    const gen = m?.video?.generatedVideo ?? m?.image?.generatedImage ?? {};
+    const dim = m?.dimensions?.length;
+    const durationSeconds = typeof dim === "string" && /^\d+s$/.test(dim) ? Number(dim.slice(0, -1)) : undefined;
+    return {
+      mediaId,
+      status: mapped.status,
+      ...(mapped.rawStatus ? { rawStatus: mapped.rawStatus } : {}),
+      kind: m?.video?.generatedVideo ? "video" : m?.image?.generatedImage ? "image" : "unknown",
+      ...(gen.model ? { model: gen.model } : {}),
+      ...(gen.seed != null ? { seed: gen.seed } : {}),
+      ...(durationSeconds ? { durationSeconds } : {}),
+      ...(m?.mediaMetadata?.mediaBlobSize ? { bytes: Number(m.mediaMetadata.mediaBlobSize) } : {}),
+      ...(m?.mediaMetadata?.createTime ? { created: m.mediaMetadata.createTime } : {}),
+      ...(gen.prompt || m?.mediaMetadata?.requestData?.promptInputs?.[0]?.textInput ? { prompt: gen.prompt ?? m.mediaMetadata.requestData.promptInputs[0].textInput } : {}),
+      ...(mapped.status === "failed" && mapped.error ? { error: mapped.error } : {}),
+    };
+  }
+
+  /**
+   * 媒体下载(零消耗;契约 §2.6):getMediaUrlRedirect。
+   * 无 type → 原始资产(video/mp4 流式 / image);thumbnail=true → MEDIA_URL_TYPE_THUMBNAIL(image/jpeg)。
+   */
+  async getMediaBytes(mediaId: string, opts: { thumbnail?: boolean } = {}): Promise<{ contentType: string; buf: Buffer }> {
+    await this.ensureReady();
+    const q = opts.thumbnail ? "&mediaUrlType=MEDIA_URL_TYPE_THUMBNAIL" : "";
+    const f = await this.transport.pageFetch({
+      url: `${LABS_ORIGIN}/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(mediaId)}${q}`,
+      method: "GET",
+      headers: {},
+    }, DOWNLOAD_TIMEOUT_MS);
+    if (!f.ok) throw new FlowError("S402", `媒体下载 HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 160)}`, { flowStatus: f.status });
+    const buf = Buffer.from(f.bodyB64, "base64");
+    if (!buf.length) throw new FlowError("S402", "媒体下载返回空 body", { flowStatus: 0 });
+    return { contentType: f.contentType || "application/octet-stream", buf };
+  }
+
+  // ── 图片放大(契约 §9.5 + E 轮 bundle Zod 全 schema + §10.8 action 实证,0 点) ──
+
+  /**
+   * 2K 图片放大:POST /v1/flow/upsampleImage(0 点;reCAPTCHA action = IMAGE_GENERATION,§10.8 拦截实证)。
+   * body 全 schema(bundle _app-cf6a7aa3 Zod 逐字,E 轮逆向):{clientContext, mediaId, requestContext, targetResolution},
+   * targetResolution ∈ UPSAMPLE_IMAGE_RESOLUTION_{UNSPECIFIED,2K,4K}(4K 需 ADVANCED tier;模型固定 GEM_PIX_2_UPSAMPLE_2K,无选择字段)。
+   * source:项目内已有 image mediaId,或 http(s)/data: URI(先 uploadImage 上传,0 点)。
+   * 测试铁律:测试代码不得让本方法打真实网络(stub transport 除外)。
+   */
+  async generateUpscaledImage(req: ImageRequest): Promise<ImageResult> {
+    await this.ensureReady();
+    const src = req.images?.[0];
+    if (!src) {
+      throw new FlowError("S301", "图片放大需要 images[0](要放大的图:已有图片的 mediaId,或 http(s)/data: URI 自动上传)", { hint: "mediaId 可经 flow_status 查看;放大 0 积分" });
+    }
+    const warnings: string[] = [];
+    if (req.prompt?.trim()) warnings.push("图片放大不消费 prompt(固定 GEM_PIX_2_UPSAMPLE_2K 管线),已忽略。");
+    // 源解析:URI → 上传;否则当 mediaId(须在项目内且是 image)
+    let mediaId: string;
+    if (/^(https?|data):/i.test(src)) {
+      mediaId = (await this.uploadMedia(src)).mediaId;
+    } else {
+      const m = await this.findMedia(src);
+      if (m?.video?.generatedVideo && !m?.image?.generatedImage) {
+        throw new FlowError("S301", `mediaId "${src}" 是 video 媒体,不能作图片放大源`);
+      }
+      mediaId = src;
+    }
+    const submitted = await this.submitImageUpsample(mediaId, "UPSAMPLE_IMAGE_RESOLUTION_2K");
+    const finished = await this.pollMediaUntilDone([submitted.mediaId], 240_000, 5_000);
+    const outputs = [];
+    for (const item of finished.done) {
+      const got = await this.getMediaBytes(item.mediaId);
+      outputs.push({
+        url: `data:${got.contentType.split(";")[0] || "image/png"};base64,${got.buf.toString("base64")}`,
+        mediaId: item.mediaId,
+        ...(item.gen?.seed != null ? { seed: item.gen.seed } : {}),
+      });
+    }
+    if (finished.timeout.length) warnings.push(`放大媒体轮询超时(${finished.timeout.join(",")}),可用 flow_status(mediaId) 复查后下载。`);
+    if (!outputs.length) {
+      throw new FlowError("S401", `图片放大失败(0 张产出;已提交 mediaId:${submitted.mediaId}${finished.failed.length ? ";" + finished.failed.map((x) => `${x.mediaId}(${x.rawStatus ?? "?"})`).join(",") : ""})`, { hint: "可带 mediaId 调 flow_status 复查状态" });
+    }
+    return { outputs, warnings: warnings.length ? warnings : undefined };
+  }
+
+  /** 🔴 提交点(图片放大 POST;0 点)。构造 §9.5+E 轮 schema body 并提交,返回新 mediaId。 */
+  private async submitImageUpsample(mediaId: string, targetResolution: string): Promise<{ mediaId: string; raw: any }> {
+    const pid = await this.ensureProjectId();
+    const token = await this.getAccessToken();
+    const recaptcha = await this.transport.recaptchaToken(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_IMAGE); // §10.8: 放大与生图共用 action(IMAGE_UPSAMPLING 会 403)
+    const body = {
+      clientContext: {
+        recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
+        projectId: pid,
+        tool: TOOL_INTERNAL_NAME,
+        sessionId: `;${Date.now()}`,
+      },
+      mediaId,
+      requestContext: {},
+      targetResolution,
+    };
+    const f = await this.transport.pageFetch({
+      url: `${AISANDBOX_ORIGIN}/v1/flow/upsampleImage`,
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      bodyB64: utf8ToB64(JSON.stringify(body)),
+    });
+    if (!f.ok) {
+      throw new FlowError("S201", `图片放大提交 HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 240)}`, { flowStatus: f.status });
+    }
+    let r: any;
+    try { r = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "图片放大响应体非 JSON", { flowStatus: 0 }); }
+    const newId = Array.isArray(r?.media) ? r.media[0]?.name : r?.media?.name;
+    if (typeof newId !== "string" || !newId) {
+      throw new FlowError("S202", `图片放大响应无 media.name:${bufToUtf8(f.bodyB64).slice(0, 240)}`, { flowStatus: 0 });
+    }
+    return { mediaId: newId, raw: r };
+  }
+
+  // ── 资产删除(契约 §9.4,字段名 = mediaIds;0 点;flow_status 轮询卫生前提) ──
+
+  /**
+   * 删除项目内媒体:POST /v1/flow:batchDeleteAssets body {mediaIds}(§9.4 假 id 404 探针实证字段名)。
+   * 删除前逐个校验存在性(有未知 id → S400 整批不提交,防部分删除);删除为不可逆操作。
+   */
+  async deleteAssets(mediaIds: string[]): Promise<{ deleted: string[]; mediaRemaining: number; raw: unknown }> {
+    if (!mediaIds.length) throw new FlowError("S301", "deleteAssets 需要 non-empty mediaIds 数组");
+    await this.ensureReady();
+    const known = new Set(((await this.getProjectData()).projectContents?.media ?? []).map((m: any) => m?.name));
+    const unknown = mediaIds.filter((id) => !known.has(id));
+    if (unknown.length) {
+      throw new FlowError("S400", `以下 mediaId 不在本项目(整批未删除):${unknown.join(", ")}`, { hint: "不带参数调 flow_status 可查看本项目全部 media" });
+    }
+    const token = await this.getAccessToken();
+    const f = await this.transport.pageFetch({
+      url: `${AISANDBOX_ORIGIN}/v1/flow:batchDeleteAssets`,
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      bodyB64: utf8ToB64(JSON.stringify({ mediaIds })),
+    });
+    if (!f.ok) {
+      throw new FlowError("S201", `batchDeleteAssets HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 240)}`, { flowStatus: f.status });
+    }
+    let raw: any;
+    try { raw = JSON.parse(bufToUtf8(f.bodyB64)); } catch { raw = { rawText: bufToUtf8(f.bodyB64).slice(0, 200) }; }
+    const after = ((await this.getProjectData()).projectContents?.media ?? []) as any[];
+    return { deleted: mediaIds.filter((id) => !after.some((m) => m?.name === id)), mediaRemaining: after.length, raw };
+  }
+
+  // ── 媒体分享(契约 §8.3 live 双实证 + §11.2 E 轮 provider 路径复验;0 点) ──
+
+  /**
+   * 生成分享链接:tRPC flow.share.shareMedia POST {json:{mediaId, includePrompt:true, inputMediaIds:[], inputEntityIds:[]}}
+   * (inputEntityIds 必须 [],null 会 zod 400 —— §8.3 live 实证)→ {result:{data:{json:{result:{mediaShareId}}}}}。
+   * 分享 URL 模板(bundle 字符串表 0x2828/0xad1/0xb06 解码,E 轮):
+   *   https://labs.google/fx/tools/flow/shared/{image|video}/<mediaShareId>(image/video 按媒体 kind)。
+   * 逐 id 提交(tRPC 一次一个);未知 id → 整批 S400 不提交(对齐 deleteAssets 纪律)。
+   */
+  async shareMedia(mediaIds: string[]): Promise<{ shared: Array<{ mediaId: string; kind: string; mediaShareId: string; shareUrl: string }>; hint: string }> {
+    if (!mediaIds.length) throw new FlowError("S301", "shareMedia 需要 non-empty mediaIds 数组");
+    await this.ensureReady();
+    const all = (await this.getProjectData()).projectContents?.media ?? [];
+    const known = new Map<string, "image" | "video">();
+    for (const m of all) {
+      if (m?.video?.generatedVideo) known.set(m.name, "video");
+      else if (m?.image?.generatedImage) known.set(m.name, "image");
+    }
+    const unknown = mediaIds.filter((id) => !known.has(id));
+    if (unknown.length) {
+      throw new FlowError("S400", `以下 mediaId 不在本项目(整批未分享):${unknown.join(", ")}`, { hint: "不带参数调 flow_status 可查看本项目全部 media" });
+    }
+    const shared: Array<{ mediaId: string; kind: string; mediaShareId: string; shareUrl: string }> = [];
+    for (const id of mediaIds) {
+      const f = await this.transport.pageFetch({
+        url: `${LABS_ORIGIN}/fx/api/trpc/flow.share.shareMedia`,
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        bodyB64: utf8ToB64(JSON.stringify({ json: { mediaId: id, includePrompt: true, inputMediaIds: [], inputEntityIds: [] } })),
+      });
+      if (!f.ok) {
+        throw new FlowError("S201", `shareMedia(${id}) HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: f.status });
+      }
+      let r: any;
+      try { r = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", `shareMedia(${id}) 响应体非 JSON`, { flowStatus: 0 }); }
+      // tRPC 响应嵌套:result.data.json.result.mediaShareId(§11.2 live 实测;容错浅挖两层)
+      const mediaShareId = r?.result?.data?.json?.result?.mediaShareId ?? r?.result?.data?.json?.mediaShareId ?? r?.result?.mediaShareId;
+      if (typeof mediaShareId !== "string" || !mediaShareId) {
+        throw new FlowError("S202", `shareMedia(${id}) 响应无 mediaShareId:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
+      }
+      const kind = known.get(id) === "video" ? "video" : "image";
+      shared.push({ mediaId: id, kind, mediaShareId, shareUrl: `${LABS_ORIGIN}/fx/tools/flow/shared/${kind}/${mediaShareId}` });
+    }
+    return {
+      shared,
+      hint: "分享链接公开可访问(含提示词 includePrompt=true);再次分享同一媒体会生成新的 mediaShareId(旧链接仍有效直至项目删除)。",
+    };
+  }
+
+  // ── 取消生成(契约 §11.3;bundle 提交构造器明文 body={mediaId} 单值;0 点) ──
+
+  /**
+   * 取消 in-flight 生成:POST aisandbox /v1/flowMedia:cancelGeneration body {mediaId}(单值,逐 id 提交)。
+   * 前置:逐 id 校验「在本项目 && 状态 in_progress」—— 已完成/已取消的媒体不可取消
+   * (服务端会 4xx PUBLIC_ERROR_MEDIA_GENERATION_CANNOT_BE_CANCELED,bundle 错误码实证),整批先验后发。
+   * 取消后复查状态:期望转移到 MEDIA_GENERATION_STATUS_CANCELED(mapMediaStatus → failed 终态)。
+   *
+   * 🔴 适用面 live 边界(§11.3):bundle 中 cancel 仅被 VideoService 的 processingRequests 队列调用
+   * (传提交响应的 media.name = mediaId);E 轮 live 实证对 **图片** in-flight 提交取消 → 404
+   * "Requested entity was not found"(图片生成不可取消/不在 cancelable registry)。视频 in-flight 的
+   * E2E 取消未 live 验证(需 ≥7 点提交,待授权)——本方法对 video 类 in-flight 照常提交,图片类
+   * 如实回传服务端 404 并在错误中解释。
+   */
+  async cancelGenerations(mediaIds: string[]): Promise<{
+    canceled: string[]; notCancelable: Array<{ mediaId: string; status: string; reason: string }>; statusAfter: Array<{ mediaId: string; status: string; rawStatus?: string }>;
+  }> {
+    if (!mediaIds.length) throw new FlowError("S301", "cancelGenerations 需要 non-empty mediaIds 数组");
+    await this.ensureReady();
+    const data = await this.getProjectData();
+    const all = data.projectContents?.media ?? [];
+    const byId = new Map(all.map((m: any) => [m?.name, m]));
+    const unknown = mediaIds.filter((id) => !byId.has(id));
+    if (unknown.length) {
+      throw new FlowError("S400", `以下 mediaId 不在本项目(整批未取消):${unknown.join(", ")}`, { hint: "不带参数调 flow_status 可查看本项目全部 media" });
+    }
+    const notCancelable: Array<{ mediaId: string; status: string; reason: string }> = [];
+    const toCancel: string[] = [];
+    for (const id of mediaIds) {
+      const st = mapMediaStatus(byId.get(id));
+      if (st.status === "in_progress") toCancel.push(id);
+      else notCancelable.push({ mediaId: id, status: st.status, reason: st.status === "completed" ? "已完成,无需取消" : `状态 ${st.rawStatus ?? st.status} 非生成中,不可取消` });
+    }
+    const token = await this.getAccessToken();
+    const canceled: string[] = [];
+    for (const id of toCancel) {
+      const f = await this.transport.pageFetch({
+        url: `${AISANDBOX_ORIGIN}/v1/flowMedia:cancelGeneration`,
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        bodyB64: utf8ToB64(JSON.stringify({ mediaId: id })),
+      });
+      if (!f.ok) {
+        const detail = bufToUtf8(f.bodyB64).slice(0, 200);
+        const hint404 = f.status === 404
+          ? "404 实测语义(§11.3):该生成不可取消 —— 图片生成 cancel → 404(bundle 中 cancel 仅 VideoService 使用);视频 in-flight 之外的状态也会 404"
+          : undefined;
+        throw new FlowError("S201", `cancelGeneration(${id}) HTTP ${f.status}: ${detail}`, { flowStatus: f.status, ...(hint404 ? { hint: hint404 } : {}) });
+      }
+      canceled.push(id);
+    }
+    // 取消后复查状态转移(零消耗只读;刚提交的 job 可能仍在转移中,如实回传)
+    const after = canceled.length ? (await this.getProjectData()).projectContents?.media ?? [] : [];
+    const statusAfter = canceled.map((id) => {
+      const st = mapMediaStatus((after as any[]).find((m: any) => m?.name === id));
+      return { mediaId: id, status: st.status, ...(st.rawStatus ? { rawStatus: st.rawStatus } : {}) };
+    });
+    return { canceled, notCancelable, statusAfter };
+  }
+
+  // ── 角色实体(契约 §8.1 + §11.4/§11.5 E 轮 live 定型;0 点;flow_entity 第 24 工具的后端) ──
+
+  /**
+   * 实体本地镜像(~/.media-gen-mcp/flow-entities.json,对齐 flow-project.json 先例)。
+   * 为什么需要:Flow 无实体读端点 —— projectContents 键固定 workflows/media/externalReferenceMedia/
+   * scenes/agentInfo(§9.6 + §11.4 live 复核),/v1/flowCollections/ REST 页面上下文 CORS 拒绝 →
+   * 写侧 wire(createEntity/updateEntity)全 live,读侧退化为本地镜像(工具描述明示局限)。
+   */
+  entitiesFile: string | null = null; // 测试注入缝(public 实例字段,对齐 preflightTtlMs/cooldownMs 先例;默认 ~/.media-gen-mcp/flow-entities.json)
+
+  private readEntities(): FlowEntityRecord[] {
+    const file = this.entitiesFile ?? FLOW_ENTITIES_FILE;
+    try {
+      const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
+      return Array.isArray(raw?.entities) ? raw.entities : [];
+    } catch { return []; }
+  }
+
+  private writeEntities(entities: FlowEntityRecord[]): void {
+    const file = this.entitiesFile ?? FLOW_ENTITIES_FILE;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ entities, updatedAt: new Date().toISOString() }, null, 2));
+  }
+
+  /**
+   * 30 预设语音清单(契约 §8.8;只读源 = projectInitialData projectContents.externalReferenceMedia 的
+   * AUDIO 条目,路径 entry.media.audio.generatedAudio —— §11.4 live 纠偏:audio 嵌在 entry.media 下,
+   * 非条目顶层;30 条恒在,0 点)。
+   */
+  async listPresetVoices(): Promise<Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }>> {
+    await this.ensureReady();
+    const ext = (await this.getProjectData()).projectContents?.externalReferenceMedia ?? [];
+    const voices: Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }> = [];
+    for (const e of ext) {
+      const g = e?.media?.audio?.generatedAudio;
+      if (g?.isPresetAudioSample !== true) continue;
+      voices.push({
+        id: typeof e?.mediaId === "string" ? e.mediaId : String(g?.name ?? "").toLowerCase(),
+        displayName: String(g?.name ?? e?.mediaId ?? ""),
+        ...(typeof g?.description === "string" ? { description: g.description } : {}),
+        ...(typeof g?.audioSamplePath === "string" ? { sampleUrl: g.audioSamplePath } : {}),
+      });
+    }
+    return voices;
+  }
+
+  /**
+   * 创建角色实体(0 点,live 定型 §11.4):tRPC flow.createEntity POST {json:{projectId, collectionId:""}}
+   * —— collectionId 空串可过 zod(§9.6 的 "Expected string, received null" 只拒 null;E 轮 live 200
+   * 实证空串直接建实体,无需先建 collection → 集合 wire 依赖蒸发)。
+   * 服务端默认 displayName "Untitled Character";传 displayName/语音/图即追加一次 PATCH(客户端编排)。
+   * imageMediaIds:项目内已完成图片的 mediaId → imageReferences 需 workflowId(workflows[].metadata.primaryMediaId
+   * 映射,live 实证),此处自动解析并写入镜像。
+   */
+  async createEntity(req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
+    await this.ensureReady();
+    const pid = await this.ensureProjectId();
+    // 前置:语音 id 校验(拼错立即失败,不落到 PATCH)
+    if (req.presetVoiceId) {
+      const voices = await this.listPresetVoices();
+      if (!voices.some((v) => v.id === req.presetVoiceId)) {
+        throw new FlowError("S301", `presetVoiceId "${req.presetVoiceId}" 不在预设语音清单(共 ${voices.length} 个)`, { hint: "flow_entity(action=voices) 可查看全部预设语音" });
+      }
+    }
+    const f = await this.transport.pageFetch({
+      url: `${LABS_ORIGIN}/fx/api/trpc/flow.createEntity`,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      bodyB64: utf8ToB64(JSON.stringify({ json: { projectId: pid, collectionId: "" } })),
+    });
+    if (!f.ok) {
+      throw new FlowError("S201", `createEntity HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: f.status });
+    }
+    let r: any;
+    try { r = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "createEntity 响应体非 JSON", { flowStatus: 0 }); }
+    const created = r?.result?.data?.json ?? r?.result?.data ?? {};
+    const entityId = created?.entityId;
+    if (typeof entityId !== "string" || !entityId) {
+      throw new FlowError("S202", `createEntity 响应无 entityId:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
+    }
+    // displayName/语音/图 → 一次 PATCH 补齐(§8.1 wire;均为可选)
+    const displayName = req.displayName?.trim() || undefined;
+    const imageWorkflowIds = req.imageMediaIds?.length ? await this.resolveWorkflowIds(req.imageMediaIds) : undefined;
+    const mask: string[] = [];
+    if (displayName) mask.push("entityInfo.displayName");
+    if (req.presetVoiceId) mask.push("entityInfo.characterInfo.audioReferences");
+    if (imageWorkflowIds) mask.push("entityInfo.characterInfo.imageReferences");
+    if (mask.length) {
+      await this.patchEntity(pid, entityId, mask, {
+        ...(displayName ? { displayName } : {}),
+        ...(req.presetVoiceId ? { audioReferences: [{ presetVoiceId: req.presetVoiceId }] } : {}),
+        ...(imageWorkflowIds ? { imageReferences: imageWorkflowIds.map((workflowId) => ({ workflowId })) } : {}),
+      });
+    }
+    const now = new Date().toISOString();
+    const record: FlowEntityRecord = {
+      entityId,
+      projectId: pid,
+      displayName: displayName ?? created?.entityInfo?.displayName ?? "Untitled Character",
+      ...(req.presetVoiceId ? { presetVoiceId: req.presetVoiceId } : {}),
+      ...(imageWorkflowIds ? { imageWorkflowIds, imageMediaIds: req.imageMediaIds } : {}),
+      ...(typeof created?.createTime === "string" ? { created: created.createTime } : {}),
+      updated: now,
+    };
+    this.writeEntities([...this.readEntities().filter((e) => e.entityId !== entityId), record]);
+    return { ...record, raw: created };
+  }
+
+  /**
+   * 更新角色实体(0 点,live 定型 §8.5):PATCH aisandbox /v1/flow/entities
+   * body {entity:{projectId, entityId, entityInfo}, updateMask:"entityInfo.displayName,…"}(dotted mask;
+   * mask 外字段被服务端忽略 —— §11.5 live 实证)。Bearer 认证,无需 reCAPTCHA。
+   * 只 PATCH 变更字段;当前值读本地镜像(无服务端读端点)。
+   */
+  async updateEntity(entityId: string, req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
+    await this.ensureReady();
+    const pid = await this.ensureProjectId();
+    const existing = this.readEntities().find((e) => e.entityId === entityId);
+    if (!existing) {
+      throw new FlowError("S400", `entityId "${entityId}" 不在本地镜像(${FLOW_ENTITIES_FILE})。Flow 无实体读端点(契约 §9.6),只有本工具创建的实体可更新`, { hint: "flow_entity(action=list) 查看已镜像实体;非本工具创建的实体暂无法更新(读端点未逆向)" });
+    }
+    if (req.presetVoiceId) {
+      const voices = await this.listPresetVoices();
+      if (!voices.some((v) => v.id === req.presetVoiceId)) {
+        throw new FlowError("S301", `presetVoiceId "${req.presetVoiceId}" 不在预设语音清单(共 ${voices.length} 个)`, { hint: "flow_entity(action=voices) 可查看全部预设语音" });
+      }
+    }
+    const displayName = req.displayName?.trim() || undefined;
+    const imageWorkflowIds = req.imageMediaIds?.length ? await this.resolveWorkflowIds(req.imageMediaIds) : undefined;
+    const mask: string[] = [];
+    if (displayName) mask.push("entityInfo.displayName");
+    if (req.presetVoiceId) mask.push("entityInfo.characterInfo.audioReferences");
+    if (imageWorkflowIds) mask.push("entityInfo.characterInfo.imageReferences");
+    if (!mask.length) {
+      throw new FlowError("S301", "update 至少需要 displayName / presetVoiceId / imageMediaIds 之一");
+    }
+    const raw = await this.patchEntity(pid, entityId, mask, {
+      ...(displayName ? { displayName } : {}),
+      ...(req.presetVoiceId ? { audioReferences: [{ presetVoiceId: req.presetVoiceId }] } : {}),
+      ...(imageWorkflowIds ? { imageReferences: imageWorkflowIds.map((workflowId) => ({ workflowId })) } : {}),
+    });
+    const record: FlowEntityRecord = {
+      ...existing,
+      ...(displayName ? { displayName } : {}),
+      ...(req.presetVoiceId ? { presetVoiceId: req.presetVoiceId } : {}),
+      ...(imageWorkflowIds ? { imageWorkflowIds, imageMediaIds: req.imageMediaIds } : {}),
+      updated: new Date().toISOString(),
+    };
+    this.writeEntities([...this.readEntities().filter((e) => e.entityId !== entityId), record]);
+    return { ...record, raw };
+  }
+
+  /** PATCH /v1/flow/entities 共用提交(updateMask dotted;§8.1 live + §11.5 复验)。返回响应 JSON。 */
+  private async patchEntity(pid: string, entityId: string, mask: string[], parts: { displayName?: string; audioReferences?: unknown[]; imageReferences?: unknown[] }): Promise<unknown> {
+    const token = await this.getAccessToken();
+    const characterInfo: Record<string, unknown> = {};
+    if (parts.audioReferences) characterInfo.audioReferences = parts.audioReferences;
+    if (parts.imageReferences) characterInfo.imageReferences = parts.imageReferences;
+    const body = {
+      entity: {
+        projectId: pid,
+        entityId,
+        entityInfo: {
+          entityType: "CHARACTER",
+          ...(parts.displayName ? { displayName: parts.displayName } : {}),
+          ...(Object.keys(characterInfo).length ? { characterInfo } : {}),
+        },
+      },
+      updateMask: mask.join(","),
+    };
+    const f = await this.transport.pageFetch({
+      url: `${AISANDBOX_ORIGIN}/v1/flow/entities`,
+      method: "PATCH",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      bodyB64: utf8ToB64(JSON.stringify(body)),
+    });
+    if (!f.ok) {
+      throw new FlowError("S201", `PATCH /v1/flow/entities HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 240)}`, { flowStatus: f.status });
+    }
+    try { return JSON.parse(bufToUtf8(f.bodyB64)); } catch { return { rawText: bufToUtf8(f.bodyB64).slice(0, 200) }; }
+  }
+
+  /**
+   * imageMediaIds → workflowIds:实体 imageReferences 引用的是 workflowId 而非 mediaId(§8.1);
+   * workflows[].metadata.primaryMediaId 是映射源(§11.4 live 实证)。要求图片已完成且在项目内。
+   */
+  private async resolveWorkflowIds(imageMediaIds: string[]): Promise<string[]> {
+    const data = await this.getProjectData();
+    const mediaById = new Map((data.projectContents?.media ?? []).map((m: any) => [m?.name, m]));
+    const wfByPrimary = new Map<string, string>();
+    for (const w of data.projectContents?.workflows ?? []) {
+      if (typeof w?.name === "string" && typeof w?.metadata?.primaryMediaId === "string") wfByPrimary.set(w.metadata.primaryMediaId, w.name);
+    }
+    const out: string[] = [];
+    for (const id of imageMediaIds) {
+      const m = mediaById.get(id) as any;
+      if (!m) {
+        throw new FlowError("S400", `imageMediaIds 中的 "${id}" 不在本项目 media 列表`, { hint: "不带参数调 flow_status 可查看全部 media" });
+      }
+      if (!m?.image?.generatedImage) {
+        throw new FlowError("S301", `imageMediaIds 中的 "${id}" 不是已生成的图片(实体形象需已完成图片的 mediaId)`);
+      }
+      const wf = wfByPrimary.get(id);
+      if (!wf) {
+        throw new FlowError("S202", `mediaId "${id}" 找不到对应 workflow(primaryMediaId 映射缺失)`, { hint: "生成中的图片可能尚无 workflow 记录,等完成后再绑定" });
+      }
+      out.push(wf);
+    }
+    return out;
+  }
+
+  /** 本地镜像列表(Flow 无实体读端点 —— 只回镜像,如实标注局限)。 */
+  listEntities(): FlowEntityRecord[] {
+    return this.readEntities();
+  }
+
+  /** flow_status 工具主入口:全量自省(零消耗)。 */
+  async flowStatus(): Promise<Record<string, unknown>> {
+    const ready = await this.ensureReady();
+    const pid = await this.ensureProjectId();
+    const [credits, data] = await Promise.all([this.getCredits(), this.getProjectData(pid)]);
+    const media = (data?.projectContents?.media ?? []).map((m: any) => {
+      const mapped = mapMediaStatus(m);
+      return {
+        mediaId: m?.name,
+        status: mapped.status,
+        kind: m?.video?.generatedVideo ? "video" : m?.image?.generatedImage ? "image" : "unknown",
+        ...(m?.video?.generatedVideo?.model ? { model: m.video.generatedVideo.model } : {}),
+      };
+    });
+    // per-key 真实积分价与需求/可用性(契约 §2.3 usages[].creditMapping/requirements)透传 —— audit finding-8:
+    // 选模型依据不再只剩 hint 里的静态估算区间;creditsAtServiceTier = creditMapping[当前 serviceTier].cost
+    const tier = (credits as any)?.serviceTier;
+    const usageOut = (u: any) => ({
+      key: u?.key,
+      generationTimeSeconds: u?.generationTimeSeconds,
+      ...(Array.isArray(u?.requirements) ? { requirements: u.requirements } : {}),
+      ...(u?.creditMapping && typeof u.creditMapping === "object" ? { creditMapping: u.creditMapping } : {}),
+      ...(u?.creditMapping && tier && u.creditMapping[tier]?.cost != null ? { creditsAtServiceTier: u.creditMapping[tier].cost } : {}),
+    });
+    const imageFamilies = (data?.modelConfig?.imageModelFamilies ?? []).map((f: any) => ({
+      id: f?.id,
+      displayName: f?.displayName,
+      usages: (f?.usages ?? []).map((u: any) => ({ ...usageOut(u), maxImageReferences: u?.maxImageReferences })),
+    }));
+    const videoFamilies = (data?.modelConfig?.videoModelFamilies ?? []).map((f: any) => ({
+      id: f?.id,
+      displayName: f?.displayName,
+      usages: (f?.usages ?? []).map((u: any) => ({ ...usageOut(u), supportedAspectRatios: u?.supportedAspectRatios })),
+    }));
+    // 30 预设语音(§8.8/§11.4:externalReferenceMedia 的 AUDIO 条目,entry.media.audio.generatedAudio;只读 0 点)
+    const voices = (data?.projectContents?.externalReferenceMedia ?? [])
+      .filter((e: any) => e?.media?.audio?.generatedAudio?.isPresetAudioSample === true)
+      .map((e: any) => {
+        const g = e.media.audio.generatedAudio;
+        return {
+          id: typeof e?.mediaId === "string" ? e.mediaId : String(g?.name ?? "").toLowerCase(),
+          displayName: g?.name,
+          ...(typeof g?.description === "string" ? { description: g.description } : {}),
+        };
+      });
+    return {
+      ok: true,
+      provider: "flow",
+      page_url: ready.pageUrl,
+      email: ready.email,
+      project_id: pid,
+      project_url: `${LABS_ORIGIN}/fx/zh/tools/flow/project/${pid}`,
+      credits,
+      image_families: imageFamilies,
+      video_families: videoFamilies,
+      ...(voices.length ? { preset_voices: voices } : {}),
+      media,
+      hint: "提交视频消耗积分(abra t2v/i2v/r2v 7-15/abra_edit 20/veo lite 10/fast 20/quality 100 每条;upsampler_1080p 0 点);生图/图片上传/图片放大/删除/分享/取消 0 点。create_video(provider=flow)已开放:t2v / i2v(image)/ 参考图(r2v + images)/ 首尾帧(keyframes 2 张)/ 延长(extension + videoMediaId)/ 编辑(edit + videoMediaId + prompt,abra_edit,wire 定型未 live)/ 视频超分(veo_3_1_upsampler_1080p + videoMediaId,0 点);generate_image(provider=flow)支持 images(底图+参考)与 GEM_PIX_2_UPSAMPLE_2K 放大;flow_status(deleteMediaIds) 删媒体 / (shareMediaIds) 生成公开分享链接 / (cancelMediaIds) 取消生成中任务;flow_entity 建角色实体/绑预设语音(全 0 点)。",
+    };
+  }
+
+  // ── 上传(契约 §7.1,live 200 实证:0 点、无需 reCAPTCHA) ──
+
+  /**
+   * 把一张图上传为 Flow 项目内媒体(生图 imageInputs 与视频 start/endImage 的公共前置)。
+   * data: URI 本地解析;http(s) 经 Node fetch 下载(页面上下文 fetch 外站会撞 CORS)。
+   * 返回 mediaId + 嗅探出的尺寸(供 imageInputs.aspectRatio)。
+   */
+  async uploadMedia(imageUri: string, opts: { fileName?: string } = {}): Promise<{
+    mediaId: string; mimeType: string; width?: number; height?: number; imageAspect?: FlowImageAspect; raw: unknown;
+  }> {
+    await this.ensureReady();
+    const img = await loadImageBytes(imageUri);
+    const pid = await this.ensureProjectId();
+    const token = await this.getAccessToken();
+    const body = {
+      clientContext: { projectId: pid, tool: TOOL_INTERNAL_NAME, sessionId: `;${Date.now()}` },
+      cropCoordinates: {},
+      ...(opts.fileName ?? img.fileName ? { fileName: opts.fileName ?? img.fileName } : {}),
+      imageBytes: img.bytes.toString("base64"),
+      isHidden: false,
+      isNotIngredient: false,
+      isUserUploaded: true,
+      mediaGenerationContext: { batchId: crypto.randomUUID() },
+      mediaIdSeed: crypto.randomUUID(),
+      mimeType: img.mimeType,
+      parentMediaGenerationId: "",
+      workflowIdSeed: crypto.randomUUID(),
+    };
+    const f = await this.transport.pageFetch({
+      url: `${AISANDBOX_ORIGIN}/v1/flow/uploadImage`,
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      bodyB64: utf8ToB64(JSON.stringify(body)),
+    });
+    if (!f.ok) {
+      throw new FlowError("S201", `图片上传 HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: f.status });
+    }
+    let r: any;
+    try { r = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "图片上传响应体非 JSON", { flowStatus: 0 }); }
+    const mediaId = r?.media?.name;
+    if (typeof mediaId !== "string" || !mediaId) {
+      throw new FlowError("S202", `图片上传响应无 media.name:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
+    }
+    return {
+      mediaId,
+      mimeType: img.mimeType,
+      ...(img.width != null && img.height != null ? { width: img.width, height: img.height } : {}),
+      ...(img.width != null && img.height != null ? { imageAspect: ratioToImageAspect(img.width, img.height) } : {}),
+      raw: r,
+    };
+  }
+
+  /** 视频请求的图片输入(契约 §7.3):上传 → {aspectRatio?, mediaId}(mediaId 与 imageBytes 是 oneof,只发 mediaId)。 */
+  private async videoImageInput(imageUri: string): Promise<{ aspectRatio?: string; mediaId: string }> {
+    const up = await this.uploadMedia(imageUri);
+    return { ...(up.imageAspect ? { aspectRatio: `IMAGE_ASPECT_RATIO_${up.imageAspect}` } : {}), mediaId: up.mediaId };
+  }
+
+  // ── 生图(契约 §2.4;带图链路 §7.2,live 200 实证) ──
+
+  /**
+   * 🔴 消耗点(生图提交;契约 §3:当前 tier 图片全部 0 点,但会真实占用生成队列)。
+   * 测试铁律:测试代码不得调用本方法打真实网络(stub transport 除外)。
+   * 流程:batchGenerateImages 提交 → 轮询 projectInitialData 至 SUCCESSFUL → 下载字节 → data: URI 返回。
+   * images(2026-08-23 开放):images[0] = base image(IMAGE_INPUT_TYPE_BASE_IMAGE,比例随底图 → UNSPECIFIED),
+   * images[1..] = references(IMAGE_INPUT_TYPE_REFERENCE;base+refs 合计上限 10,契约 §7.2)。
+   */
+  async generateImage(req: ImageRequest): Promise<ImageResult> {
+    await this.ensureReady();
+    const model = req.model ?? this.models?.image?.default ?? "NARWHAL";
+    if (!FLOW_IMAGE_MODELS.includes(model)) {
+      throw new FlowError("S300", `未知图片模型 "${model}"。可用:${FLOW_IMAGE_MODELS.join(", ")}`);
+    }
+    if (model === "GEM_PIX_2_UPSAMPLE_2K") {
+      // 2K 放大走独立端点 /v1/flow/upsampleImage(契约 §9.5/E 轮 bundle Zod 全 schema + §10.8 action=IMAGE_GENERATION),
+      // 不作普通生图模型提交;输入 images[0] = 已有图片 mediaId 或 http(s)/data: URI(先上传,0 点)。
+      return this.generateUpscaledImage(req);
+    }
+    const pid = await this.ensureProjectId();
+    const warnings: string[] = [];
+    // 带图链路(契约 §7.2):先上传为项目内媒体,imageInputs 用 {imageInputType, name=mediaId} 引用
+    let imageInputs: Array<{ imageInputType: string; name: string }> = [];
+    if (req.images?.length) {
+      if (req.images.length > 10) {
+        throw new FlowError("S301", `images 数量 ${req.images.length} 超上限(Flow base image + references 合计最多 10,契约 §7.2 maxImageReferences)`);
+      }
+      const uploads: Array<{ mediaId: string }> = [];
+      for (const uri of req.images) uploads.push(await this.uploadMedia(uri));
+      imageInputs = [
+        { imageInputType: "IMAGE_INPUT_TYPE_BASE_IMAGE", name: uploads[0].mediaId },
+        ...uploads.slice(1).map((u) => ({ imageInputType: "IMAGE_INPUT_TYPE_REFERENCE", name: u.mediaId })),
+      ];
+    }
+    // 比例优先级:一等 aspect 参数(UI 语义 16:9 等)> extra.imageAspectRatio(原始枚举,直调口)> size 最近似映射;
+    // 带底图时强制 UNSPECIFIED(比例随底图,客户端实证契约 §7.2),用户显式传的比例告警后忽略
+    const explicitAspect = Boolean(req.aspect || req.extra?.imageAspectRatio || (req.size && /^\s*\d+\s*x\s*\d+\s*$/i.test(req.size)));
+    const aspect: string = imageInputs.length
+      ? "UNSPECIFIED"
+      : req.aspect
+        ? aspectRatioToImageAspect(req.aspect)
+        : ((req.extra?.imageAspectRatio as string | undefined) ?? sizeToImageAspect(req.size));
+    if (imageInputs.length && explicitAspect) {
+      warnings.push(`带底图生图的比例随底图(imageAspectRatio 强制 IMAGE_ASPECT_RATIO_UNSPECIFIED),已忽略传入的比例参数。`);
+    }
+    if (aspect !== "UNSPECIFIED" && !IMAGE_ASPECTS.includes(aspect as FlowImageAspect)) {
+      throw new FlowError("S301", `imageAspectRatio 非法:${aspect}(合法:${IMAGE_ASPECTS.join("/")})`);
+    }
+    // seed:一等字段(工具层可达)优先,extra.seed 保留为 provider 直调透传口(audit finding-2)
+    const imageSeed = req.seed ?? (typeof req.extra?.seed === "number" ? (req.extra.seed as number) : undefined);
+    const submitted = await this.submitImages(pid, model, aspect, req.prompt, imageSeed, imageInputs);
+    // 轮询至完成(实测 ~30-40s)
+    const finished = await this.pollMediaUntilDone(submitted.mediaIds, 240_000, 5_000);
+    const outputs = [];
+    for (const item of finished.done) {
+      const got = await this.getMediaBytes(item.mediaId);
+      outputs.push({
+        url: `data:${got.contentType.split(";")[0] || "image/png"};base64,${got.buf.toString("base64")}`,
+        // mediaId/seed 回填:outputs ↔ Flow media 的对应关系可反查(flow_status(mediaId) 复下载/复现)—— audit finding-13
+        mediaId: item.mediaId,
+        ...(item.gen?.seed != null ? { seed: item.gen.seed } : {}),
+      });
+    }
+    if (finished.failed.length) {
+      warnings.push(`${finished.failed.length} 个媒体未成功:${finished.failed.map((x) => `${x.mediaId}(${x.rawStatus ?? "?"})`).join("; ")}`);
+    }
+    if (finished.timeout.length) {
+      // 超时集不得静默丢弃(audit finding-17):部分完成部分超时时,超时项也必须可见
+      warnings.push(`${finished.timeout.length} 个媒体轮询超时未到终态(${finished.timeout.join(", ")}),可用 flow_status(mediaId) 复查后下载。`);
+    }
+    if (!outputs.length) {
+      throw new FlowError("S401", `图片生成失败(0 张产出;已提交 mediaId:${submitted.mediaIds.join(",")})`, { hint: "可带 mediaId 调 flow_status 复查状态" });
+    }
+    return { outputs, warnings: warnings.length ? warnings : undefined };
+  }
+
+  /** 🔴 消耗点(生图 POST;0 点)。构造契约 §2.4/§7.2 body 并提交,返回 SCHEDULED mediaId。 */
+  private async submitImages(
+    pid: string,
+    model: string,
+    aspect: string,
+    prompt: string,
+    seed?: number,
+    imageInputs: Array<{ imageInputType: string; name: string }> = [],
+  ): Promise<{ mediaIds: string[]; raw: any }> {
+    const token = await this.getAccessToken();
+    const recaptcha = await this.transport.recaptchaToken(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_IMAGE);
+    const clientContext = {
+      recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
+      projectId: pid,
+      tool: TOOL_INTERNAL_NAME,
+      sessionId: `;${Date.now()}`,
+    };
+    const body = {
+      clientContext,
+      mediaGenerationContext: { batchId: crypto.randomUUID() },
+      useNewMedia: true,
+      requests: [{
+        clientContext,
+        imageModelName: model,
+        imageAspectRatio: `IMAGE_ASPECT_RATIO_${aspect}`,
+        structuredPrompt: { parts: [{ text: prompt }] },
+        seed: seed ?? crypto.randomInt(1_000_000),
+        imageInputs,
+      }],
+    };
+    const f = await this.transport.pageFetch({
+      url: `${AISANDBOX_ORIGIN}/v1/projects/${pid}/flowMedia:batchGenerateImages`,
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      bodyB64: utf8ToB64(JSON.stringify(body)),
+    });
+    if (!f.ok) {
+      throw new FlowError("S201", `生图提交 HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: f.status });
+    }
+    let r: any;
+    try { r = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "生图提交响应体非 JSON", { flowStatus: 0 }); }
+    const mediaIds = (r?.media ?? []).map((m: any) => m?.name).filter((x: unknown): x is string => typeof x === "string");
+    if (!mediaIds.length) throw new FlowError("S202", `生图提交响应无 media:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
+    return { mediaIds, raw: r };
+  }
+
+  /**
+   * 轮询一组 mediaId 至终态(completed/failed;超时返回 timeout 集)。零消耗(只读 projectInitialData)。
+   * done 项携带该媒体的生成结果(gen = generatedImage/generatedVideo,含 seed)供 outputs 回填。
+   */
+  private async pollMediaUntilDone(mediaIds: string[], timeoutMs: number, intervalMs: number): Promise<{ done: Array<{ mediaId: string; gen?: any }>; failed: Array<{ mediaId: string; rawStatus?: string }>; timeout: string[] }> {
+    const deadline = Date.now() + timeoutMs;
+    const pending = new Set(mediaIds);
+    const done: Array<{ mediaId: string; gen?: any }> = []; const failed: Array<{ mediaId: string; rawStatus?: string }> = []; const timeout: string[] = [];
+    for (;;) {
+      const data = await this.getProjectData();
+      for (const mediaId of [...pending]) {
+        const m = (data?.projectContents?.media ?? []).find((x: any) => x?.name === mediaId);
+        const mapped = mapMediaStatus(m);
+        if (mapped.status === "completed") {
+          done.push({ mediaId, gen: m?.image?.generatedImage ?? m?.video?.generatedVideo });
+          pending.delete(mediaId);
+        }
+        else if (mapped.status === "failed") { failed.push({ mediaId, rawStatus: mapped.rawStatus }); pending.delete(mediaId); }
+      }
+      if (!pending.size) return { done, failed, timeout };
+      if (Date.now() >= deadline) { timeout.push(...pending); return { done, failed, timeout }; }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+
+  // ── 生视频(契约 §7.3 v2 wire:每模式独立端点 + requests[]/videoModelKey/useV2ModelConfig) ──
+
+  /**
+   * 🔴🔴 消耗点(视频提交:abra 7-20 点/条,veo lite 10 / fast 20 / quality 100 每条;upsampler_1080p 0 点)。
+   * 提交即排队(submit-only 队列语义):本方法只提交返回 handle(SCHEDULED),绝不等待生成;
+   * 轮询由工具层 waitVideo/getVideo 驱动(getVideo = 零消耗只读)。
+   * 测试铁律:测试代码不得让本方法打真实网络(stub transport 除外)。
+   *
+   * 2026-08-23 wire 勘误+开放(契约 §7.3,live 实证):
+   *   - 请求侧是 v2 形状(requests[]/videoModelKey/useV2ModelConfig),顶层 structuredPrompt/seed/
+   *     videoModelControlInput 全部 400 "Unknown name"(§2.5 的旧形状是响应侧结构误当同构)
+   *   - 开放模式:t2v(纯文本)/ i2v(req.image,START_IMAGE,✅ live 200)/
+   *     interpolation(req.keyframes 2 张 = 首帧+尾帧,✅ live 200)
+   *   - r2v/extension/edit/upsampler 仍 S303 拒绝,错误消息带依据(§7.3 NOT_OPEN_REASONS)
+   *   - durationSeconds 非 {4,6,8,10} → 吸附 + warning(与通用 schema nearest 承诺一致)
+   *   - resolution/negativePrompt 被 flow 丢弃 → 必出 warning 不静默(audit finding-3/10)
+   */
+  async createVideo(req: VideoRequest): Promise<VideoTask> {
+    await this.ensureReady();
+    const model = req.model ?? this.models?.video?.default;
+    if (!model) {
+      throw new FlowError("S300", `视频模型未指定(刻意无默认:提交视频消耗积分)。传 model(如 abra_t2v_8s / veo_3_1_t2v_lite / abra_i2v_8s + image / veo_3_1_interpolation_lite + keyframes)或在 config.json providers.flow.models.video.default 配置。可用:${summarizeModels()}`, {
+        hint: "消耗表:abra t2v/i2v/r2v 4/6/8/10s=7/10/12/15 点,abra_edit=20,veo lite=10,veo fast=20,veo quality=100,veo_3_1_upsampler_1080p=0",
+      });
+    }
+    const warnings: string[] = [];
+    // 丢弃参数必须告警(项目纪律,对齐 zhipu 丢弃 ratio/negativePrompt/seed 的先例)
+    if (req.negativePrompt) {
+      warnings.push("flow 不支持 negativePrompt,已忽略(负向约束请写进 prompt)。");
+    }
+    if (req.resolution && req.resolution !== "720p") {
+      warnings.push(`flow 视频分辨率由模型 key 决定(当前 720P),resolution=${req.resolution} 已忽略;更高分辨率请用 key 变体(如 veo_3_1_t2v_fast_ultra)或生成后用 veo_3_1_upsampler_1080p(0 点)超分。`);
+    }
+    // duration:numFrames/24 换算或 durationSeconds 原值 → 吸附到 Flow 合法集 {4,6,8,10}s
+    // (通用 schema 承诺 "nearest valid";此前非集合值直接 S301 与承诺矛盾 —— audit finding-4)
+    const rawDuration = req.durationSeconds ?? (req.numFrames != null ? req.numFrames / (req.frameRate ?? FLOW_FRAME_RATE) : undefined);
+    const duration = snapDuration(rawDuration);
+    if (req.durationSeconds != null && !FLOW_VIDEO_DURATIONS.includes(req.durationSeconds as any)) {
+      warnings.push(`durationSeconds=${req.durationSeconds} 不在 Flow 合法集 {4,6,8,10}s,已吸附为 ${duration}s(与工具层 numFrames 最近吸附语义一致)。`);
+    }
+    // 动态目录优先校验(10min 缓存;无缓存时静态快照兜底),与 resolveProvider 归属判断同源(audit finding-7)。
+    // durationSeconds 只传用户显式信号(numFrames/时长):全 key 自带时长(如 abra_i2v_4s)而无时长参数时传
+    // undefined,让 embedded 时长生效 —— 否则默认吸附 8s 会与 "4s" 撞出伪冲突 S301(实测暴露)。
+    const resolved = resolveVideoModelKey(model, rawDuration == null ? undefined : duration, this.listVideoModels());
+    warnings.push(...resolved.warnings);
+    const mode = videoModeOfKey(resolved.key);
+    // 模式门禁(契约 §7.3/§9):开放集外 → S303(带依据);开放集内做参数交叉校验
+    assertModeOpen(resolved.key, mode);
+    const hasImage = Boolean(req.image);
+    const kfCount = req.keyframes?.length ?? 0;
+    const refCount = req.images?.length ?? 0;
+    const videoSource = req.videoMediaId?.trim() || "";
+    // 输入形态互斥:image(单起始图)/ keyframes(首尾帧)/ images(参考图)/ videoMediaId(视频引用)
+    const forms: string[] = [];
+    if (hasImage) forms.push("image");
+    if (kfCount) forms.push("keyframes");
+    if (refCount) forms.push("images");
+    if (videoSource) forms.push("videoMediaId");
+    if (forms.length > 1) {
+      throw new FlowError("S301", `输入参数互斥(${forms.join(" + ")} 同时传入):image=图生视频起始图 / keyframes=首尾帧 / images=参考图(r2v)/ videoMediaId=视频引用(extension/超分),一次只能选一种`);
+    }
+    // 视频源校验(extension/upsampler/edit 共用):必须在项目内、是视频、已完成(§9.1/§9.2 videoInput:{mediaId};
+    // edit 同走 videoInput,E 轮 bundle Zod 定型 §11.1)
+    let sourceMedia: any = null;
+    if (videoSource) {
+      if (mode != null && mode !== "extension" && mode !== "upsampler" && mode !== "edit") {
+        throw new FlowError("S301", `videoMediaId 需 extension/upsampler/edit 模式 key(如 veo_3_1_extension_lite / veo_3_1_upsampler_1080p / abra_edit),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+      }
+      sourceMedia = await this.findMedia(videoSource);
+      if (sourceMedia?.image?.generatedImage && !sourceMedia?.video?.generatedVideo) {
+        throw new FlowError("S301", `videoMediaId "${videoSource}" 是 image 媒体,不能作视频延长/超分的源(需视频 mediaId,可经 flow_status 查看)`);
+      }
+      // 生成中守卫:单一真源 mapMediaStatus(02 R-CI-08)—— SCHEDULED/PENDING/ACTIVE 三枚举全拦
+      // (§10.6/§10.7 live 实证 PENDING/ACTIVE 为 in_progress;旧手写 includes("SCHEDULED") 漏拦 ACTIVE
+      //  ~2 分钟主生成态,10 点 extension 可带不完整源闯到真实提交)。无 generatedVideo 的源
+      // (上传残留/失败/未知状态)同样拒 —— videoInput 引用的必须是已完成的生成视频。
+      const srcState = mapMediaStatus(sourceMedia);
+      if (srcState.status !== "completed" || !sourceMedia?.video?.generatedVideo) {
+        const why = srcState.status === "in_progress"
+          ? `还在生成中(${srcState.rawStatus ?? "in_progress"}),等完成后再延长/超分(flow_status(mediaId) 轮询)`
+          : srcState.status === "failed"
+            ? `状态不可用(${srcState.rawStatus ?? "无 mediaGenerationStatus,疑似上传残留或失败"}),不能作源`
+            : "无 generatedVideo(非已完成的生成视频),不能作源";
+        throw new FlowError("S301", `videoMediaId "${videoSource}" ${why}`);
+      }
+    }
+    if (hasImage) {
+      if (mode != null && mode !== "i2v") {
+        throw new FlowError("S301", `image 起始图需 i2v 模式 key(如 abra_i2v_8s / veo_3_1_i2v_lite),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+      }
+      if (mode == null) warnings.push(`模型 "${resolved.key}" 模式未知(目录新增家族),已按起始图(Image)端点提交。`);
+    } else if (kfCount) {
+      if (kfCount !== 2) {
+        throw new FlowError("S301", `keyframes 需要恰好 2 张(首帧+尾帧),收到 ${kfCount} 张`);
+      }
+      if (mode != null && mode !== "interpolation") {
+        throw new FlowError("S301", `首尾帧需 interpolation/_fl 模式 key(如 veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+      }
+      if (mode == null) warnings.push(`模型 "${resolved.key}" 模式未知(目录新增家族),已按首尾帧(StartAndEndImage)端点提交。`);
+    } else if (refCount) {
+      // r2v 参考图(§9.3:referenceImages entry = {aspectRatio, mediaId};上传 0 点)
+      if (refCount > 10) {
+        throw new FlowError("S301", `images 参考图数量 ${refCount} 超上限(Flow references 最多 10)`);
+      }
+      if (mode != null && mode !== "r2v") {
+        throw new FlowError("S301", `images 参考图需 r2v 模式 key(如 abra_r2v_8s / veo_3_1_r2v_lite),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+      }
+      if (mode == null) warnings.push(`模型 "${resolved.key}" 模式未知(目录新增家族),已按参考图(ReferenceImages)端点提交。`);
+    } else if (videoSource) {
+      if (mode === "upsampler" && req.prompt?.trim()) {
+        warnings.push("视频超分不消费 prompt(契约 §9.1 wire 无 textInput),已忽略提示词。");
+      }
+      if (mode === "edit" && !req.prompt?.trim()) {
+        throw new FlowError("S301", "edit 模式需要 prompt(编辑指令,如 \"make it snow\"),描述要对源视频做什么");
+      }
+    } else {
+      if (mode === "i2v") {
+        throw new FlowError("S301", `i2v 模式 key 需要传 image 起始图;纯文生视频请用 t2v key(如 ${resolved.key.replace(/i2v/, "t2v")})`);
+      }
+      if (mode === "interpolation") {
+        throw new FlowError("S301", "首尾帧模式 key 需要传 keyframes(2 张 = 首帧+尾帧);纯文生视频请用 t2v key");
+      }
+      if (mode === "r2v") {
+        throw new FlowError("S301", `r2v 模式 key 需要传 images(1-10 张参考图);纯文生视频请用 t2v key(如 ${resolved.key.replace(/r2v/, "t2v")})`);
+      }
+      if (mode === "extension" || mode === "upsampler" || mode === "edit") {
+        throw new FlowError("S301", `${VIDEO_MODE_LABELS[mode]}模式 key 需要传 videoMediaId(项目内已有视频的 mediaId,可经 flow_status 查看;延长/编辑/超分直接引用生成视频,无需上传)`);
+      }
+    }
+    // 端点选择(契约 §7.3/§9/§11.1 端点表):mode=undefined 的未知家族按输入形态走对应端点
+    const endpointMode = mode != null && OPEN_VIDEO_MODES.has(mode)
+      ? mode
+      : hasImage ? "i2v" : kfCount === 2 ? "interpolation" : refCount ? "r2v" : videoSource ? "extension" : "t2v";
+    const apiPathname = VIDEO_API_ENDPOINTS[endpointMode];
+
+    // 图片输入:先上传为项目内媒体(契约 §7.1,0 点),再以 {aspectRatio?, mediaId} 引用(§7.3 oneof 只发 mediaId)
+    let startImage: { aspectRatio?: string; mediaId: string } | undefined;
+    let endImage: { aspectRatio?: string; mediaId: string } | undefined;
+    let referenceImages: Array<{ aspectRatio?: string; mediaId: string }> | undefined;
+    if (hasImage) startImage = await this.videoImageInput(req.image!);
+    else if (kfCount === 2) {
+      startImage = await this.videoImageInput(req.keyframes![0]);
+      endImage = await this.videoImageInput(req.keyframes![1]);
+    } else if (refCount) {
+      referenceImages = [];
+      for (const uri of req.images!) referenceImages.push(await this.videoImageInput(uri));
+    }
+
+    const pid = await this.ensureProjectId();
+    const token = await this.getAccessToken();
+    const recaptcha = await this.transport.recaptchaToken(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_VIDEO);
+    const clientContext = {
+      recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
+      projectId: pid,
+      tool: TOOL_INTERNAL_NAME,
+      sessionId: `;${Date.now()}`,
+    };
+    // v2 请求体(契约 §7.3/§9/§11.1,live 实证 + bundle Zod;各端点字段集不同):
+    //   t2v/i2v/interpolation/r2v:全量 {aspectRatio, metadata, outputSpec, promptExpansionInput, seed, textInput, videoModelKey}
+    //   extension(§9.2):无 outputSpec;upsampler(§9.1):仅 {aspectRatio, metadata, seed, videoInput, videoModelKey}
+    //   edit(§11.1,E 轮 bundle Zod _0x457c52 + 假 key 404 探针):{aspectRatio, metadata, seed, textInput, videoInput, videoModelKey}
+    //     —— 无 promptExpansionInput(edit item schema 无该字段);顶层不带 useV2ModelConfig(bundle 提交构造器明文:
+    //     'batchAsyncGenerateVideoEditVideo'!==apiPathname && {useV2ModelConfig:true},edit 是唯一例外)
+    const requestItem: Record<string, unknown> = {
+      aspectRatio: endpointMode === "extension" || endpointMode === "upsampler" || endpointMode === "edit"
+        ? videoAspectOfSource(sourceMedia, req.ratio)
+        : videoAspectRatioFor(req.ratio),
+      metadata: { collectionId: "", mediaIdSeed: crypto.randomUUID(), sceneId: "", workflowIdSeed: crypto.randomUUID() },
+      seed: req.seed ?? crypto.randomInt(1_000_000),
+      videoModelKey: resolved.key,
+    };
+    if (endpointMode !== "upsampler" && endpointMode !== "edit") {
+      if (endpointMode !== "extension") requestItem.outputSpec = { resolution: "VIDEO_RESOLUTION_720P" }; // §9.2:extension 无 outputSpec
+      requestItem.promptExpansionInput = { prompt: "", seed: 0, templateId: "", videoInputs: [] };
+      requestItem.textInput = { expandedPrompt: "", prompt: req.prompt, structuredPrompt: { parts: [{ text: req.prompt }] } };
+    }
+    if (endpointMode === "edit") {
+      requestItem.textInput = { expandedPrompt: "", prompt: req.prompt, structuredPrompt: { parts: [{ text: req.prompt }] } };
+    }
+    if (startImage) requestItem.startImage = startImage;
+    if (endImage) requestItem.endImage = endImage;
+    if (referenceImages) requestItem.referenceImages = referenceImages;
+    if (videoSource) requestItem.videoInput = { mediaId: videoSource };
+    const body = {
+      clientContext,
+      mediaGenerationContext: { batchId: crypto.randomUUID(), audioFailurePreference: "BLOCK_SILENCED_VIDEOS" },
+      ...(endpointMode !== "edit" ? { useV2ModelConfig: true } : {}), // §11.1:edit 是唯一不带 useV2ModelConfig 的端点
+      requests: [requestItem],
+    };
+    const f = await this.transport.pageFetch({
+      url: `${AISANDBOX_ORIGIN}/v1/video:${apiPathname}`,
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      bodyB64: utf8ToB64(JSON.stringify(body)),
+    });
+    if (!f.ok) {
+      throw new FlowError("S201", `视频提交 HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 300)}`, { flowStatus: f.status });
+    }
+    let r: any;
+    try { r = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "视频提交响应体非 JSON", { flowStatus: 0 }); }
+    const first = (r?.media ?? [])[0];
+    const mediaId = first?.name ?? first?.operation?.name;
+    if (!mediaId) throw new FlowError("S202", `视频提交响应无 media/operation name:${bufToUtf8(f.bodyB64).slice(0, 300)}`, { flowStatus: 0 });
+    const est = estimateVideoCredits(resolved.key);
+    const creditsNow = await this.getCredits().catch(() => undefined);
+    if (est != null) warnings.push(`🔴 本条预计消耗 ${est} 积分${creditsNow?.credits != null ? `(当前余额 ${creditsNow.credits})` : ""}。`);
+    if (r?.remainingCredits != null) warnings.push(`提交后剩余积分:${r.remainingCredits}。`);
+    if (endpointMode === "edit") warnings.push(`⚠️ ${EDIT_WIRE_WARNING}`);
+    return { taskId: mediaId, status: "queued", warnings: warnings.length ? warnings : undefined, raw: r };
+  }
+
+  /**
+   * 状态轮询 + 完成取件(零消耗):projectInitialData 查 mediaId 状态;
+   * SUCCESSFUL → getMediaUrlRedirect 取 mp4 字节 → data:video/mp4 URI(工具层 downloadAsset 落盘,
+   * Node fetch 原生支持 data: URI)。绝不 fallback、绝不重复提交。
+   */
+  async getVideo(handle: VideoHandle): Promise<VideoResult> {
+    const mediaId = handle.taskId ?? handle.videoId;
+    if (!mediaId) throw new FlowError("S301", "getVideo 需要 taskId(mediaId)");
+    await this.ensureReady();
+    const m = await this.findMedia(mediaId);
+    // kind 门禁(audit finding-11 第一层防线):image 媒体绝不按视频取件 ——
+    // 否则图片字节会被当 data:video/mp4 下发、贴 .mp4 扩展名落盘且零告警
+    if (m?.image?.generatedImage && !m?.video?.generatedVideo) {
+      throw new FlowError("S403", `mediaId "${mediaId}" 是 image 媒体,不能经 get_video 按视频取件`, { hint: "下载图片请用 flow_status(mediaId, download=true);get_video 仅用于视频" });
+    }
+    const mapped = mapMediaStatus(m);
+    const gen = m?.video?.generatedVideo ?? {};
+    const raw = {
+      mediaId,
+      rawStatus: mapped.rawStatus,
+      model: gen.model,
+      seed: gen.seed,
+      dimensions: m?.dimensions?.length,
+    };
+    if (mapped.status === "completed") {
+      const got = await this.getMediaBytes(mediaId);
+      // 传输完整性(audit finding-18):字节数须精确等于 mediaBlobSize(实测已完成资产两者相等)
+      const expected = Number(m?.mediaMetadata?.mediaBlobSize);
+      if (Number.isFinite(expected) && expected > 0 && got.buf.length !== expected) {
+        throw new FlowError("S402", `下载不完整:${got.buf.length}B ≠ mediaBlobSize ${expected}B(疑似传输截断),请重试`, { flowStatus: 0 });
+      }
+      const mime = got.contentType.split(";")[0] || "video/mp4";
+      return { status: "completed", url: `data:${mime};base64,${got.buf.toString("base64")}`, raw };
+    }
+    if (mapped.status === "failed") {
+      return { status: "failed", error: mapped.error ?? `Flow 状态:${mapped.rawStatus}`, raw };
+    }
+    return { status: "in_progress", raw };
+  }
+}
+
+/** ratio("16:9"/"9:16")→ Flow 视频比例枚举(契约 §3:视频仅 LANDSCAPE/PORTRAIT)。 */
+function videoAspectRatioFor(ratio?: string): string {
+  if (!ratio || ratio === "16:9") return "VIDEO_ASPECT_RATIO_LANDSCAPE";
+  if (ratio === "9:16") return "VIDEO_ASPECT_RATIO_PORTRAIT";
+  throw new FlowError("S301", `视频比例仅支持 16:9 / 9:16(收到 "${ratio}";图片比例才支持 1:1/4:3/3:4)`);
+}
+
+/**
+ * extension/upsampler 的 aspectRatio(§9.1 必填字段):优先继承源视频 generatedVideo.aspectRatio 原文
+ * (响应侧回读的完整枚举,如 VIDEO_ASPECT_RATIO_LANDSCAPE);读不到时按 ratio 参数/默认 LANDSCAPE。
+ */
+function videoAspectOfSource(sourceMedia: any, ratio?: string): string {
+  const raw = sourceMedia?.video?.generatedVideo?.aspectRatio;
+  if (typeof raw === "string" && /^VIDEO_ASPECT_RATIO_[A-Z_]+$/.test(raw)) return raw;
+  return videoAspectRatioFor(ratio);
+}
+
+// ── 图片字节加载与嗅探(uploadMedia 输入侧;契约 §7.1/§7.2) ──
+
+interface LoadedImage {
+  bytes: Buffer;
+  mimeType: string;
+  width?: number;
+  height?: number;
+  fileName?: string;
+}
+
+/** magic bytes 嗅探 mime + 尺寸(PNG/GIF/JPEG/WEBP;嗅不出尺寸时留空,aspectRatio 字段可省)。 */
+function sniffImage(bytes: Buffer): { mimeType?: string; width?: number; height?: number } {
+  const latin = (s: number, e: number) => bytes.subarray(s, e).toString("latin1");
+  const be16 = (o: number) => bytes.readUInt16BE(o);
+  const le16 = (o: number) => bytes.readUInt16LE(o);
+  try {
+    if (bytes.length > 24 && latin(0, 8) === "\x89PNG\r\n\x1a\n" && latin(12, 16) === "IHDR") {
+      return { mimeType: "image/png", width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+    }
+    if (bytes.length > 10 && (latin(0, 6) === "GIF87a" || latin(0, 6) === "GIF89a")) {
+      return { mimeType: "image/gif", width: le16(6), height: le16(8) };
+    }
+    if (bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+      // JPEG:扫 SOF0-3/5-7/9-11/13-15 段取尺寸(逐段跳过,容错截断)
+      let o = 2;
+      while (o + 9 < bytes.length) {
+        if (bytes[o] !== 0xff) { o++; continue; }
+        const marker = bytes[o + 1];
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+          return { mimeType: "image/jpeg", height: be16(o + 5), width: be16(o + 7) };
+        }
+        const len = be16(o + 2);
+        if (len < 2) break;
+        o += 2 + len;
+      }
+      return { mimeType: "image/jpeg" };
+    }
+    if (bytes.length > 30 && latin(0, 4) === "RIFF" && latin(8, 12) === "WEBP") {
+      const chunk = latin(12, 16);
+      if (chunk === "VP8X") return { mimeType: "image/webp", width: 1 + bytes.readUIntLE(24, 3), height: 1 + bytes.readUIntLE(27, 3) };
+      if (chunk === "VP8 ") return { mimeType: "image/webp", width: le16(26) & 0x3fff, height: le16(28) & 0x3fff };
+      if (chunk === "VP8L") {
+        const b = bytes.readUInt32LE(21);
+        return { mimeType: "image/webp", width: (b & 0x3fff) + 1, height: ((b >> 14) & 0x3fff) + 1 };
+      }
+      return { mimeType: "image/webp" };
+    }
+  } catch { /* 嗅探失败按未知处理 */ }
+  return {};
+}
+
+/**
+ * 取图字节:data: URI 本地解析;http(s) 经 Node fetch 下载(不走 CDP 页面上下文 ——
+ * 页面 fetch 外站图会撞 CORS,labs.google 同源约束只覆盖 API 调用)。
+ */
+async function loadImageBytes(imageUri: string): Promise<LoadedImage> {
+  const uri = String(imageUri ?? "").trim();
+  if (/^data:/i.test(uri)) {
+    const m = /^data:([^;,]*)(;base64)?,(.*)$/is.exec(uri);
+    if (!m) throw new FlowError("S301", `data: URI 格式非法(前 60 字符:${uri.slice(0, 60)})`);
+    const bytes = m[2] ? Buffer.from(m[3], "base64") : Buffer.from(decodeURIComponent(m[3]), "utf8");
+    if (!bytes.length) throw new FlowError("S301", "data: URI 图片字节为空");
+    const sniffed = sniffImage(bytes);
+    if (!sniffed.mimeType && !m[1]) throw new FlowError("S301", "data: URI 无 mime 且字节嗅探失败(前 8 字节非 PNG/JPEG/GIF/WEBP)");
+    return { bytes, mimeType: sniffed.mimeType ?? m[1] ?? "application/octet-stream", width: sniffed.width, height: sniffed.height };
+  }
+  if (!/^https?:\/\//i.test(uri)) {
+    throw new FlowError("S301", `images 输入须为 http(s): 或 data: URI(收到 "${uri.slice(0, 60)}")`);
+  }
+  let resp: Response;
+  try {
+    resp = await fetch(uri, { signal: AbortSignal.timeout(60_000), redirect: "follow" });
+  } catch (e: any) {
+    throw new FlowError("S201", `图片下载失败(${uri.slice(0, 120)}):${e?.message ?? e}`, { flowStatus: 0 });
+  }
+  if (!resp.ok) throw new FlowError("S201", `图片下载 HTTP ${resp.status}(${uri.slice(0, 120)})`, { flowStatus: resp.status });
+  const bytes = Buffer.from(await resp.arrayBuffer());
+  if (!bytes.length) throw new FlowError("S201", `图片下载返回空 body(${uri.slice(0, 120)})`, { flowStatus: 0 });
+  const sniffed = sniffImage(bytes);
+  const ctHeader = resp.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+  const mimeType = sniffed.mimeType ?? (ctHeader.startsWith("image/") ? ctHeader : "");
+  if (!mimeType) throw new FlowError("S301", `无法判定图片 mime(content-type "${ctHeader}" 非 image/* 且字节嗅探失败):${uri.slice(0, 120)}`);
+  return {
+    bytes, mimeType, width: sniffed.width, height: sniffed.height,
+    fileName: uri.split("/").pop()?.split("?")[0] || undefined,
+  };
+}
+
+// ── 编码助手 ──
+
+function bufToUtf8(b64: string): string {
+  return Buffer.from(b64, "base64").toString("utf-8");
+}
+function utf8ToB64(s: string): string {
+  return Buffer.from(s, "utf-8").toString("base64");
+}

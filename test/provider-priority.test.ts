@@ -1,41 +1,35 @@
 /**
- * 渠道优先级链单元测试(Flow 分离后 agnes/zhipu 双渠道语义)—— 零网络零消耗(全程 override 注入,
- * 不触真实 API/积分)。
+ * C 任务(渠道优先级链)单元测试 —— 零网络零消耗(全程 override 注入 / Stub transport,不触真实 CDP/积分)。
  *
  * 覆盖面:
  *   1. parseProviderPriority:config 数组 / env csv / 小写归一 / 去重 / 非法项剔除 / 空 → undefined
  *   2. getProviderPriority:override 注入缝 + 未知 provider 剔除(warn 不 fatal)
  *   3. resolveProvider 链头:priority[0];熔断窗口内跳过(链降级到下一成员);未配置 = legacy 默认(零回归)
- *   4. getFallbackProvider 排序统一:priority 位置优先于 tier(可向上回落);熔断过滤;
- *      requiresOptIn 准入门禁框架(runtime 注入缝验证 —— 分离后本包无 optIn 成员)
- *   5. isChainAdvanceable / isFallbackWorthy:上游 5xx/401/403/429/网络错推进;业务 4xx 不推进;
- *      precondition 仅链 walk 推进(单跳 fallback 既有路径不认)
- *   6. 钉死守卫 isRequestPinned(2026-08-24 行为决策,选项 b):显式点名 provider / model 归属路由
- *      → 钉死直抛不回落;仅默认路由(链头)失败按序推进。附 src/index.ts 守卫顺序 meta 断言。
+ *   4. getFallbackProvider 排序统一:priority 位置优先于 tier;optIn 门禁(未列入不进任何链,列入才进;
+ *      链内成员豁免 configured 过滤 —— flow 首次探测前 configured=false)
+ *   5. isChainAdvanceable:precondition(S1xx)推进;S301 业务错不推进;上游 5xx/429 推进
+ *   6. flow 60s 软熔断:notifyUnavailable → health().cooldown;ensureReady 冷却窗口内零探测直抛缓存错误;
+ *      窗口过期自动重探
  *
- * Flow 分离注记(2026-08-24):flow 渠道(链头跳过/熔断/CDP 前置失败语义)已随渠道整体迁入
- * flow-mcp,由该包 flow.test.ts 承接;本文件只测本包存量双渠道。agnes/zhipu 无 precondition 型
- * 环境错(直连 HTTP API),S1xx 前置类用 isChainAdvanceable 的 duck-typing 形状({precondition:true})覆盖框架语义。
- *
- * 导入方式:与 golden.test.ts 同范式(createRequire 引编译产物 dist/;npm test 先 build 再 build:tests)。
+ * 导入方式:与 flow.test.ts 同范式(createRequire 引编译产物 dist/;npm test 先 build 再 build:tests)。
  * 测试隔离铁律:__priorityOverrideForTests 置 null,隔离 ~/.media-gen-mcp/config.json 的本机差异
- * (本机已配 agnes/zhipu key+models;CI 无 config)—— 两环境断言结果逐字节一致;依赖 models
- * 配置的用例(模型归属路由)在无配置环境显式 skip,不 false-fail。
+ * (本机已配 imageProviderPriority 含 flow;CI 无 config)—— 两环境断言结果逐字节一致。
  */
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
 
 const require_ = createRequire(import.meta.url);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const distDir = path.join(ROOT, "dist");
-const { parseProviderPriority, config } = require_(path.join(distDir, "config.js"));
+const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
+const { parseProviderPriority } = require_(path.join(distDir, "config.js"));
 const reg = require_(path.join(distDir, "providers/registry.js"));
 const { getProviderPriority, getFallbackProvider, resolveProvider, getProvider } = reg;
-const { isChainAdvanceable, isFallbackWorthy, isRequestPinned } = require_(path.join(distDir, "providers/http.js"));
+const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
+const { isChainAdvanceable, isFallbackWorthy } = require_(path.join(distDir, "providers/http.js"));
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // 默认「未配置优先级」(legacy 语义);个别用例按需覆盖后必须还原。
 before(() => {
@@ -43,34 +37,16 @@ before(() => {
   reg.__priorityOverrideForTests.video = null;
 });
 
-/**
- * 熔断窗口操纵(零睡眠确定性):agnes/zhipu 的 health().cooldown = cooldownUntil > Date.now(),
- * 直接改实例字段模拟窗口内/过期,免 60s 真等。返回还原函数(调用方 finally 必须执行)。
- */
-function setCooldown(p: any, on: boolean): () => void {
-  const prev = p.cooldownUntil ?? 0;
-  p.cooldownUntil = on ? Date.now() + 60_000 : Math.max(0, Date.now() - 1);
-  return () => { p.cooldownUntil = prev; };
-}
-
-/** duck-typing 错误形状(provider request() 抛的 HTTP 错 / 环境前置错)。 */
-const mkErr = (status?: number, precondition?: boolean) => {
-  const e: any = new Error("x");
-  if (status !== undefined) e.status = status;
-  if (precondition) e.precondition = true;
-  return e;
-};
-
 // ═══ 1. 配置解析 ═══
 
 describe("parseProviderPriority(配置形态:config 数组 > env csv)", () => {
   test("config 数组:小写归一 + 去重(保序)", () => {
-    assert.deepEqual(parseProviderPriority(["Zhipu", "agnes", "AGNES"], "X_NONE"), ["zhipu", "agnes"]);
+    assert.deepEqual(parseProviderPriority(["Flow", "agnes", "zhipu", "AGNES"], "X_NONE"), ["flow", "agnes", "zhipu"]);
   });
   test("env 逗号分隔:trim + 剔空", () => {
-    process.env.X_NONE = "agnes, zhipu ,,agnes";
+    process.env.X_NONE = "flow, zhipu ,,agnes";
     try {
-      assert.deepEqual(parseProviderPriority(undefined, "X_NONE"), ["agnes", "zhipu"]);
+      assert.deepEqual(parseProviderPriority(undefined, "X_NONE"), ["flow", "zhipu", "agnes"]);
     } finally {
       delete process.env.X_NONE;
     }
@@ -78,7 +54,7 @@ describe("parseProviderPriority(配置形态:config 数组 > env csv)", () => {
   test("config 数组优先于 env;非法项(非字符串)剔除", () => {
     process.env.X_NONE = "zhipu";
     try {
-      assert.deepEqual(parseProviderPriority(["agnes", 42, null as any, "zhipu"], "X_NONE"), ["agnes", "zhipu"]);
+      assert.deepEqual(parseProviderPriority(["flow", 42, null as any, "agnes"], "X_NONE"), ["flow", "agnes"]);
     } finally {
       delete process.env.X_NONE;
     }
@@ -93,11 +69,10 @@ describe("parseProviderPriority(配置形态:config 数组 > env csv)", () => {
 // ═══ 2. registry 优先级解析 ═══
 
 describe("getProviderPriority(override 注入缝 + 未知 provider 剔除)", () => {
-  test("未知 provider 名剔除(warn 不 fatal;如分离后残留的 \"flow\" 配置),已知保序", () => {
-    reg.__priorityOverrideForTests.image = ["agnes", "flow", "zhipu"];
+  test("未知 provider 名剔除(warn 不 fatal),已知保序", () => {
+    reg.__priorityOverrideForTests.image = ["flow", "no-such-provider", "agnes"];
     try {
-      // flow 已随渠道分离出本包 registry → 剔除 + warn,剩余链照常生效(配置错误不杀 server)
-      assert.deepEqual(getProviderPriority("image"), ["agnes", "zhipu"]);
+      assert.deepEqual(getProviderPriority("image"), ["flow", "agnes"]);
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
@@ -111,189 +86,161 @@ describe("getProviderPriority(override 注入缝 + 未知 provider 剔除)", () 
 // ═══ 3. resolveProvider 链头 ═══
 
 describe("resolveProvider 链头(priority[0];熔断跳过;未配置零回归)", () => {
-  test("配置 imageProviderPriority=[zhipu,agnes] 且未点名 provider → 链头 = zhipu(list 位置优先于 tier:agnes=10 > zhipu=5)", () => {
-    reg.__priorityOverrideForTests.image = ["zhipu", "agnes"];
+  test("配置 imageProviderPriority=[flow,agnes,zhipu] 且未点名 provider → 链头 = flow", () => {
+    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
     try {
-      assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "zhipu");
+      assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "flow");
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
   });
   test("链头 + 他家 model → 自动路由不变(model 归属优先)", () => {
-    const zhipu = getProvider("zhipu");
-    const agnes = getProvider("agnes");
-    const zhipuOnly = zhipu.listImageModels().filter((m: string) => !agnes.listImageModels().includes(m));
-    if (!zhipuOnly.length) {
-      console.log("  [skip] 本环境无 zhipu models 配置(如 CI)→ 模型归属路由用例跳过");
-      return;
-    }
-    reg.__priorityOverrideForTests.image = ["agnes", "zhipu"];
+    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
     try {
-      const r = resolveProvider(undefined, zhipuOnly[0], "image");
+      const r = resolveProvider(undefined, "cogview-4", "image");
       assert.equal(r.provider.name, "zhipu");
       assert.equal(r.autoRouted, true);
-      assert.equal(r.routedFrom, "agnes");
+      assert.equal(r.routedFrom, "flow");
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
   });
-  test("未知 model → 友好报错(列 target 可用模型;两环境一致:无配置时 availStr=(无))", () => {
-    assert.throws(() => resolveProvider("agnes", "no-such-model-xyz", "image"), /未知模型 "no-such-model-xyz"/);
-  });
   test("未配置 priority → legacy 默认 defaultImageProvider(零回归)", () => {
+    const { config } = require_(path.join(distDir, "config.js"));
     assert.equal(resolveProvider(undefined, undefined, "image").provider.name, config.defaultImageProvider);
   });
-  test("链头在 60s 熔断窗口内 → 降级到下一成员;窗口过期恢复(零睡眠:直接操纵 cooldownUntil)", () => {
-    const zhipu = getProvider("zhipu");
-    const restore = setCooldown(zhipu, true);
-    reg.__priorityOverrideForTests.image = ["zhipu", "agnes"];
+  test("链头在 60s 熔断窗口内 → 降级到下一成员;窗口过期恢复(惰性:只读 health,零探测)", async () => {
+    const flow = getProvider("flow");
+    const prevCooldownMs = flow.cooldownMs;
+    flow.cooldownMs = 40; // 实例字段,便于测试调短
+    flow.notifyUnavailable(new FlowError("S100", "CDP 不可连", { precondition: true }));
+    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
     try {
-      assert.equal(zhipu.health().cooldown, true);
+      assert.equal(flow.health().cooldown, true);
       assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "agnes", "熔断窗口内链头降级 agnes");
-      restore();
-      const restore2 = setCooldown(zhipu, false);
-      try {
-        assert.equal(zhipu.health().cooldown, false);
-        assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "zhipu", "窗口过期恢复 zhipu 链头");
-      } finally {
-        restore2();
-      }
+      await sleep(90);
+      assert.equal(flow.health().cooldown, false);
+      assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "flow", "窗口过期恢复 flow 链头");
     } finally {
       reg.__priorityOverrideForTests.image = null;
-      restore();
+      flow.cooldownMs = prevCooldownMs;
     }
   });
 });
 
 // ═══ 4. getFallbackProvider 排序统一(优先级与 fallback 同一管线)═══
 
-describe("getFallbackProvider(priority 位置优先于 tier;熔断过滤;optIn 门禁)", () => {
-  test("priority=[zhipu,agnes](zhipu 在前):fallback(agnes) → zhipu;fallback(zhipu) → agnes(链 = 偏好序,可向上回落,tier 反序不影响)", () => {
+describe("getFallbackProvider(priority 位置优先于 tier;optIn 门禁)", () => {
+  test("priority=[zhipu,agnes]:fallback(flow) → zhipu(list 序战胜 tier,agnes tier=10 > zhipu=5)", () => {
     reg.__priorityOverrideForTests.image = ["zhipu", "agnes"];
     try {
-      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu");
-      assert.equal(getFallbackProvider("zhipu", "image", {})?.name, "agnes");
+      assert.equal(getFallbackProvider("flow", "image", {})?.name, "zhipu");
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
   });
-  test("未配置 priority:legacy tier 免费链零回归(本机已配 key 时 agnes↔zhipu 双向互备;CI 无 config 时未配置成员被诚实过滤)", () => {
-    const bothConfigured = getProvider("agnes").health().configured && getProvider("zhipu").health().configured;
-    if (bothConfigured) {
-      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu");
-      assert.equal(getFallbackProvider("zhipu", "image", {})?.name, "agnes");
-      assert.equal(getFallbackProvider("agnes", "video", { mode: "text-to-video" })?.name, "zhipu");
-      assert.equal(getFallbackProvider("zhipu", "video", { mode: "text-to-video" })?.name, "agnes");
-    } else {
-      // CI(无 ~/.media-gen-mcp/config.json):两 provider 均未配置且未显式列入 priority
-      // → 不进隐式链(过滤诚实;配 key 或列入 priority 后即恢复互备)
-      assert.equal(getFallbackProvider("agnes", "image", {}), undefined);
-    }
-  });
-  test("链上唯一下一成员在熔断窗口内 → undefined(调用方保留原始错误,不无限等待)", () => {
-    const zhipu = getProvider("zhipu");
-    const restore = setCooldown(zhipu, true);
-    reg.__priorityOverrideForTests.image = ["agnes", "zhipu"];
+  test("priority=[flow,agnes,zhipu]:fallback(flow) → agnes;fallback(agnes) → flow(链=偏好序,可向上回落)", () => {
+    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
     try {
-      assert.equal(getFallbackProvider("agnes", "image", {}), undefined, "zhipu 熔断 → agnes 无候选");
+      assert.equal(getFallbackProvider("flow", "image", {})?.name, "agnes");
+      // agnes 失败 → 链上下一可用 = flow(pos 0;经 config 显式同意放行 optIn+configured 豁免)
+      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "flow");
     } finally {
       reg.__priorityOverrideForTests.image = null;
-      restore();
     }
   });
-  test("requiresOptIn 门禁框架(runtime 注入缝):未列入 priority 的 optIn 成员不进隐式链;显式列入才放行", () => {
-    const zhipu = getProvider("zhipu");
-    // 模拟未来 optIn 型 provider(本包现无成员;框架为 flow 类渠道保留,语义由 flow-mcp 生产验证)
-    (zhipu as any).requiresOptIn = () => true;
+  test("未配置 priority:optIn 门禁生效 —— flow 不进任何模态隐式链;视频链 = agnes↔zhipu(零回归)", () => {
+    assert.notEqual(getFallbackProvider("agnes", "image", {})?.name, "flow");
+    assert.notEqual(getFallbackProvider("zhipu", "image", {})?.name, "flow");
+    assert.equal(getFallbackProvider("agnes", "video", { mode: "text-to-video" })?.name, "zhipu");
+    assert.notEqual(getFallbackProvider("agnes", "video", { mode: "text-to-video" })?.name, "flow");
+  });
+  test("flow 在熔断窗口内 → 即使列入链也被跳过(cooldown 过滤对链内成员同样生效)", async () => {
+    const flow = getProvider("flow");
+    const prevCooldownMs = flow.cooldownMs;
+    flow.cooldownMs = 40;
+    flow.notifyUnavailable(new Error("cooldown probe"));
+    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
     try {
-      // 未配置 priority:optIn 成员被准入门禁拦下(agnes 无 fallback 候选)
-      assert.equal(getFallbackProvider("agnes", "image", {}), undefined, "optIn 未列入 → 不进隐式链");
-      // 显式列入 priority = 知情同意 → 放行(configured 豁免同理:显式列入即视为已同意)
-      reg.__priorityOverrideForTests.image = ["agnes", "zhipu"];
-      try {
-        assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu", "optIn 显式列入 → 进链");
-      } finally {
-        reg.__priorityOverrideForTests.image = null;
-      }
-      // 未列入时链头也不选它(defaultHead 只读 priority;optIn 只能经显式列入进入链)
-      reg.__priorityOverrideForTests.image = null;
-      assert.notEqual(resolveProvider(undefined, undefined, "image").provider.name, "zhipu");
+      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu", "flow 熔断 → 跳过");
+      await sleep(90);
+      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "flow", "窗口过期 → flow 回链");
     } finally {
-      delete (zhipu as any).requiresOptIn;
       reg.__priorityOverrideForTests.image = null;
+      flow.cooldownMs = prevCooldownMs;
     }
   });
 });
 
-// ═══ 5. 失败分类(isChainAdvanceable = isFallbackWorthy ∪ 环境前置失败)═══
+// ═══ 5. isChainAdvanceable(失败分类)═══
 
-describe("isChainAdvanceable / isFallbackWorthy(失败分类)", () => {
-  test("上游 5xx / 0(网络层) / 401 / 403 / 429 → 推进(换渠道有意义)", () => {
-    for (const s of [0, 500, 502, 503, 401, 403, 429]) {
-      assert.equal(isChainAdvanceable(mkErr(s)), true, `status=${s}`);
+describe("isChainAdvanceable(= isFallbackWorthy ∪ 环境前置失败)", () => {
+  const mk = (code: string, opts?: any) => new FlowError(code, "x", opts);
+  test("S100/S101/S102/S104 precondition → 推进(请求从未提交,非业务错)", () => {
+    for (const c of ["S100", "S101", "S102", "S104"]) {
+      assert.equal(isChainAdvanceable(mk(c, { precondition: true })), true, c);
     }
   });
-  test("业务 4xx(400/422)→ 不推进(保留原始错误)", () => {
-    assert.equal(isChainAdvanceable(mkErr(400)), false);
-    assert.equal(isChainAdvanceable(mkErr(422)), false);
+  test("S301 参数错 / S401 媒体错 → 不推进(保留原始错误)", () => {
+    assert.equal(isChainAdvanceable(mk("S301")), false);
+    assert.equal(isChainAdvanceable(mk("S401")), false);
   });
-  test("无 status:仅网络层 TypeError 推进;其余(内部校验/配置错)不推进", () => {
-    const netErr: any = new TypeError("fetch failed");
-    assert.equal(isChainAdvanceable(netErr), true);
-    assert.equal(isChainAdvanceable(new Error("image model 未配置")), false);
+  test("上游 5xx / 401 / 429(带 flowStatus)→ 推进(既有 isFallbackWorthy 语义)", () => {
+    assert.equal(isChainAdvanceable(mk("S201", { flowStatus: 500 })), true);
+    assert.equal(isChainAdvanceable(mk("S201", { flowStatus: 429 })), true);
+    assert.equal(isChainAdvanceable(mk("S103", { flowStatus: 0 })), true);
   });
-  test("precondition(环境前置未就绪)仅链 walk 推进;单跳 fallback 既有路径(isFallbackWorthy)不认 —— 两语义分立保持", () => {
-    const pre = mkErr(undefined, true);
-    assert.equal(isChainAdvanceable(pre), true, "链头(默认路由)环境错推进");
-    assert.equal(isFallbackWorthy(pre), false, "单跳 fallback 不认 precondition(现行为,vision/pdf 路径零回归)");
-  });
-  test("isFallbackWorthy 语义保留(status 驱动,与基线一致)", () => {
-    assert.equal(isFallbackWorthy(mkErr(503)), true);
-    assert.equal(isFallbackWorthy(mkErr(429)), true);
-    assert.equal(isFallbackWorthy(mkErr(400)), false);
+  test("isFallbackWorthy 语义保留(precondition 不泄漏进单跳 fallback 既有路径)", () => {
+    assert.equal(isFallbackWorthy(mk("S100", { precondition: true })), false, "S100 无 status → 单跳 fallback 仍不认(现行为)");
+    const httpish: any = new Error("rate limited");
+    httpish.status = 429;
+    assert.equal(isFallbackWorthy(httpish), true);
   });
 });
 
-// ═══ 6. 钉死守卫(2026-08-24 行为决策,选项 b:全渠道统一钉死)═══
+// ═══ 6. flow 60s 软熔断(零探测快速失败)═══
 
-describe("isRequestPinned(钉死守卫:直抛不回落)", () => {
-  test("显式点名 provider → 钉死(zhipu 被点名后 5xx/限流也直抛,绝不静默换 agnes)", () => {
-    assert.equal(isRequestPinned("zhipu", undefined), true);
-    assert.equal(isRequestPinned("agnes", undefined), true);
-  });
-  test("model 归属路由 → 钉死(model 本身即渠道归属声明;如 cogview-4 → zhipu 失败不静默换模型)", () => {
-    assert.equal(isRequestPinned(undefined, "cogview-4"), true);
-    assert.equal(isRequestPinned("zhipu", "cogview-4"), true, "点名 + model 同时给 → 钉死");
-  });
-  test("默认路由(未传 provider 且未传 model,经链头到达)→ 不钉死,失败按序推进", () => {
-    assert.equal(isRequestPinned(undefined, undefined), false);
-    assert.equal(isRequestPinned(null, null), false);
-  });
-  test("决策记录:钉死守卫自 2026-08-24 起对全渠道生效(基线仅 flow;泛化 = 兑现工具描述契约,commit message 已声明)", () => {
-    // 契约原文见 src/index.ts generate_image provider 参数描述:
-    // "explicitly naming a provider pins it (no silent substitution)"
-    const src = readFileSync(path.join(ROOT, "src/index.ts"), "utf8");
-    assert.match(src, /explicitly naming a provider pins it \(no silent substitution\)/, "工具描述契约仍在发布");
-  });
-});
+/** open() 永远失败的 stub:S100 precondition(模拟 Chrome/CDP 未开)。 */
+class DeadCdpTransport {
+  opens = 0;
+  async open() {
+    this.opens++;
+    throw new FlowError("S100", "CDP 127.0.0.1:9223 不可连", { precondition: true });
+  }
+  async pageFetch() { throw new Error("unreachable"); }
+  async recaptchaToken() { throw new Error("unreachable"); }
+}
 
-describe("钉死守卫接线 meta(守卫顺序:pinned 短路在前,链推进判定在后)", () => {
-  test("image 链 walk:const pinned = isRequestPinned(...) + if (pinned || hop >= MAX_CHAIN_HOPS || !isChainAdvanceable(e)) throw", () => {
-    const src = readFileSync(path.join(ROOT, "src/index.ts"), "utf8");
-    assert.match(src, /const pinned = isRequestPinned\(optString\(a\.provider\), model\);/, "image walk 走统一谓词");
-    assert.match(
-      src,
-      /if \(pinned \|\| hop >= MAX_CHAIN_HOPS \|\| !isChainAdvanceable\(e\)\) throw e;/,
-      "pinned 必须短路在链推进判定之前(顺序回归 = 钉死失效)",
-    );
+describe("flow 60s 软熔断(notifyUnavailable → ensureReady 零探测)", () => {
+  test("失败后 notifyUnavailable:冷却窗口内 ensureReady 直抛缓存错误(opens 计数不增);过期重探", async () => {
+    const t = new DeadCdpTransport();
+    const p = new FlowProvider({ transport: t as any });
+    p.cooldownMs = 50; // 实例字段,便于测试调短
+    const e1 = await p.ensureReady().then(() => null, (e: any) => e);
+    assert.ok(e1 instanceof FlowError && e1.code === "S100");
+    assert.equal(e1.precondition, true);
+    assert.equal(t.opens, 1);
+    assert.equal(p.health().cooldown, false, "失败本身不打熔断(链 walk 的 notifyUnavailable 负责)");
+    p.notifyUnavailable(e1);
+    assert.equal(p.health().cooldown, true);
+    const e2 = await p.ensureReady().then(() => null, (e: any) => e);
+    assert.equal(e2, e1, "冷却窗口内直抛缓存错误(零探测)");
+    assert.equal(t.opens, 1, "窗口内不重复探测 CDP");
+    await sleep(110);
+    const e3 = await p.ensureReady().then(() => null, (e: any) => e);
+    assert.equal(t.opens, 2, "窗口过期重探");
+    assert.ok(e3 instanceof FlowError);
   });
-  test("video 提交路径:const pinnedVideo = isRequestPinned(...) + if (pinnedVideo || !isChainAdvanceable(e)) throw", () => {
-    const src = readFileSync(path.join(ROOT, "src/index.ts"), "utf8");
-    assert.match(src, /const pinnedVideo = isRequestPinned\(optString\(a\.provider\), model\);/, "video 走统一谓词");
-    assert.match(
-      src,
-      /if \(pinnedVideo \|\| !isChainAdvanceable\(e\)\) throw e;/,
-      "pinnedVideo 必须短路在链推进判定之前",
-    );
+  test("registry flow 实例同语义(notifyUnavailable 后 health().cooldown,供链头跳过)", () => {
+    const flow = getProvider("flow");
+    const prev = flow.cooldownMs;
+    flow.cooldownMs = 30;
+    flow.notifyUnavailable(new Error("probe"));
+    try {
+      assert.equal(flow.health().cooldown, true);
+    } finally {
+      // 还原:等待窗口过期,免污染同文件后续用例
+      return sleep(35).then(() => { flow.cooldownMs = prev; });
+    }
   });
 });

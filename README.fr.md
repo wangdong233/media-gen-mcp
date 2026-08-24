@@ -152,11 +152,50 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 > Vous : « Avec quel prompt et quels paramètres cette image a-t-elle été générée ? Reproductible ? »
 > Obtenu : paramètres structurés — prompt positif/négatif, modèle, pas d'échantillonnage, CFG, graine, taille (analysé localement depuis les métadonnées ComfyUI/A1111 embarquées dans le PNG ; les images Agnes portent tous les paramètres — récupérez le prompt et reproduisez avec generate_image en un clic)
 
-### Provider Google Flow (détaché dans le paquet autonome flow-mcp)
+### Provider Google Flow (Veo 3.1 / Nano Banana — sans clé API, images 0 crédit)
 
-Le provider Google Flow (Veo 3.1 / Nano Banana, piloté via la session Chrome locale — sans clé API) a été détaché de ce paquet en 2026-08 pour devenir un MCP autonome : **[flow-mcp](https://github.com/wangdong233/flow-mcp)** — génération / upscale d'images à 0 crédit, vidéo facturée en crédits (abra / Veo 3.1), l'outil d'introspection `flow_status` (crédits & médias) et les entités de personnage `flow_entity`.
+**Générez des images / vidéos via Google Flow en réutilisant la session Chrome locale** (le [labs.google/fx/tools/flow](https://labs.google/fx/tools/flow) de Google Labs) — aucune clé API nécessaire, et votre quota gratuit Agnes / Zhipu reste intact. Les sorties se téléchargent automatiquement et portent un `mediaId` pour la gestion ultérieure.
 
-Les deux paquets **partagent le même fichier de configuration** `~/.media-gen-mcp/config.json` (sa section `flow` : interrupteur `enabled` / préférences de routage `imageRouting` / `videoRouting` — un seul fichier). La ligne rouge des crédits est conservée : la vidéo Flow consomme des crédits ; flow-mcp est en `explicit-only` par défaut et ne route jamais automatiquement.
+**Prérequis (une fois)**: être connecté à Flow dans le Chrome local.
+
+```bash
+lasso launch-chrome --port 9223 --mode visible
+# Pas encore lasso ? npm i -g lasso-mcp
+# Dans la fenêtre Chrome ouverte, allez sur https://labs.google/fx/tools/flow et connectez-vous ; gardez ensuite Chrome en marche
+```
+
+Si Chrome ne tourne pas / n'est pas connecté, les outils renvoient un **code d'erreur structuré + guide** (S100 = Chrome injoignable, S101 = aucune page Flow ouverte) — suivez l'indication, lancez une fois, c'est tout. Jamais d'échec silencieux, jamais de changement de provider à votre insu.
+
+**Tout ceci est à 0 crédit (utilisez librement)** :
+
+- **Génération d'images** : Nano Banana Pro / Nano Banana 2 (défaut) / Nano Banana 2 Lite ; ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3 ; seeds reproductibles ; édition sur image de base + jusqu'à 10 images de référence
+- **Suréchantillonnage** : image en 2K (model=`GEM_PIX_2_UPSAMPLE_2K`), vidéo en 1080p (model=`veo_3_1_upsampler_1080p`)
+- **Gestion des actifs** : téléverser des images, supprimer par lots, créer des liens publics de partage (`labs.google/fx/tools/flow/shared/…`), annuler des vidéos en cours, consulter crédits / statut des médias (`flow_status`) ; créer des entités de personnage et lier l'une des 30 voix prédéfinies (`flow_entity`)
+
+**La génération vidéo consomme des crédits (par clip — à savoir avant de soumettre)** :
+
+| Modèle | Exemples de keys | Crédits par clip |
+|---|---|---|
+| Omni Flash (abra) texte / image / référence | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15 (selon durée 4/6/8/10 s) |
+| Omni Flash édition vidéo (V2V) | `abra_edit` | 20 |
+| Veo 3.1 Lite (inclut prolongation, premier+dernier cadre) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
+| Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
+| Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
+| Suréchantillonnage vidéo 1080p | `veo_3_1_upsampler_1080p` | **0** |
+
+Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniquement. Modes : texte-vers-vidéo (t2v), image-vers-vidéo (`image`, le téléversement est à 0 crédit), images-de-référence-vers-vidéo (`images`, 1–10), premier+dernier cadre (`keyframes`, exactement 2), prolongation (`videoMediaId`), édition (`videoMediaId` + une consigne de modification ; wire finalisé mais pas encore soumis en réel — la réponse porte un avertissement), suréchantillonnage (`videoMediaId`).
+
+**Utilisation (`provider="flow"` explicite)** :
+
+```
+« Dessine un chat cyberpunk via Flow, 3:4, seed 42 »        → generate_image(provider="flow", aspect="3:4", seed=42)
+« Génère via Flow une vidéo de 8 s d'une ville futuriste »  → create_video(provider="flow", model="abra_t2v_8s")
+« Mes crédits Flow / ce mediaId est-il terminé ? »          → flow_status() / flow_status(mediaId=…)
+```
+
+**L'outil d'introspection `flow_status` (0 crédit de bout en bout)** : sans argument, il renvoie un instantané complet — compte connecté, solde de crédits, catalogue de modèles en direct (avec durée de référence par key), 30 voix prédéfinies et liste des médias du projet ; avec un `mediaId`, il suit le statut d'un média et télécharge l'asset terminé (`thumbnail=true` récupère la miniature vidéo) ; `deleteMediaIds` supprime par lots, `shareMediaIds` crée des liens publics de partage, `cancelMediaIds` annule des vidéos en cours (les images ne sont pas annulables).
+
+> **Ligne rouge des crédits** : la vidéo Flow consomme des crédits et n'est **jamais routée automatiquement par défaut** — soit vous l'inscrivez explicitement dans `videoProviderPriority` (les crédits sont à votre charge ; un avertissement marqué s'affiche au démarrage), soit vous passez `provider="flow"` à chaque appel. Pour des images gratuites en automatique, mettez `flow` en tête de `imageProviderPriority` (voir Configuration ci-dessous).
 
 ### Comprendre une image / un PDF (transformer l'image et les documents en données)
 
@@ -246,7 +285,7 @@ Les deux paquets **partagent le même fichier de configuration** `~/.media-gen-m
 |---|---|---|
 | Dessiner des schémas d'architecture / graphiques de données / cartes / QR codes / formules | **Rien à configurer** | Moteur local, prêt après installation |
 | Images réalistes IA / vidéos IA (texte-vers-image, texte-vers-vidéo) | Configurer une clé API gratuite (Agnes ou Zhipu, au choix) | Génération en ligne, enregistrée dans `output/` |
-| Générer des images via Google Flow (0 crédit) / gérer les actifs Flow | Installer le paquet autonome [flow-mcp](https://github.com/wangdong233/flow-mcp) (ce provider a été détaché de ce paquet) | Images / upscale / gestion d'actifs à 0 crédit ; la vidéo facture des crédits (explicit-only par défaut, jamais routée automatiquement) |
+| Générer des images via Google Flow (0 crédit) / gérer les actifs Flow | **Aucune clé** : connectez-vous simplement à Flow dans le Chrome local (lancé via `lasso launch-chrome`) | Images / suréchantillonnage / téléversement / suppression / partage / annulation / requêtes à 0 crédit ; la vidéo consomme des crédits (7–100 par clip) |
 | OCR (anglais / captcha / chiffres / documents simples) | **Rien à configurer** | Moteur léger in-process par défaut, prêt après installation |
 | OCR chinois / factures et tableaux / lecture de graphiques / Q&R visuelle / manuscrit / formules | **Configurer une clé GLM de Zhipu** (zéro déploiement, gratuit à vie dans le cloud) **ou** auto-héberger PaddleX / vLLM | Avec la clé GLM, prêt à l'emploi dès la configuration ; pour l'auto-hébergement, lancez le service puis renseignez une ligne baseUrl |
 | **Extraction de texte PDF** (numérique / scanné / multi-pages) | Installer deux dépendances `npm i pdfjs-dist @napi-rs/canvas` (à la première utilisation PDF) | PDF numérique en secondes ; PDF scanné suit les niveaux OCR ci-dessus (fonctionne aussi en zéro configuration par défaut) |
@@ -279,18 +318,20 @@ Les deux paquets **partagent le même fichier de configuration** `~/.media-gen-m
 
 **Plus stable avec les deux** : si l'un tombe temporairement (limite de débit / fluctuation de service), l'autre prend automatiquement le relais, imperceptiblement pour vous, sans double facturation.
 
-**Chaîne de priorité des providers (facultatif — déclarer une liste ordonnée `[tête, ...fallback]`)** : ajoutez `imageProviderPriority` / `videoProviderPriority` au `config.json`. Quand la tête échoue (rate limit / 5xx), la chaîne **bascule dans l'ordre**, en toute transparence :
+**Chaîne de priorité des providers (optionnel, une ligne pour router la génération d'images vers le niveau gratuit de Google Flow)** : ajoutez `imageProviderPriority` / `videoProviderPriority` dans `config.json` — une liste ordonnée `[tête, ...fallback]`. Quand la tête échoue (limite de débit / 5xx) ou que son environnement n'est pas prêt (ex. Flow exige une session CDP Chrome locale), la chaîne **retombe dans l'ordre**, en toute transparence :
 
 ```json
 {
-  "imageProviderPriority": ["agnes", "zhipu"],
+  "imageProviderPriority": ["flow", "agnes", "zhipu"],
   "videoProviderPriority": ["agnes", "zhipu"]
 }
 ```
 
-- Passer un `provider` explicite (ou un `model` — le modèle lui-même déclare son appartenance) **épingle ce provider** : pas de fallback, jamais de substitution silencieuse.
-- Omettre ces deux clés conserve le comportement actuel (provider par défaut + repli mutuel agnes/zhipu sur le palier gratuit), impact zéro. Équivalents env : `MEDIA_IMAGE_PROVIDER_PRIORITY="agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
-- Le provider Google Flow vit désormais dans le paquet autonome [flow-mcp](https://github.com/wangdong233/flow-mcp) ; les deux paquets partagent ce fichier de configuration (sa section `flow` gère l'interrupteur et la préférence de routage — voir le README de ce paquet). Une entrée `"flow"` dans la chaîne de ce paquet est ignorée avec un avertissement ; le reste de l'ordre s'applique normalement.
+- **Images flow-first** : la génération d'images Flow est à 0 crédit ; si Chrome ne tourne pas / n'est pas connecté, retombée automatique vers agnes → zhipu (les sondes sont protégées par un disjoncteur de 60 secondes, pas de tempête de retries). Passer un `provider` explicite épinglera ce provider — sans fallback.
+- **La vidéo reste agnes-first par défaut** (gratuite) ; la vidéo Flow consomme des crédits et est **volontairement exclue du routage par défaut** — soit vous la listez explicitement dans `videoProviderPriority` (les crédits sont à votre charge), soit vous passez `provider="flow"` à chaque appel.
+- Sans ces deux clés, le comportement actuel est conservé (provider par défaut + fallback mutuel du niveau gratuit agnes/zhipu), zéro impact. Équivalents env : `MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
+
+**Gestion des actifs Flow (tout à 0 crédit)** : en plus des crédits / statut des médias / téléchargements, `flow_status` gère trois opérations gratuites — `shareMediaIds=[…]` crée des liens publics de partage (comme `labs.google/fx/tools/flow/shared/image/<id>`, prompt inclus), `cancelMediaIds=[…]` annule les générations de VIDÉO en cours (attention : les travaux d'image ne sont pas annulables) et `deleteMediaIds=[…]` supprime des médias par lots. L'outil `flow_entity` crée des entités de personnage et lie l'une des 30 voix prédéfinies (générez d'abord le visuel via `generate_image(provider="flow")`, puis attachez-le) pour le réutiliser dans les générations suivantes.
 
 **Emplacement du fichier de configuration** : `~/.media-gen-mcp/config.json` (macOS / Linux) ou `%USERPROFILE%\.media-gen-mcp\config.json` (Windows).
 
