@@ -83,6 +83,21 @@ const warnedUnknownPriority = new Set<string>();
  * 渠道硬禁用(disabledReason() 非空,如 flow.enabled=false)同样剔除 —— 链自动降级到下一渠道,
  * 零静默(启动/首次解析时 warn 一次说明原因)。
  */
+/**
+ * 原始优先级链(小写归一;不做「未知名/S000 被禁」剔除)。
+ * 仅供 getFallbackProvider 的 inPriority 判定:链 = 用户知情同意序,与 enabled 硬门正交
+ * (三审 finding-2:被禁渠道的剔除由 fallback 管线内 disabledReason 过滤行权威执行,而非靠
+ * getProviderPriority 的链剔除间接触发 —— 后者会让该过滤行成为不可达死防御)。
+ * 未知名无害:listProviders() 不含未注册名,inPriority 查不到即 false。
+ */
+export function getRawProviderPriority(modality: "image" | "video"): string[] | undefined {
+  const override = __priorityOverrideForTests[modality];
+  const raw = override !== undefined
+    ? (override ?? undefined)
+    : (modality === "image" ? config.imageProviderPriority : config.videoProviderPriority);
+  return raw?.length ? raw.map((n) => n.toLowerCase()) : undefined;
+}
+
 export function getProviderPriority(modality: "image" | "video"): string[] | undefined {
   const override = __priorityOverrideForTests[modality];
   const raw = override !== undefined
@@ -451,7 +466,12 @@ function capableOf(p: MediaProvider, modality: Modality, req?: FallbackReq): boo
  *   2. 链外成员按 tier 降序(legacy 免费链行为,未配置时全走此序 → 零回归)
  */
 export function getFallbackProvider(currentName: string, modality: Modality, req?: FallbackReq): MediaProvider | undefined {
-  const prio = modality === "image" || modality === "video" ? getProviderPriority(modality) : undefined;
+  // 三审 finding-2 复核+修正:inPriority 改用「原始链」(未做 S000 剔除)—— 优先级链是用户的
+  // 知情同意序(显式列入 flow = 同意其计费/隐私边界),与 flow.enabled 硬门(S000)是两个正交关注点。
+  // 修正前:getProviderPriority 已剔除被禁渠道 → requiresOptIn 过滤恒先拦截被禁 flow,
+  // 下方 disabledReason 过滤行成为永不可达的死防御(mutation 实证:filter 改恒真后全测试套仍绿)。
+  // 修正后:S000 硬门在 fallback 管线有唯一权威执行点(下方 filter),可测且不再被遮蔽。
+  const prio = modality === "image" || modality === "video" ? getRawProviderPriority(modality) : undefined;
   const pos = (n: string) => {
     const i = prio?.indexOf(n.toLowerCase()) ?? -1;
     return i === -1 ? Number.POSITIVE_INFINITY : i;
@@ -460,11 +480,11 @@ export function getFallbackProvider(currentName: string, modality: Modality, req
   const candidates = listProviders()
     .filter((n) => n.toLowerCase() !== currentName.toLowerCase())
     .map((n) => getProvider(n))
+    .filter((p) => !p.disabledReason?.()) // F2(B3):S000 硬门语义闭合 —— 被禁渠道不作 fallback 候选(与 getProviderPriority/resolveProvider 同门)
     .filter((p) => p.health?.().configured !== false || inPriority(p.name))
     .filter((p) => p.health?.().cooldown !== true)
     .filter((p) => capableOf(p, modality, req))
-    .filter((p) => !p.requiresOptIn?.(modality) || inPriority(p.name))
-    .filter((p) => !p.disabledReason?.()); // F2(B3):S000 硬门语义闭合 —— 被禁渠道不作 fallback 候选(与 getProviderPriority/resolveProvider 同门)
+    .filter((p) => !p.requiresOptIn?.(modality) || inPriority(p.name));
   if (!candidates.length) return undefined;
   candidates.sort((a, b) => (pos(a.name) - pos(b.name)) || ((b.tier?.() ?? 0) - (a.tier?.() ?? 0)));
   return candidates[0];

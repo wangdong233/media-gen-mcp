@@ -10,6 +10,8 @@
  *   5. isChainAdvanceable:precondition(S1xx)推进;S301 业务错不推进;上游 5xx/429 推进
  *   6. flow 60s 软熔断:notifyUnavailable → health().cooldown;ensureReady 冷却窗口内零探测直抛缓存错误;
  *      窗口过期自动重探
+ *   7. isRequestPinned(三审 finding-1):opt-in 渠道(flow)显式点名 → 钉死直抛;免费渠道
+ *      (agnes/zhipu)显式点名 → 不钉死(失败按链回落带 warning)—— 与收窄后的 schema 契约一致
  *
  * 导入方式:与 flow.test.ts 同范式(createRequire 引编译产物 dist/;npm test 先 build 再 build:tests)。
  * 测试隔离铁律:__priorityOverrideForTests 置 null,隔离 ~/.media-gen-mcp/config.json 的本机差异
@@ -27,7 +29,7 @@ const { parseProviderPriority } = require_(path.join(distDir, "config.js"));
 const reg = require_(path.join(distDir, "providers/registry.js"));
 const { getProviderPriority, getFallbackProvider, resolveProvider, getProvider } = reg;
 const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
-const { isChainAdvanceable, isFallbackWorthy } = require_(path.join(distDir, "providers/http.js"));
+const { isChainAdvanceable, isFallbackWorthy, isRequestPinned } = require_(path.join(distDir, "providers/http.js"));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -169,6 +171,33 @@ describe("getFallbackProvider(priority 位置优先于 tier;optIn 门禁)", () =
       reg.__priorityOverrideForTests.image = null;
       flow.cooldownMs = prevCooldownMs;
     }
+  });
+});
+
+// ═══ 4b. 钉死守卫(三审 finding-1:契约收窄后的语义回归)═══
+
+describe("isRequestPinned(钉死守卫:opt-in 渠道显式点名直抛;免费渠道带告警回落)", () => {
+  test("opt-in 渠道:显式 provider 或 model 归属 → 钉死;默认路由到达不钉死(链可推进)", () => {
+    assert.equal(isRequestPinned("flow", undefined, true), true, "显式 provider=flow 钉死");
+    assert.equal(isRequestPinned(undefined, "NARWHAL", true), true, "model 归属路由到 flow 同样钉死");
+    assert.equal(isRequestPinned(undefined, undefined, true), false, "链头默认路由到达 opt-in 渠道不钉死(环境前置失败可推进)");
+  });
+  test("免费渠道(agnes/zhipu):显式点名也不钉死(失败仍按链回落带 warning;零回归基线)", () => {
+    assert.equal(isRequestPinned("agnes", undefined, false), false);
+    assert.equal(isRequestPinned("zhipu", "cogview-4", false), false, "model 归属免费渠道同样不钉死");
+    assert.equal(isRequestPinned(undefined, undefined, false), false);
+  });
+  test("与 registry 真源一致:resolveProvider 解析结果的 requiresOptIn 喂入判定(opt-in=flow,免费=agnes/zhipu)", () => {
+    const flowOptIn = resolveProvider("flow", undefined, "image").provider.requiresOptIn?.("image") === true;
+    const agnesOptIn = resolveProvider("agnes", undefined, "image").provider.requiresOptIn?.("image") === true;
+    const zhipuOptIn = resolveProvider("zhipu", undefined, "image").provider.requiresOptIn?.("image") === true;
+    assert.equal(flowOptIn, true, "flow 是唯一 opt-in 渠道(当前注册表)");
+    assert.equal(agnesOptIn, false);
+    assert.equal(zhipuOptIn, false);
+    // 端到端语义:显式点名 flow → 直抛;显式点名 agnes/zhipu → 不钉死(可回落,见 getFallbackProvider 用例)
+    assert.equal(isRequestPinned("flow", undefined, flowOptIn), true);
+    assert.equal(isRequestPinned("agnes", undefined, agnesOptIn), false);
+    assert.equal(isRequestPinned("zhipu", undefined, zhipuOptIn), false);
   });
 });
 

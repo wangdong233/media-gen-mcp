@@ -45,6 +45,28 @@ export function isChainAdvanceable(e: any): boolean {
   return isFallbackWorthy(e) || e?.precondition === true;
 }
 
+/**
+ * 钉死守卫(纯函数,导出供 provider-priority.test.ts 白盒):请求是否「钉死」目标渠道 ——
+ * 链式 walk 失败时直抛原始错误,绝不静默换成他渠道产物。
+ *
+ * 【行为决策记录 2026-08-24 三审 finding-1(选项②:收窄契约承诺,而非泛化行为)】
+ * 钉死范围 = 显式点名(provider=X 或 model 归属路由)**且**目标渠道 requiresOptIn(modality)=true
+ * (当前仅 flow):
+ *   - opt-in 渠道承载计费/隐私边界,用户点名的是「这个渠道」,失败直抛(audit finding-15 语义劫持防护);
+ *   - 免费渠道(agnes/zhipu)显式点名后失败仍按链回落(带 warning)—— 保持 145f83e 基线行为(零回归),
+ *     schema/generate_image provider 描述与 list_models routingNote 已同步收窄为
+ *     "naming an opt-in provider (flow) pins it; free providers fall through with a warning"。
+ * 注:0fa1fc4(已 revert)曾把钉死泛化到全渠道;合包后回到 opt-in 钉死。本函数是该决策的
+ * 单一可测真源 —— handler 不得内联重写此判定(防语义漂移)。
+ */
+export function isRequestPinned(
+  explicitProvider: string | null | undefined,
+  model: string | null | undefined,
+  requiresOptIn: boolean,
+): boolean {
+  return (explicitProvider != null || model != null) && requiresOptIn === true;
+}
+
 /** 判断错误是否为"瞬时"(值得重试):5xx、网络层错误(fetch TypeError / status=0)。 */
 export function isTransient(e: any): boolean {
   const s = e?.status ?? 0;

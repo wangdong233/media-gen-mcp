@@ -252,3 +252,39 @@ describe("digest 绑定 prompt(F4:参数变化令牌失效)", () => {
     );
   });
 });
+
+describe("digest 绑定输入引用(三审 finding-3:确认后换输入引用不能复用令牌)", () => {
+  test("同 key 同价但 videoMediaId 变化(extension)→ S320 不符", async () => {
+    const { p } = newProvider();
+    const c1 = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_extension_lite", videoMediaId: "vid-src-1" });
+    await assert.rejects(
+      p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_extension_lite", videoMediaId: "vid-src-2" }, c1!.confirmToken!),
+      (e: any) => /\[flow\] S320/.test(e.message) && /不符/.test(e.message),
+      "确认后换源视频(videoMediaId)必须使令牌失效",
+    );
+  });
+  test("images 参考集变化(r2v 增删参考图)→ S320 不符", async () => {
+    const { p } = newProvider();
+    const c1 = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: ["https://example.com/a.png"] });
+    await assert.rejects(
+      p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: ["https://example.com/a.png", "https://example.com/b.png"] }, c1!.confirmToken!),
+      (e: any) => e.code === "S320",
+      "参考图集合变化必须使令牌失效",
+    );
+  });
+  test("keyframes 变化(interpolation 换首尾帧)→ S320 不符", async () => {
+    const { p } = newProvider();
+    const c1 = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_interpolation_lite", keyframes: ["https://example.com/first.png", "https://example.com/last.png"] });
+    await assert.rejects(
+      p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_interpolation_lite", keyframes: ["https://example.com/first2.png", "https://example.com/last.png"] }, c1!.confirmToken!),
+      (e: any) => e.code === "S320",
+      "首尾帧变化必须使令牌失效",
+    );
+  });
+  test("参考图仅顺序调换(images 是集合,排序后入摘)→ 令牌仍有效(语义等价不误杀)", async () => {
+    const { p } = newProvider();
+    const c1 = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: ["https://example.com/a.png", "https://example.com/b.png"] });
+    const pass = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: ["https://example.com/b.png", "https://example.com/a.png"] }, c1!.confirmToken!);
+    assert.equal(pass, undefined, "顺序无关的参考图集合不应使令牌失效");
+  });
+});

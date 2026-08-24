@@ -146,16 +146,9 @@ export const config = {
   /** C 任务:渠道优先级链(video 模态)。语义同上;默认不配置(agnes 免费),flow 需显式列入(视频消耗积分)。 */
   videoProviderPriority: parseProviderPriority(userCfg.videoProviderPriority, "MEDIA_VIDEO_PROVIDER_PRIORITY"),
 
-  /**
-   * C 任务:静态链头(仅供 schema 展示与 check 脚本;运行时解析以 registry.resolveProvider
-   * 为准 —— 那里还叠加 60s 熔断跳过)。未配 priority 时 = defaultXxxProvider(现值,零漂移)。
-   */
-  get imageProviderChainHead(): string {
-    return this.imageProviderPriority?.[0] ?? this.defaultImageProvider;
-  },
-  get videoProviderChainHead(): string {
-    return this.videoProviderPriority?.[0] ?? this.defaultVideoProvider;
-  },
+  // 注:链头不再单设 getter(F1 后唯一真源 = registry getProviderPriority(modality)?.[0] ?? defaultXxxProvider,
+  // src/index.ts buildTools 与 scripts/check-schema.mjs 用同一表达式;tsconfig noUnusedLocals 不覆盖
+  // 未用类成员,曾经的 imageProviderChainHead/videoProviderChainHead getter 会以死代码形态存活)。
 
   /**
    * 顶级 "flow" 渠道运行时段(enabled 硬门 + toolDeadlineMs 防 stall)。

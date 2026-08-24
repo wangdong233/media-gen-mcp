@@ -10,7 +10,8 @@
  *   4. 显式点名拦截(硬门②):resolveProvider 显式 provider=flow / flow 模型 auto-route → S000;
  *      enabled=true 显式点名正常解析(对照,零回归)
  *   5. 防 stall 截止:长操作超 toolDeadlineMs → [flow] S410 结构化错(底层不取消);
- *      缺省截止不小于默认量级(不立即误抛)
+ *      缺省截止不小于默认量级(不立即误抛);0 点工具入口(flowStatus/mediaStatus/deleteAssets/
+ *      shareMedia/cancelGenerations/listPresetVoices/createEntity/updateEntity)逐一同样受保护(三审 finding-5)
  *
  * 导入方式:与 provider-priority.test.ts 同范式(createRequire 引编译产物 dist/;
  * npm test 先 build 再 build:tests,顺序保证存在)。
@@ -27,7 +28,7 @@ const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 const { parseFlowSection, config } = require_(path.join(distDir, "config.js"));
 const reg = require_(path.join(distDir, "providers/registry.js"));
-const { getProviderPriority, resolveProvider } = reg;
+const { getProviderPriority, getFallbackProvider, resolveProvider } = reg;
 const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -130,6 +131,22 @@ describe("getProviderPriority(flow.enabled=false → 链剔除)", () => {
       reg.__priorityOverrideForTests.image = null;
     }
   });
+
+  // 三审 finding-2(mutant 回归):getFallbackProvider 的 disabledReason 过滤行(registry F2/B3)
+  // 无测试覆盖 —— 把该 filter 改为恒真后 flow-gate 全绿。本用例钉死语义:被禁渠道(S000)即使
+  // 显式列入链(链内成员豁免 configured/optIn 门)也绝不能作为 fallback 候选承接请求。
+  test("F2(B3):flow 入链但 enabled=false → getFallbackProvider 绝不返回被禁渠道,链内下一成员承接", () => {
+    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
+    try {
+      return withFlowDisabled(() => {
+        const fb = getFallbackProvider("agnes", "image", {});
+        assert.notEqual(fb?.name, "flow", "被禁渠道(disabledReason 非空)不得作为 fallback 候选");
+        assert.equal(fb?.name, "zhipu", "链内下一可用成员承接(flow 剔除后 = zhipu)");
+      });
+    } finally {
+      reg.__priorityOverrideForTests.image = null;
+    }
+  });
 });
 
 // ═══ 4. 硬门②:显式点名 / 模型归属路由拦截 ═══
@@ -224,5 +241,32 @@ describe("toolDeadlineMs(长操作截止 → [flow] S410)", () => {
     await sleep(150);
     assert.equal(rejected, false, "150ms 内不得误抛(默认截止 110s,而非过小默认)");
     await probe; // 等 settle(250ms 悬挂拒绝),清 timer + 吞掉占位错
+  });
+
+  // 三审 finding-5:0 点只读/管理工具路径(flowStatus/mediaStatus/deleteAssets/shareMedia/
+  // cancelGenerations/listPresetVoices/createEntity/updateEntity)曾缺工具级截止 —— 单次
+  // pageFetch 有 45s eval 超时,但多步链(逐 id 循环 + 前后 projectData)可叠加远超 120s 红线。
+  // 每个入口都必须在 toolDeadlineMs 处转 [flow] S410(mutant:去掉任一包裹 → 该用例超时失败)。
+  test("0 点工具入口全部受截止保护:悬挂 CDP → S410(逐一覆盖,缺包裹即败)", async () => {
+    const expectS410 = async (label: string, fn: () => Promise<unknown>) => {
+      // 双保险 race:若缺截止包裹(悬挂),1.5s 后以明确断言消息失败,而非钉住测试进程
+      const e = (await Promise.race([
+        Promise.resolve().then(fn).then(
+          () => { throw new Error(`${label}: 应在截止处抛 S410,实际正常返回`); },
+          (err: unknown) => err,
+        ),
+        sleep(1500).then(() => new Error(`${label}: 1.5s 内未抛 S410 —— 缺 withToolDeadline 包裹(防 stall 红线)`)),
+      ])) as { code?: string; message?: string };
+      assert.ok(e && e.code === "S410", `${label}: 期望 S410,实际 ${e?.message?.slice(0, 120)}`);
+    };
+    const mk = () => new FlowProvider({ transport: new HangingTransport() as any, flowCfg: { enabled: true, toolDeadlineMs: 60 } });
+    await expectS410("flowStatus()", () => mk().flowStatus());
+    await expectS410("mediaStatus(id)", () => mk().mediaStatus("media-x-1"));
+    await expectS410("deleteAssets(ids)", () => mk().deleteAssets(["media-x-1"]));
+    await expectS410("shareMedia(ids)", () => mk().shareMedia(["media-x-1"]));
+    await expectS410("cancelGenerations(ids)", () => mk().cancelGenerations(["media-x-1"]));
+    await expectS410("listPresetVoices()", () => mk().listPresetVoices());
+    await expectS410("createEntity()", () => mk().createEntity({ displayName: "x" }));
+    await expectS410("updateEntity()", () => mk().updateEntity("entity-x", { displayName: "x" }));
   });
 });

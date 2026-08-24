@@ -22,7 +22,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, getProviderPriority, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
 import { FlowProvider } from "./providers/flow.js";
-import { isFallbackWorthy, isChainAdvanceable } from "./providers/http.js";
+import { isFallbackWorthy, isChainAdvanceable, isRequestPinned } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
 import { downloadAsset, sanitizeFileBase } from "./download.js";
@@ -121,7 +121,7 @@ function buildTools() {
   // create_video 的 schema 约束按"视频模态链头"展示,与实际路由一致
   // (例:defaultVideoProvider=zhipu 时展示 150/300,而非 agnes 的 81/121/...;handler 仍按实际 provider 复算 vc)。
   // C 任务:链头 = videoProviderPriority[0](若配置且具备 video 能力)→ 否则 defaultVideoProvider。
-  // 与 scripts/check-schema.mjs 用同一 videoProviderChainHead 真源(能力缺失时双方各自回落,保一致)。
+  // 与 scripts/check-schema.mjs 用同一 getProviderPriority 真源(能力缺失时双方各自回落,保一致)。
   // S000 硬门:链头取 getProviderPriority 过滤后(渠道禁用/未注册名剔除)的首个成员 ——
   // 禁用渠道不再作为 schema 默认展示(与运行时 defaultHead 同源;运行时解析仍以 resolveProvider 为准)。
   const videoHead = (() => {
@@ -157,7 +157,7 @@ function buildTools() {
           download: { type: "boolean", default: true },
           name: { type: "string", description: "Output filename (without extension); multi-image adds -1/-2/… suffix. Defaults to img_<uuid>." },
           outDir: { type: "string", description: "产物落盘目录,省略用默认(会话目录/output)。" },
-          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); explicitly naming a provider pins it (no silent substitution). A provider disabled in config (e.g. flow.enabled=false) is removed from the chain and refuses explicit calls with a structured S000 error." },
+          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); naming an opt-in provider (flow) pins it — errors surface instead of silently substituting, while free providers (agnes/zhipu) named explicitly still fall through with a warning. A provider disabled in config (e.g. flow.enabled=false) is removed from the chain and refuses explicit calls with a structured S000 error." },
         },
         required: ["prompt"],
       },
@@ -184,7 +184,7 @@ function buildTools() {
           seed: { type: "number" },
           negativePrompt: { type: "string" },
           wait: { type: "boolean", description: "省略=智能(预估≤60s 同步、>60s 异步返回 handle);true=阻塞等待(发 progress);false=立即返回 handle。" },
-          confirmToken: { type: "string", description: "Two-phase billing confirm (provider=flow video only). First call WITHOUT this token returns {needConfirm:true, estimatedCost, confirmToken, expiresInSeconds} instead of submitting (zero credits spent). Re-call with the SAME parameters plus confirmToken to actually submit. Tokens are short-lived (default 10 min, flow.confirmTtlMs) and bound to model+duration+estimate — changing any parameter invalidates the token (fetch a fresh one). Free submissions (e.g. veo_3_1_upsampler_1080p) and non-flow providers never trigger the gate; disable via config flow.videoConfirm=false." },
+          confirmToken: { type: "string", description: "Two-phase billing confirm (provider=flow video only). First call WITHOUT this token returns {needConfirm:true, estimatedCost, confirmToken, expiresInSeconds} instead of submitting (zero credits spent). Re-call with the SAME parameters plus confirmToken to actually submit. Tokens are short-lived (default 10 min, flow.confirmTtlMs) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId) — changing any of them invalidates the token (fetch a fresh one). Free submissions (e.g. veo_3_1_upsampler_1080p) and non-flow providers never trigger the gate; disable via config flow.videoConfirm=false." },
           timeoutMs: { type: "number", default: 900000 },
           pollIntervalMs: { type: "number", default: 10000 },
           download: { type: "boolean", default: true },
@@ -686,11 +686,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         }
         const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
         // C 任务:渠道优先级链式 walk(复用 getFallbackProvider 的排序/熔断/能力谈判管线,不旁路)。
-        // 钉死守卫(audit finding-15 语义劫持防护,通用化):显式点名 opt-in 渠道(provider=X 或
-        // model 归属 X,如 flow)→ 失败直抛,绝不静默换成其他渠道产物;免费渠道(agnes/zhipu)
-        // 保持既有单跳 fallback(零回归)。
-        const pinned = (optString(a.provider) != null || model != null)
-          && resolved.provider.requiresOptIn?.("image") === true;
+        // 钉死守卫(audit finding-15 语义劫持防护;三审 finding-1 单一真源 http.ts isRequestPinned):
+        // 显式点名 opt-in 渠道(provider=X 或 model 归属 X,如 flow)→ 失败直抛,绝不静默换成其他渠道
+        // 产物;免费渠道(agnes/zhipu)显式点名后失败仍按链回落(带 warning,零回归)—— 与 schema/
+        // routingNote 收窄后的契约一致("naming an opt-in provider pins it; free providers fall through")。
+        const pinned = isRequestPinned(optString(a.provider), model, resolved.provider.requiresOptIn?.("image") === true);
         // 链长上限(priority 链 ≤3 成员 + 防御余量;每跳失败即 notifyUnavailable 打熔断,天然防 ping-pong)
         const MAX_CHAIN_HOPS = 4;
         const makeOne = async (): Promise<{ result: ImageResult; providerName: string }> => {
@@ -860,11 +860,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // pares3: create_video fallback(铁律:仅 submit 可 fallback,poll 路径绝不 fallback)
         let activeProvider = p;
         let created: VideoTask;
-        // 钉死守卫(通用化):显式点名 opt-in 渠道(provider=X / model 归属 X,如 flow)→ 失败直抛
-        // (audit finding-15:用户点名的是该渠道模型,静默 fallback 成别家是语义劫持);
-        // 免费渠道(agnes/zhipu)保持既有单跳 fallback(零回归)。
-        const pinnedVideo = (optString(a.provider) != null || model != null)
-          && resolved.provider.requiresOptIn?.("video") === true;
+        // 钉死守卫(三审 finding-1 单一真源 http.ts isRequestPinned):显式点名 opt-in 渠道
+        // (provider=X / model 归属 X,如 flow)→ 失败直抛(audit finding-15:用户点名的是该渠道模型,
+        // 静默 fallback 成别家是语义劫持);免费渠道(agnes/zhipu)显式点名后失败仍按链回落(零回归)。
+        const pinnedVideo = isRequestPinned(optString(a.provider), model, resolved.provider.requiresOptIn?.("video") === true);
         try {
           created = await p.createVideo(videoReq);
         } catch (e: any) {
@@ -886,7 +885,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             warnings.push(`fallback numFrames ${fbFrames} 超过 ${fb.name} 的 ${optString(a.resolution) ?? "当前分辨率"}上限 ${fbMaxF},已降为 ${fbMaxF}。`);
             fbFrames = fbMaxF;
           }
-          warnings.push(`provider "${p.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"(免费),numFrames ${effFrames}→${fbFrames}。`);
+          warnings.push(`provider "${p.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"${fb.beginSubmissionConfirm ? "(计费渠道:提交前仍须两段式确认)" : "(免费)"},numFrames ${effFrames}→${fbFrames}。`);
           p.notifyUnavailable?.(e);
           activeProvider = fb;
           // 关键:不透传 durationSeconds —— Agnes.createVideo 会优先用 framesForDuration(durationSeconds) 重推导 numFrames,
@@ -1314,7 +1313,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return ok({
           providers: listProviders(),
           detail: buildListModelsDetail(optString(a.provider)),
-          ...(imgChain ? { imageProviderPriority: imgChain, imageRoutingNote: `image 默认路由按链走:${imgChain.join(" → ")}(链头失败/前置不满足时按序回落;显式点名 provider 则钉死)` } : {}),
+          ...(imgChain ? { imageProviderPriority: imgChain, imageRoutingNote: `image 默认路由按链走:${imgChain.join(" → ")}(链头失败/前置不满足时按序回落;显式点名 opt-in 渠道(如 flow)则钉死;免费渠道(agnes/zhipu)显式点名后失败仍带告警回落)` } : {}),
           ...(vidChain ? { videoProviderPriority: vidChain, videoRoutingNote: `video 默认路由按链走:${vidChain.join(" → ")}(未配置时 = ${config.defaultVideoProvider} + 免费层 fallback;flow 视频消耗积分,须显式列入或点名)` } : {}),
         });
       }

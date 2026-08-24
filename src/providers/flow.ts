@@ -927,6 +927,13 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     mediaId: string; status: TaskStatus; rawStatus?: string; kind: "video" | "image" | "unknown";
     model?: string; seed?: number; durationSeconds?: number; bytes?: number; created?: string; prompt?: string;
   }> {
+    // 三审 finding-5:0 点工具路径同样受防 stall 截止(ensureReady+findMedia 可各挂一个 eval 超时)
+    return this.withToolDeadline(this.mediaStatusUnbounded(mediaId), `flow 媒体状态 ${mediaId.slice(0, 8)}`);
+  }
+  private async mediaStatusUnbounded(mediaId: string): Promise<{
+    mediaId: string; status: TaskStatus; rawStatus?: string; kind: "video" | "image" | "unknown";
+    model?: string; seed?: number; durationSeconds?: number; bytes?: number; created?: string; prompt?: string;
+  }> {
     await this.ensureReady();
     const m = await this.findMedia(mediaId);
     const mapped = mapMediaStatus(m);
@@ -1057,6 +1064,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 删除前逐个校验存在性(有未知 id → S400 整批不提交,防部分删除);删除为不可逆操作。
    */
   async deleteAssets(mediaIds: string[]): Promise<{ deleted: string[]; mediaRemaining: number; raw: unknown }> {
+    // 三审 finding-5:多步链(前置 projectData + 批删 + 复查)总时长受工具级截止封顶(防 stall 红线)
+    return this.withToolDeadline(this.deleteAssetsUnbounded(mediaIds), `flow 删除媒体 x${mediaIds.length}`);
+  }
+  private async deleteAssetsUnbounded(mediaIds: string[]): Promise<{ deleted: string[]; mediaRemaining: number; raw: unknown }> {
     if (!mediaIds.length) throw new FlowError("S301", "deleteAssets 需要 non-empty mediaIds 数组");
     await this.ensureReady();
     const known = new Set(((await this.getProjectData()).projectContents?.media ?? []).map((m: any) => m?.name));
@@ -1090,6 +1101,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 逐 id 提交(tRPC 一次一个);未知 id → 整批 S400 不提交(对齐 deleteAssets 纪律)。
    */
   async shareMedia(mediaIds: string[]): Promise<{ shared: Array<{ mediaId: string; kind: string; mediaShareId: string; shareUrl: string }>; hint: string }> {
+    // 三审 finding-5:逐 id 提交的 tRPC 循环(N id × 单次 eval 超时)可远超 120s 红线 —— 工具级截止封顶
+    return this.withToolDeadline(this.shareMediaUnbounded(mediaIds), `flow 分享媒体 x${mediaIds.length}`);
+  }
+  private async shareMediaUnbounded(mediaIds: string[]): Promise<{ shared: Array<{ mediaId: string; kind: string; mediaShareId: string; shareUrl: string }>; hint: string }> {
     if (!mediaIds.length) throw new FlowError("S301", "shareMedia 需要 non-empty mediaIds 数组");
     await this.ensureReady();
     const all = (await this.getProjectData()).projectContents?.media ?? [];
@@ -1144,6 +1159,12 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 如实回传服务端 404 并在错误中解释。
    */
   async cancelGenerations(mediaIds: string[]): Promise<{
+    canceled: string[]; notCancelable: Array<{ mediaId: string; status: string; reason: string }>; statusAfter: Array<{ mediaId: string; status: string; rawStatus?: string }>;
+  }> {
+    // 三审 finding-5:先验 projectData + 逐 id 取消 + 复查的多步链受工具级截止封顶(防 stall 红线)
+    return this.withToolDeadline(this.cancelGenerationsUnbounded(mediaIds), `flow 取消生成 x${mediaIds.length}`);
+  }
+  private async cancelGenerationsUnbounded(mediaIds: string[]): Promise<{
     canceled: string[]; notCancelable: Array<{ mediaId: string; status: string; reason: string }>; statusAfter: Array<{ mediaId: string; status: string; rawStatus?: string }>;
   }> {
     if (!mediaIds.length) throw new FlowError("S301", "cancelGenerations 需要 non-empty mediaIds 数组");
@@ -1219,6 +1240,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 非条目顶层;30 条恒在,0 点)。
    */
   async listPresetVoices(): Promise<Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }>> {
+    // 三审 finding-5:flow_entity(voices) 工具路径受工具级截止封顶(防 stall 红线)
+    return this.withToolDeadline(this.listPresetVoicesUnbounded(), "flow 预设语音清单");
+  }
+  private async listPresetVoicesUnbounded(): Promise<Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }>> {
     await this.ensureReady();
     const ext = (await this.getProjectData()).projectContents?.externalReferenceMedia ?? [];
     const voices: Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }> = [];
@@ -1244,11 +1269,15 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 映射,live 实证),此处自动解析并写入镜像。
    */
   async createEntity(req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
+    // 三审 finding-5:语音先验 + createEntity + PATCH + workflow 解析的多步链受工具级截止封顶(防 stall 红线)
+    return this.withToolDeadline(this.createEntityUnbounded(req), "flow 实体创建");
+  }
+  private async createEntityUnbounded(req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
     await this.ensureReady();
     const pid = await this.ensureProjectId();
     // 前置:语音 id 校验(拼错立即失败,不落到 PATCH)
     if (req.presetVoiceId) {
-      const voices = await this.listPresetVoices();
+      const voices = await this.listPresetVoicesUnbounded(); // 内部调用走 Unbounded(外层 createEntity/updateEntity 已有工具级截止,免嵌套双 timer)
       if (!voices.some((v) => v.id === req.presetVoiceId)) {
         throw new FlowError("S301", `presetVoiceId "${req.presetVoiceId}" 不在预设语音清单(共 ${voices.length} 个)`, { hint: "flow_entity(action=voices) 可查看全部预设语音" });
       }
@@ -1304,6 +1333,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 只 PATCH 变更字段;当前值读本地镜像(无服务端读端点)。
    */
   async updateEntity(entityId: string, req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
+    // 三审 finding-5:同 createEntity,多步链受工具级截止封顶(防 stall 红线)
+    return this.withToolDeadline(this.updateEntityUnbounded(entityId, req), "flow 实体更新");
+  }
+  private async updateEntityUnbounded(entityId: string, req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
     await this.ensureReady();
     const pid = await this.ensureProjectId();
     const existing = this.readEntities().find((e) => e.entityId === entityId);
@@ -1311,7 +1344,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       throw new FlowError("S400", `entityId "${entityId}" 不在本地镜像(${FLOW_ENTITIES_FILE})。Flow 无实体读端点(契约 §9.6),只有本工具创建的实体可更新`, { hint: "flow_entity(action=list) 查看已镜像实体;非本工具创建的实体暂无法更新(读端点未逆向)" });
     }
     if (req.presetVoiceId) {
-      const voices = await this.listPresetVoices();
+      const voices = await this.listPresetVoicesUnbounded(); // 内部调用走 Unbounded(外层 createEntity/updateEntity 已有工具级截止,免嵌套双 timer)
       if (!voices.some((v) => v.id === req.presetVoiceId)) {
         throw new FlowError("S301", `presetVoiceId "${req.presetVoiceId}" 不在预设语音清单(共 ${voices.length} 个)`, { hint: "flow_entity(action=voices) 可查看全部预设语音" });
       }
@@ -1407,6 +1440,11 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
 
   /** flow_status 工具主入口:全量自省(零消耗)。 */
   async flowStatus(): Promise<Record<string, unknown>> {
+    // 三审 finding-5:ensureReady + credits + 全量 projectInitialData 的只读快照同样受工具级截止
+    // (CDP 半态下多个 eval 叠加可超 120s 红线;flow_status 是 CC 的主要自省入口,必须防 stall)
+    return this.withToolDeadline(this.flowStatusUnbounded(), "flow 状态快照");
+  }
+  private async flowStatusUnbounded(): Promise<Record<string, unknown>> {
     const ready = await this.ensureReady();
     const pid = await this.ensureProjectId();
     const [credits, data] = await Promise.all([this.getCredits(), this.getProjectData(pid)]);
@@ -1797,7 +1835,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 🔴 计费确认门(types.ts VideoProvider.beginSubmissionConfirm;handler 在每个真实提交点前调用):
    * - 第一段(无 confirmToken):预估消耗 >0 积分 → 返回挑战(handler 原样返回,绝不提交)——
    *   预估积分(动态 creditMapping 优先 / 静态契约表兜底)+ 短时效确认令牌 + 指引。
-   * - 第二段(带 confirmToken):校验(令牌与「最终 key + 预估」绑定 + TTL)→ 通过返回 undefined 放行。
+   * - 第二段(带 confirmToken):校验(令牌与「最终 key + 预估 + prompt + 输入引用」绑定 + TTL)→ 通过返回 undefined 放行。
    * 0 积分提交(veo_3_1_upsampler_1080p)不触发;flow.videoConfirm=false 整门关闭。
    * 模型/形状校验与提交同源(S300/S301 早失败 —— 不让用户确认一个注定失败的请求)。
    */
@@ -1824,7 +1862,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
           : {}),
         confirmToken: this.mintConfirmToken(digest),
         expiresInSeconds: Math.round(this.confirmTtlMs() / 1000),
-        hint: `本次 create_video(provider=flow)将提交 Flow 视频生成,预计消耗 ${credits ?? "未知"} 积分(${cost.source === "dynamic" ? "动态目录实时价" : "静态契约表估算,flow_status 可查动态价"}${credits == null ? ";该 key 无静态价,提交后以实际扣减为准" : ""})。确认请用原参数加 confirmToken 重新调用;任何参数变化都会使令牌失效。0 积分操作(如 veo_3_1_upsampler_1080p)不触发本门;config 顶级 flow.videoConfirm=false 可关闭本门。`,
+        hint: `本次 create_video(provider=flow)将提交 Flow 视频生成,预计消耗 ${credits ?? "未知"} 积分(${cost.source === "dynamic" ? "动态目录实时价" : "静态契约表估算,flow_status 可查动态价"}${credits == null ? ";该 key 无静态价,提交后以实际扣减为准" : ""})。确认请用原参数加 confirmToken 重新调用;模型/时长/预估/prompt/输入引用(image/keyframes/images/videoMediaId)任一变化都会使令牌失效。0 积分操作(如 veo_3_1_upsampler_1080p)不触发本门;config 顶级 flow.videoConfirm=false 可关闭本门。`,
       };
     }
     this.verifyConfirmToken(confirmToken, digest); // 失败抛 [flow] S320/S321
@@ -1864,11 +1902,24 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const v = this.flowCfg?.confirmTtlMs;
     return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : DEFAULT_CONFIRM_TTL_MS;
   }
-  /** 请求计费摘要:令牌与「最终 usage key + 预估积分」绑定 —— 确认后改模型/时长/预估刷新都使旧令牌失效。 */
+  /**
+   * 请求计费摘要:令牌与「最终 usage key + 预估积分 + prompt 指纹 + 输入引用指纹」绑定 ——
+   * 确认后改模型/时长/预估刷新/prompt/输入引用(image/keyframes/images/videoMediaId)都使旧令牌失效,
+   * 兑现 schema 与挑战 hint 的「任何参数变化都会使令牌失效」承诺(计费安全本就由 key 决定,
+   * 输入引用入摘要把该承诺从「计费面」扩展到「语义面」:确认后换底图/换源视频不能复用令牌)。
+   */
   private confirmDigest(key: string, credits: number | null, req: VideoRequest): string {
-    // F4(B3 nit):prompt/negativePrompt 摘入 digest —— 参数变化令牌失效,兑现 schema/README 既有承诺
+    // F4(B3 nit):prompt/negativePrompt 摘入 digest
     const promptFp = crypto.createHash("sha256").update(`${req.prompt ?? ""}#${req.negativePrompt ?? ""}`).digest("hex").slice(0, 12);
-    return crypto.createHash("sha256").update(`${key}#${credits ?? "u"}#${promptFp}`).digest("hex").slice(0, 24);
+    // 三审 finding-3:输入引用摘入 digest。keyframes 保序(首/尾帧位置有语义);images 排序
+    // (参考图是集合,顺序不改变请求语义);image/videoMediaId 单值原样。
+    const inputsFp = crypto.createHash("sha256").update([
+      req.image ?? "",
+      ...(req.keyframes ?? []),
+      ...(req.images ?? []).slice().sort(),
+      req.videoMediaId ?? "",
+    ].join("#")).digest("hex").slice(0, 12);
+    return crypto.createHash("sha256").update(`${key}#${credits ?? "u"}#${promptFp}#${inputsFp}`).digest("hex").slice(0, 24);
   }
   private confirmMintSeq = 0; // 单调序号:同毫秒内多次 mint 不撞车(否则 token 逐字节相同会被单次消费误拒)
   private mintConfirmToken(digest: string): string {
@@ -1894,7 +1945,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     }
     const expect = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${m[1]}.${m[2]}.${digest}`).digest("hex").slice(0, 32);
     if (!crypto.timingSafeEqual(Buffer.from(m[3], "hex"), Buffer.from(expect, "hex"))) {
-      throw new FlowError("S320", "confirmToken 与当前请求不符(模型/时长/预估/prompt 任一变化都会改变令牌绑定)", { hint: `${reget};确认后请勿改动参数` });
+      throw new FlowError("S320", "confirmToken 与当前请求不符(模型/时长/预估/prompt/输入引用(image/keyframes/images/videoMediaId)任一变化都会改变令牌绑定)", { hint: `${reget};确认后请勿改动参数` });
     }
     // B2-high 修复:单次消费 —— 同一令牌只放行一次(防重放重复扣积分);顺手清理过期项防表膨胀
     if (this.consumedConfirmTokens.has(token)) {
