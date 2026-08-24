@@ -82,7 +82,7 @@ describe("计费确认门:两段式(无 token 返挑战 → 带 token 放行)", 
     assert.equal(c.costSource, "static", "无动态 creditMapping → 静态兜底");
     assert.equal(c.currentBalance, 868, "附带当前余额(0 点只读 credits)");
     assert.equal(c.estimatedBalanceAfter, 856);
-    assert.match(c.confirmToken, /^fvc1\.[0-9a-z]+\.[0-9a-f]{32}$/);
+    assert.match(c.confirmToken, /^fvc1\.[0-9a-z]+\.[0-9a-z]+\.[0-9a-f]{32}$/);
     assert.equal(c.expiresInSeconds, 600, "默认 TTL 10 分钟");
     assert.match(String(c.hint), /confirmToken/);
     assert.match(String(c.hint), /12 积分/);
@@ -212,6 +212,43 @@ describe("计费确认门:校验同源早失败", () => {
     await assert.rejects(
       () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s", image: "https://example.com/a.png" }),
       (e: any) => e.code === "S301" && e.message.includes("abra_i2v_8s"),
+    );
+  });
+});
+
+// ═══ B2-high 回归:单次消费(防重放) + digest 绑 prompt ═══
+
+describe("确认令牌单次消费(B2-high:同一令牌二次提交 → S320 已使用)", () => {
+  test("同 token 第二次校验 → S320 已使用(单次消费语义,防重复扣积分)", async () => {
+    const { p } = newProvider();
+    const c1 = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    assert.ok(c1?.confirmToken, "第一段应返回令牌");
+    const pass = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c1.confirmToken);
+    assert.equal(pass, undefined, "首次带 token 应放行");
+    await assert.rejects(
+      p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c1.confirmToken),
+      (e: any) => /\[flow\] S320/.test(e.message) && /已使用/.test(e.message),
+      "同 token 二次必须被拒(重放防护)",
+    );
+  });
+  test("重取新 token 可正常放行(单次消费不锁死流程)", async () => {
+    const { p } = newProvider();
+    const c1 = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c1!.confirmToken!);
+    const c2 = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    const pass2 = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c2!.confirmToken!);
+    assert.equal(pass2, undefined, "重取的新 token 应放行");
+  });
+});
+
+describe("digest 绑定 prompt(F4:参数变化令牌失效)", () => {
+  test("同 key 同价但 prompt 变化 → S320 不符", async () => {
+    const { p } = newProvider();
+    const c1 = await p.beginSubmissionConfirm({ prompt: "original", model: "abra_t2v_8s" });
+    await assert.rejects(
+      p.beginSubmissionConfirm({ prompt: "tampered", model: "abra_t2v_8s" }, c1!.confirmToken!),
+      (e: any) => /\[flow\] S320/.test(e.message) && /不符/.test(e.message),
+      "prompt 变化必须使令牌失效",
     );
   });
 });

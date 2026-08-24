@@ -125,7 +125,8 @@ function buildTools() {
   // S000 硬门:链头取 getProviderPriority 过滤后(渠道禁用/未注册名剔除)的首个成员 ——
   // 禁用渠道不再作为 schema 默认展示(与运行时 defaultHead 同源;运行时解析仍以 resolveProvider 为准)。
   const videoHead = (() => {
-    try { return asVideoProvider(getProvider(getProviderPriority("video")?.[0] ?? config.videoProviderChainHead)).name; }
+    // F5(B3):过滤后链为空(如 prio=["flow"] 且被禁)→ 兜底 legacy 默认(与 image 侧同款,消不对称)
+    try { return asVideoProvider(getProvider(getProviderPriority("video")?.[0] ?? config.defaultVideoProvider)).name; }
     catch { return config.defaultVideoProvider; }
   })();
   const vc = asVideoProvider(getProvider(videoHead)).videoConstraints();

@@ -463,7 +463,8 @@ export function getFallbackProvider(currentName: string, modality: Modality, req
     .filter((p) => p.health?.().configured !== false || inPriority(p.name))
     .filter((p) => p.health?.().cooldown !== true)
     .filter((p) => capableOf(p, modality, req))
-    .filter((p) => !p.requiresOptIn?.(modality) || inPriority(p.name));
+    .filter((p) => !p.requiresOptIn?.(modality) || inPriority(p.name))
+    .filter((p) => !p.disabledReason?.()); // F2(B3):S000 硬门语义闭合 —— 被禁渠道不作 fallback 候选(与 getProviderPriority/resolveProvider 同门)
   if (!candidates.length) return undefined;
   candidates.sort((a, b) => (pos(a.name) - pos(b.name)) || ((b.tier?.() ?? 0) - (a.tier?.() ?? 0)));
   return candidates[0];

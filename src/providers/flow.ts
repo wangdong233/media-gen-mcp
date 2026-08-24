@@ -665,6 +665,12 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 使 flow-first 用户在 Chrome 未开时每个窗口至多付一次 CDP 连接尝试(本地 ECONNREFUSED ~ms 级)。
    */
   private cooldownUntil = 0;
+  /**
+   * B2-high 修复:确认令牌单次消费表(token → 过期时刻)。
+   * verifyConfirmToken 是纯函数校验,无消费语义时同一令牌在 TTL 内可重放提交=重复扣积分;
+   * 校验通过即消费(提交后续网络失败需重取令牌 —— 安全优先,重取成本一次往返)。
+   */
+  private consumedConfirmTokens = new Map<string, number>();
   private cooldownError: Error | null = null;
   cooldownMs = 60_000; // 实例字段便于测试调短
   /** 动态目录缓存(projectInitialData 派生;10 分钟)。creditByKey 供计费确认门动态预估。 */
@@ -1805,7 +1811,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const cost = await this.withToolDeadline(this.lookupVideoCost(resolved.key), "flow 确认门预估");
     if (cost.credits === 0) return undefined;
     const credits = cost.credits; // null = 目录新增 key 静态表无价 → 保守仍要求确认
-    const digest = this.confirmDigest(resolved.key, credits);
+    const digest = this.confirmDigest(resolved.key, credits, req);
     if (!confirmToken) {
       return {
         needConfirm: true,
@@ -1859,20 +1865,24 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : DEFAULT_CONFIRM_TTL_MS;
   }
   /** 请求计费摘要:令牌与「最终 usage key + 预估积分」绑定 —— 确认后改模型/时长/预估刷新都使旧令牌失效。 */
-  private confirmDigest(key: string, credits: number | null): string {
-    return crypto.createHash("sha256").update(`${key}#${credits ?? "u"}`).digest("hex").slice(0, 24);
+  private confirmDigest(key: string, credits: number | null, req: VideoRequest): string {
+    // F4(B3 nit):prompt/negativePrompt 摘入 digest —— 参数变化令牌失效,兑现 schema/README 既有承诺
+    const promptFp = crypto.createHash("sha256").update(`${req.prompt ?? ""}#${req.negativePrompt ?? ""}`).digest("hex").slice(0, 12);
+    return crypto.createHash("sha256").update(`${key}#${credits ?? "u"}#${promptFp}`).digest("hex").slice(0, 24);
   }
+  private confirmMintSeq = 0; // 单调序号:同毫秒内多次 mint 不撞车(否则 token 逐字节相同会被单次消费误拒)
   private mintConfirmToken(digest: string): string {
     const issuedAt = Date.now().toString(36);
-    const mac = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${issuedAt}.${digest}`).digest("hex").slice(0, 32);
-    return `${CONFIRM_TOKEN_PREFIX}.${issuedAt}.${mac}`;
+    const seq = (this.confirmMintSeq++).toString(36);
+    const mac = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${issuedAt}.${seq}.${digest}`).digest("hex").slice(0, 32);
+    return `${CONFIRM_TOKEN_PREFIX}.${issuedAt}.${seq}.${mac}`;
   }
   /** 校验令牌:格式 → 时钟 sanity → TTL(S321 过期)→ HMAC 常量时间比较(S320 不匹配)。 */
   private verifyConfirmToken(token: string, digest: string): void {
     const reget = "不带 confirmToken 重新调用 create_video(原参数)即可获取新预估与令牌";
-    const m = new RegExp(`^${CONFIRM_TOKEN_PREFIX}\\.([0-9a-z]+)\\.([0-9a-f]{32})$`).exec(token);
+    const m = new RegExp(`^${CONFIRM_TOKEN_PREFIX}\\.([0-9a-z]+)\\.([0-9a-z]+)\\.([0-9a-f]{32})$`).exec(token);
     if (!m) {
-      throw new FlowError("S320", `confirmToken 格式非法(应为 ${CONFIRM_TOKEN_PREFIX}.<时刻>.<签名>,由确认门第一段返回)`, { hint: reget });
+      throw new FlowError("S320", `confirmToken 格式非法(应为 ${CONFIRM_TOKEN_PREFIX}.<时刻>.<序号>.<签名>,由确认门第一段返回)`, { hint: reget });
     }
     const issuedAt = parseInt(m[1], 36);
     const age = Date.now() - issuedAt;
@@ -1882,10 +1892,16 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     if (age > this.confirmTtlMs()) {
       throw new FlowError("S321", `confirmToken 已过期(TTL ${Math.round(this.confirmTtlMs() / 1000)}s,两段式确认窗口内未完成)`, { hint: reget });
     }
-    const expect = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${m[1]}.${digest}`).digest("hex").slice(0, 32);
-    if (!crypto.timingSafeEqual(Buffer.from(m[2], "hex"), Buffer.from(expect, "hex"))) {
-      throw new FlowError("S320", "confirmToken 与当前请求不符(模型/时长/预估任一变化都会改变令牌绑定)", { hint: `${reget};确认后请勿改动参数` });
+    const expect = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${m[1]}.${m[2]}.${digest}`).digest("hex").slice(0, 32);
+    if (!crypto.timingSafeEqual(Buffer.from(m[3], "hex"), Buffer.from(expect, "hex"))) {
+      throw new FlowError("S320", "confirmToken 与当前请求不符(模型/时长/预估/prompt 任一变化都会改变令牌绑定)", { hint: `${reget};确认后请勿改动参数` });
     }
+    // B2-high 修复:单次消费 —— 同一令牌只放行一次(防重放重复扣积分);顺手清理过期项防表膨胀
+    if (this.consumedConfirmTokens.has(token)) {
+      throw new FlowError("S320", "confirmToken 已使用(单次消费语义,防重复扣积分)", { hint: reget });
+    }
+    this.consumedConfirmTokens.set(token, issuedAt + this.confirmTtlMs());
+    for (const [t, exp] of this.consumedConfirmTokens) if (exp <= Date.now()) this.consumedConfirmTokens.delete(t);
   }
 
   private async createVideoUnbounded(req: VideoRequest): Promise<VideoTask> {

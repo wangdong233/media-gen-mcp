@@ -3,9 +3,10 @@
 // C 任务:链头 = videoProviderPriority[0](若配置且具备 video 能力,与 src/index.ts buildTools 同真源)→ 否则 defaultVideoProvider。
 import { spawn } from "node:child_process";
 import { config } from "../dist/config.js";
-import { getProvider, asVideoProvider } from "../dist/providers/registry.js";
+import { getProvider, asVideoProvider, getProviderPriority } from "../dist/providers/registry.js";
 
-let effProvider = config.videoProviderChainHead;
+// F1(B3):链头真源统一 —— 与 src/index.ts buildTools 同一表达式(getProviderPriority S000 过滤后链头 → legacy 默认兜底)
+let effProvider = getProviderPriority("video")?.[0] ?? config.defaultVideoProvider;
 try {
   effProvider = asVideoProvider(getProvider(effProvider)).name;
 } catch {

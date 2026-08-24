@@ -30,7 +30,33 @@ async function cdpAlive() {
   if (process.env.FLOW_IT_SKIP === "1") return false;
   try {
     const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`, { signal: AbortSignal.timeout(2000) });
-    return r.ok;
+    if (!r.ok) return false;
+  } catch { return false; }
+  // B3 自有修复:端口可达 ≠ 登录有效 —— 追加零消耗业务端点探测(projectInitialData)。
+  // 实证半态两变体:①session API 401;②session 200 但 tRPC 401 UNAUTHORIZED(next-auth 半失效)
+  // —— 用真实业务端点探测才能覆盖两者;HTTP 200(任何业务响应)= 健康,401 = skip(非 fail)
+  try {
+    const pages = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, { signal: AbortSignal.timeout(2000) })).json();
+    const page = (pages || []).find((t) => t.type === "page" && /labs\.google/.test(t.url));
+    if (!page) return false;
+    const ws = new WebSocket(page.webSocketDebuggerUrl);
+    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error("ws")); setTimeout(rej, 3000, new Error("timeout")); });
+    const healthy = await new Promise((resolve) => {
+      const id = 1;
+      ws.onmessage = (m) => {
+        try {
+          const d = JSON.parse(m.data);
+          if (d.id === id) {
+            const v = d.result?.result?.value;
+            resolve(typeof v === "object" && v !== null && v.http === 200);
+          }
+        } catch { resolve(false); }
+      };
+      ws.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression: "(async()=>{try{const inp=encodeURIComponent(JSON.stringify({json:{projectId:'probe'}}));const r=await fetch('/fx/api/trpc/flow.projectInitialData?input='+inp,{credentials:'include'});return {http:r.status}}catch(e){return {http:0}}})()", awaitPromise: true, returnByValue: true } }));
+      setTimeout(() => resolve(false), 8000);
+    });
+    try { ws.close(); } catch {}
+    return healthy;
   } catch { return false; }
 }
 
