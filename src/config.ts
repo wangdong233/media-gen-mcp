@@ -71,13 +71,19 @@ export function parseProviderPriority(fileVal: unknown, envName: string): string
  *     ② 显式 provider=flow / flow 模型 auto-route / flow_status / flow_entity → 结构化禁用错。
  *   - toolDeadlineMs:flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,
  *     防 stall 红线 ≤120s;默认 110s;超时转结构化 [flow] S410(底层操作不取消,诚实降级)。
+ *   - videoConfirm:计费确认门(两段式确认令牌)。默认 true —— 防误耗红线下,误门(多一次
+ *     往返拿确认令牌)的代价远小于漏门(真实扣积分);仅显式 false 关闭。
+ *   - confirmTtlMs:确认令牌 TTL,默认 10 分钟(两段式往返留足阅读时间;过期重取,防陈旧确认)。
  */
-export function parseFlowSection(raw: unknown): { enabled: boolean; toolDeadlineMs: number } {
+export function parseFlowSection(raw: unknown): { enabled: boolean; toolDeadlineMs: number; videoConfirm: boolean; confirmTtlMs: number } {
   const s = (raw ?? {}) as Record<string, any>;
   const deadline = num("FLOW_TOOL_DEADLINE_MS", 110_000, s.toolDeadlineMs);
+  const ttl = num("FLOW_CONFIRM_TTL_MS", 600_000, s.confirmTtlMs);
   return {
     enabled: s.enabled !== false, // 仅显式 false 才禁用
     toolDeadlineMs: Number.isFinite(deadline) && deadline > 0 ? deadline : 110_000,
+    videoConfirm: s.videoConfirm !== false, // 计费确认门默认 on(仅显式 false 才关)
+    confirmTtlMs: Number.isFinite(ttl) && ttl > 0 ? ttl : 600_000,
   };
 }
 

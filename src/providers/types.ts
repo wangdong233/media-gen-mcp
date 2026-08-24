@@ -28,13 +28,13 @@ export interface ImageRequest {
   mode?: ImageMode;
   /**
    * 比例直传("16:9"/"9:16"/"1:1"/"3:4"/"4:3")。provider 支持时消费(flow 映射到 5 种
-   * IMAGE_ASPECT_RATIO_* 枚举);不支持的 provider(agnes/zhipu)由工具层告警后忽略
-   * (项目纪律:provider 丢弃参数必须出 warning,不静默)。
+   * IMAGE_ASPECT_RATIO_* 枚举);不支持的 provider(agnes/zhipu)自行告警后忽略
+   * (项目纪律:provider 丢弃参数必须出 warning,不静默 —— 执行点内聚在丢弃方)。
    */
   aspect?: string;
   /**
    * 复现/锁定结果用 seed。provider 支持时消费(flow 直入请求体 seed 字段);
-   * 不支持的 provider 由工具层告警后忽略。绝不经 extra 透传(extra 会被
+   * 不支持的 provider 自行告警后忽略。绝不经 extra 透传(extra 会被
    * agnes/zhipu 的 Object.assign(body, extra) 直透上游请求体)。
    */
   seed?: number;
@@ -128,6 +128,12 @@ export interface ImageProvider {
    * 而非工具层硬编码某一家厂商的吸附函数。无约束的 provider 不实现(工具层直用原值)。
    */
   snapImageSize?(size: string): string;
+  /**
+   * 输入引用例外(可选;渠道差异内聚):通用层要求 images[] 为 http(s)/data: URI,本钩子让
+   * provider 放行自家专属的输入引用形态(如 flow 的 2K 放大模式接受项目内 mediaId)。
+   * 未实现 / 返回 false = 仅 URI。存在性/类型校验仍归 provider 提交路径的结构化错误。
+   */
+  acceptsImageInputRef?(value: string, req: { model?: string; images?: string[] }): boolean;
 }
 
 export interface VideoProvider {
@@ -146,6 +152,37 @@ export interface VideoProvider {
   maxFramesFor?(resolution?: string, ratio?: string): number | undefined;
   createVideo(req: VideoRequest): Promise<VideoTask>;
   getVideo(handle: VideoHandle): Promise<VideoResult>;
+  /**
+   * 计费确认门(两段式;可选钩子 —— 通用机制,渠道差异内聚在 provider,handler 不感知渠道):
+   * MCP 无交互回调,确认经「confirmToken 二次调用」表达 ——
+   * - 无 confirmToken 且本请求消耗计费资源 → 返回 SubmissionConfirm(handler 原样返回,不提交);
+   * - 带 confirmToken → 校验(TTL + 与当前请求的绑定),失败抛结构化错,通过返回 undefined 放行提交;
+   * - 未实现 / 本请求免费(如 0 积分超分)→ undefined(直接提交,零影响)。
+   * handler 在每个真实提交点(含优先级链 fallback 目标)前调用本钩子。
+   */
+  beginSubmissionConfirm?(req: VideoRequest, confirmToken?: string): Promise<SubmissionConfirm | undefined>;
+}
+
+/**
+ * 计费确认挑战(两段式第一段;handler 原样返回给调用方,由调用方决策是否带 token 复调)。
+ */
+export interface SubmissionConfirm {
+  needConfirm: true;
+  /** 渠道名(handler 校验路由用)。 */
+  provider: string;
+  /** 本次将提交的模型(渠道解析后的最终值)。 */
+  model?: string;
+  /** 预估消耗(计费单位由渠道定义,如积分;null = 渠道无法预估,以实际扣减为准)。 */
+  estimatedCost: number | null;
+  /** 预估来源(如 "dynamic" 动态目录价 / "static" 静态契约表)。 */
+  costSource?: string;
+  /** 短时效确认令牌;与本次请求的计费要素(模型/时长/预估)绑定,改参数需重取。 */
+  confirmToken: string;
+  /** 令牌有效期(秒)。 */
+  expiresInSeconds: number;
+  hint: string;
+  /** 渠道补充字段(当前余额/预估余额等)。 */
+  [key: string]: unknown;
 }
 
 // ── pares5: vision 模态(图像识别)类型。语义级 what,不泄漏引擎 how(采纳审查 finding-1)。 ──

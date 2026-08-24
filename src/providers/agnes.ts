@@ -218,6 +218,11 @@ export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoPro
         "image model 未配置:请在 config.json 设 providers.agnes.models.image.default,或在工具参数传 model",
       );
     }
+    // 丢弃参数告警(项目纪律:provider 丢弃参数必须出 warning,不静默;执行点内聚在丢弃方,
+    // 对齐 zhipu 丢 ratio/negativePrompt/seed 的先例 —— handler 不再做渠道名特判)
+    const warnings: string[] = [];
+    if (req.aspect) warnings.push("agnes 不支持 aspect,已忽略;请用 size 控制尺寸。");
+    if (req.seed != null) warnings.push("agnes 不支持 seed,已忽略。");
     const body: Record<string, unknown> = { model, prompt: req.prompt };
     if (req.size) body.size = req.size;
     // n 不透传上游(Agnes 网关忽略 n);批量由工具层 fan-out 兑现。
@@ -232,7 +237,7 @@ export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoPro
       url: d.url as string | undefined,
       b64: d.b64_json as string | undefined,
     }));
-    return { outputs, raw: r };
+    return { outputs, raw: r, ...(warnings.length ? { warnings } : {}) };
   }
 
   /** per-model 限速串行化:submitChain 全局串行(避免并发),但按各 model 自己的时钟等待。 */
@@ -299,6 +304,11 @@ export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoPro
 
     if (req.extra) Object.assign(body, req.extra);
 
+    // 丢弃参数告警(images 参考图 / videoMediaId 视频引用为渠道专属输入,agnes 不消费 —— 执行点内聚)
+    const warnings: string[] = [];
+    if (req.images?.length) warnings.push("agnes 不支持 images(参考图),已忽略。");
+    if (req.videoMediaId) warnings.push("agnes 不支持 videoMediaId(视频引用),已忽略。");
+
     await this.enqueueSubmit(model);
 
     try {
@@ -311,6 +321,7 @@ export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoPro
         videoId: r.video_id,
         status: r.status ?? "queued",
         raw: r,
+        ...(warnings.length ? { warnings } : {}),
       };
     } catch (e: any) {
       if (e?.status === 429) this.learnRateLimit(model, e.body);

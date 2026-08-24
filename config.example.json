@@ -12,10 +12,12 @@
     "agnes",
     "zhipu"
   ],
-  "_flowNote": "Google Flow 渠道运行时开关(顶级 flow 段):enabled=false = S000 硬门 —— ① 优先级链剔除 flow(链自动降级到下一渠道);② 显式 provider=flow / flow 模型 auto-route / flow_status / flow_entity 返回结构化禁用错(自带修复动作,绝不静默换渠道)。toolDeadlineMs = flow 长操作(生图轮询/视频提交/资产下载)工具级截止,防 stall(单次调用 ≤120s);超时转 [flow] S410,底层操作不取消,稍后可经 flow_status(mediaId) 复查落盘。env 等价:FLOW_TOOL_DEADLINE_MS。",
+  "_flowNote": "Google Flow 渠道运行时开关(顶级 flow 段):enabled=false = S000 硬门 —— ① 优先级链剔除 flow(链自动降级到下一渠道);② 显式 provider=flow / flow 模型 auto-route / flow_status / flow_entity 返回结构化禁用错(自带修复动作,绝不静默换渠道)。toolDeadlineMs = flow 长操作(生图轮询/视频提交/资产下载)工具级截止,防 stall(单次调用 ≤120s);超时转 [flow] S410,底层操作不取消,稍后可经 flow_status(mediaId) 复查落盘。videoConfirm = 计费确认门(默认 true):视频路由到/显式用 flow 时 create_video 先返积分预估(动态 creditMapping 优先)+ 短时效确认令牌,原参数加 confirmToken 复调才真提交;令牌与「模型+时长+预估」绑定,改参数需重取(错 token S320/过期 S321);0 积分操作与非 flow 渠道不触发。confirmTtlMs = 令牌 TTL(默认 600000=10 分钟)。env 等价:FLOW_TOOL_DEADLINE_MS / FLOW_CONFIRM_TTL_MS。",
   "flow": {
     "enabled": true,
-    "toolDeadlineMs": 110000
+    "toolDeadlineMs": 110000,
+    "videoConfirm": true,
+    "confirmTtlMs": 600000
   },
   "rateLimitTtlMs": 604800000,
   "providers": {

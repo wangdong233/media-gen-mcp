@@ -42,6 +42,7 @@ import type {
   ProviderCapabilities,
   ProviderHealth,
   Modality,
+  SubmissionConfirm,
 } from "./types.js";
 
 // ── 常量(契约 §1,白盒实证值) ──
@@ -79,6 +80,17 @@ const DOWNLOAD_TIMEOUT_MS = 180_000;
  * config 顶级 flow.toolDeadlineMs / env FLOW_TOOL_DEADLINE_MS 可调。
  */
 const DEFAULT_TOOL_DEADLINE_MS = 110_000;
+/**
+ * 计费确认令牌默认 TTL:10 分钟(两段式往返留足阅读预估的时间;过期重取,防陈旧确认)。
+ * config 顶级 flow.confirmTtlMs / env FLOW_CONFIRM_TTL_MS 可调。
+ */
+const DEFAULT_CONFIRM_TTL_MS = 600_000;
+/**
+ * 确认令牌 HMAC 密钥(进程级随机):无状态令牌的签名根基 —— 令牌 = HMAC(secret, 签发时刻 + 请求计费摘要),
+ * 无需服务端存储。进程重启后旧令牌一律失效(保守安全方向:重取令牌零成本)。
+ */
+const CONFIRM_SECRET = crypto.randomBytes(32);
+const CONFIRM_TOKEN_PREFIX = "fvc1";
 const FLOW_PROJECT_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-project.json");
 /**
  * 角色实体本地镜像文件(§11.4:Flow 无实体读端点 → projectContents 无 entities 键,
@@ -630,9 +642,10 @@ export interface FlowProviderConfig {
   transport?: FlowTransport;
   /**
    * 顶级 flow 渠道运行时段(registry 注入 config.flow 对象引用):enabled=false = S000 硬门;
-   * toolDeadlineMs = 长操作截止。传引用(非解构)使测试可 live 翻转 enabled。
+   * toolDeadlineMs = 长操作截止;videoConfirm/confirmTtlMs = 计费确认门开关与令牌 TTL。
+   * 传引用(非解构)使测试可 live 翻转。
    */
-  flowCfg?: { enabled?: boolean; toolDeadlineMs?: number };
+  flowCfg?: { enabled?: boolean; toolDeadlineMs?: number; videoConfirm?: boolean; confirmTtlMs?: number };
   /** 配置文件路径(S000 禁用错的修复提示文案用)。 */
   configFile?: string;
 }
@@ -654,11 +667,11 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   private cooldownUntil = 0;
   private cooldownError: Error | null = null;
   cooldownMs = 60_000; // 实例字段便于测试调短
-  /** 动态目录缓存(projectInitialData 派生;10 分钟)。 */
-  private dynamicCatalog: { at: number; videoKeys: string[] } | null = null;
+  /** 动态目录缓存(projectInitialData 派生;10 分钟)。creditByKey 供计费确认门动态预估。 */
+  private dynamicCatalog: { at: number; videoKeys: string[]; creditByKey?: Record<string, Record<string, any>> } | null = null;
   private readonly dynamicCatalogTtlMs = 10 * 60_000;
-  /** 顶级 flow 段引用(enabled 硬门 + toolDeadlineMs;registry 注入 config.flow 对象)。 */
-  private readonly flowCfg?: { enabled?: boolean; toolDeadlineMs?: number };
+  /** 顶级 flow 段引用(enabled 硬门 + toolDeadlineMs + 计费确认门;registry 注入 config.flow 对象)。 */
+  private readonly flowCfg?: { enabled?: boolean; toolDeadlineMs?: number; videoConfirm?: boolean; confirmTtlMs?: number };
   private readonly cfgFile?: string;
 
   constructor(c: FlowProviderConfig = {}) {
@@ -704,6 +717,15 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     // 2026-08-23 开放(契约 §7.2 live 实证):images 经 /v1/flow/uploadImage 上传为项目内媒体,
     // 再以 imageInputs[{imageInputType, name=mediaId}] 引用 —— images[0]=base,images[1..]=references(上限 10)。
     return true;
+  }
+  /**
+   * 输入引用例外(渠道差异内聚,types.ts ImageProvider.acceptsImageInputRef):
+   * 2K 放大模式(GEM_PIX_2_UPSAMPLE_2K + 单图)允许 images[0] 传项目内已有图片的 mediaId
+   * (存在性/类型交 findMedia 结构化 S400/S301;形状 = UUID 或 UUID 派生名,如 §10.7 实证的
+   * <源id>_upsampled —— isFlowMediaIdLike 仅作非路径启发,绝不做存在性判断)。
+   */
+  acceptsImageInputRef(value: string, req: { model?: string; images?: string[] }): boolean {
+    return req.model === "GEM_PIX_2_UPSAMPLE_2K" && (req.images?.length ?? 0) === 1 && isFlowMediaIdLike(value);
   }
   health(): ProviderHealth {
     return {
@@ -871,13 +893,18 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     return data;
   }
 
-  /** 从 projectInitialData 缓存动态 usage key 目录(供 listVideoModels/校验;静态快照为兜底)。 */
+  /** 从 projectInitialData 缓存动态 usage key 目录 + per-key creditMapping(计费确认门动态预估的真源)。 */
   private cacheDynamicCatalog(data: any): void {
     const keys: string[] = [];
+    const creditByKey: Record<string, Record<string, any>> = {};
     for (const fam of data?.modelConfig?.videoModelFamilies ?? []) {
-      for (const u of fam?.usages ?? []) if (typeof u?.key === "string") keys.push(u.key);
+      for (const u of fam?.usages ?? []) {
+        if (typeof u?.key !== "string") continue;
+        keys.push(u.key);
+        if (u?.creditMapping && typeof u.creditMapping === "object") creditByKey[u.key] = u.creditMapping;
+      }
     }
-    if (keys.length) this.dynamicCatalog = { at: Date.now(), videoKeys: keys };
+    if (keys.length) this.dynamicCatalog = { at: Date.now(), videoKeys: keys, creditByKey };
   }
 
   private async findMedia(mediaId: string): Promise<any> {
@@ -1666,37 +1693,36 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     // 最坏路径超红线 —— 工具级截止 110s 封顶(S410;底层不取消,提交结果稍后经 flow_status 可达)
     return this.withToolDeadline(this.createVideoUnbounded(req), "flow 视频提交");
   }
-  private async createVideoUnbounded(req: VideoRequest): Promise<VideoTask> {
-    await this.ensureReady();
+
+  // ── 计费确认门(用户核心诉求;两段式 —— MCP 无交互回调,确认经 confirmToken 二次调用表达) ──
+
+  /**
+   * 解析本请求将提交的 usage key(createVideoUnbounded 同一真源:模型缺省 S300 + key/duration
+   * 校验)。计费确认门据此在提交前得出与提交完全一致的 key,令牌绑定才可靠。
+   */
+  private resolveBillingKey(req: VideoRequest): { key: string; duration: number; warnings: string[] } {
     const model = req.model ?? this.models?.video?.default;
     if (!model) {
       throw new FlowError("S300", `视频模型未指定(刻意无默认:提交视频消耗积分)。传 model(如 abra_t2v_8s / veo_3_1_t2v_lite / abra_i2v_8s + image / veo_3_1_interpolation_lite + keyframes)或在 config.json providers.flow.models.video.default 配置。可用:${summarizeModels()}`, {
         hint: "消耗表:abra t2v/i2v/r2v 4/6/8/10s=7/10/12/15 点,abra_edit=20,veo lite=10,veo fast=20,veo quality=100,veo_3_1_upsampler_1080p=0",
       });
     }
-    const warnings: string[] = [];
-    // 丢弃参数必须告警(项目纪律,对齐 zhipu 丢弃 ratio/negativePrompt/seed 的先例)
-    if (req.negativePrompt) {
-      warnings.push("flow 不支持 negativePrompt,已忽略(负向约束请写进 prompt)。");
-    }
-    if (req.resolution && req.resolution !== "720p") {
-      warnings.push(`flow 视频分辨率由模型 key 决定(当前 720P),resolution=${req.resolution} 已忽略;更高分辨率请用 key 变体(如 veo_3_1_t2v_fast_ultra)或生成后用 veo_3_1_upsampler_1080p(0 点)超分。`);
-    }
-    // duration:numFrames/24 换算或 durationSeconds 原值 → 吸附到 Flow 合法集 {4,6,8,10}s
-    // (通用 schema 承诺 "nearest valid";此前非集合值直接 S301 与承诺矛盾 —— audit finding-4)
     const rawDuration = req.durationSeconds ?? (req.numFrames != null ? req.numFrames / (req.frameRate ?? FLOW_FRAME_RATE) : undefined);
     const duration = snapDuration(rawDuration);
-    if (req.durationSeconds != null && !FLOW_VIDEO_DURATIONS.includes(req.durationSeconds as any)) {
-      warnings.push(`durationSeconds=${req.durationSeconds} 不在 Flow 合法集 {4,6,8,10}s,已吸附为 ${duration}s(与工具层 numFrames 最近吸附语义一致)。`);
-    }
-    // 动态目录优先校验(10min 缓存;无缓存时静态快照兜底),与 resolveProvider 归属判断同源(audit finding-7)。
-    // durationSeconds 只传用户显式信号(numFrames/时长):全 key 自带时长(如 abra_i2v_4s)而无时长参数时传
-    // undefined,让 embedded 时长生效 —— 否则默认吸附 8s 会与 "4s" 撞出伪冲突 S301(实测暴露)。
-    const resolved = resolveVideoModelKey(model, rawDuration == null ? undefined : duration, this.listVideoModels());
-    warnings.push(...resolved.warnings);
-    const mode = videoModeOfKey(resolved.key);
-    // 模式门禁(契约 §7.3/§9):开放集外 → S303(带依据);开放集内做参数交叉校验
-    assertModeOpen(resolved.key, mode);
+    return resolveVideoModelKey(model, rawDuration == null ? undefined : duration, this.listVideoModels());
+  }
+
+  /**
+   * 提交前的本地形状校验(渠道差异内聚;createVideoUnbounded 与 beginSubmissionConfirm 共用真源):
+   * 模式门禁(S303)+ 输入形态互斥(S301)+ 模式↔输入交叉校验(S301)。
+   * 网络侧校验(videoMediaId 存在性/类型/完成态)留 createVideo —— 确认门阶段只做零消耗本地检查。
+   * 返回 warnings + 输入形态四元组(端点选择/上传复用,单一推导源)。
+   */
+  private assertVideoInputShape(key: string, mode: string | undefined, req: VideoRequest): {
+    warnings: string[]; hasImage: boolean; kfCount: number; refCount: number; videoSource: string;
+  } {
+    const warnings: string[] = [];
+    assertModeOpen(key, mode);
     const hasImage = Boolean(req.image);
     const kfCount = req.keyframes?.length ?? 0;
     const refCount = req.images?.length ?? 0;
@@ -1710,16 +1736,188 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     if (forms.length > 1) {
       throw new FlowError("S301", `输入参数互斥(${forms.join(" + ")} 同时传入):image=图生视频起始图 / keyframes=首尾帧 / images=参考图(r2v)/ videoMediaId=视频引用(extension/超分),一次只能选一种`);
     }
-    // 视频源校验(extension/upsampler/edit 共用):必须在项目内、是视频、已完成(§9.1/§9.2 videoInput:{mediaId};
-    // edit 同走 videoInput,E 轮 bundle Zod 定型 §11.1)
-    let sourceMedia: any = null;
     if (videoSource) {
       if (mode != null && mode !== "extension" && mode !== "upsampler" && mode !== "edit") {
-        throw new FlowError("S301", `videoMediaId 需 extension/upsampler/edit 模式 key(如 veo_3_1_extension_lite / veo_3_1_upsampler_1080p / abra_edit),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+        throw new FlowError("S301", `videoMediaId 需 extension/upsampler/edit 模式 key(如 veo_3_1_extension_lite / veo_3_1_upsampler_1080p / abra_edit),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
       }
-      sourceMedia = await this.findMedia(videoSource);
+    }
+    if (hasImage) {
+      if (mode != null && mode !== "i2v") {
+        throw new FlowError("S301", `image 起始图需 i2v 模式 key(如 abra_i2v_8s / veo_3_1_i2v_lite),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+      }
+      if (mode == null) warnings.push(`模型 "${key}" 模式未知(目录新增家族),已按起始图(Image)端点提交。`);
+    } else if (kfCount) {
+      if (kfCount !== 2) {
+        throw new FlowError("S301", `keyframes 需要恰好 2 张(首帧+尾帧),收到 ${kfCount} 张`);
+      }
+      if (mode != null && mode !== "interpolation") {
+        throw new FlowError("S301", `首尾帧需 interpolation/_fl 模式 key(如 veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+      }
+      if (mode == null) warnings.push(`模型 "${key}" 模式未知(目录新增家族),已按首尾帧(StartAndEndImage)端点提交。`);
+    } else if (refCount) {
+      // r2v 参考图(§9.3:referenceImages entry = {aspectRatio, mediaId};上传 0 点)
+      if (refCount > 10) {
+        throw new FlowError("S301", `images 参考图数量 ${refCount} 超上限(Flow references 最多 10)`);
+      }
+      if (mode != null && mode !== "r2v") {
+        throw new FlowError("S301", `images 参考图需 r2v 模式 key(如 abra_r2v_8s / veo_3_1_r2v_lite),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
+      }
+      if (mode == null) warnings.push(`模型 "${key}" 模式未知(目录新增家族),已按参考图(ReferenceImages)端点提交。`);
+    } else if (videoSource) {
+      if (mode === "upsampler" && req.prompt?.trim()) {
+        warnings.push("视频超分不消费 prompt(契约 §9.1 wire 无 textInput),已忽略提示词。");
+      }
+      if (mode === "edit" && !req.prompt?.trim()) {
+        throw new FlowError("S301", "edit 模式需要 prompt(编辑指令,如 \"make it snow\"),描述要对源视频做什么");
+      }
+    } else {
+      if (mode === "i2v") {
+        throw new FlowError("S301", `i2v 模式 key 需要传 image 起始图;纯文生视频请用 t2v key(如 ${key.replace(/i2v/, "t2v")})`);
+      }
+      if (mode === "interpolation") {
+        throw new FlowError("S301", "首尾帧模式 key 需要传 keyframes(2 张 = 首帧+尾帧);纯文生视频请用 t2v key");
+      }
+      if (mode === "r2v") {
+        throw new FlowError("S301", `r2v 模式 key 需要传 images(1-10 张参考图);纯文生视频请用 t2v key(如 ${key.replace(/r2v/, "t2v")})`);
+      }
+      if (mode === "extension" || mode === "upsampler" || mode === "edit") {
+        throw new FlowError("S301", `${VIDEO_MODE_LABELS[mode]}模式 key 需要传 videoMediaId(项目内已有视频的 mediaId,可经 flow_status 查看;延长/编辑/超分直接引用生成视频,无需上传)`);
+      }
+    }
+    return { warnings, hasImage, kfCount, refCount, videoSource };
+  }
+
+  /**
+   * 🔴 计费确认门(types.ts VideoProvider.beginSubmissionConfirm;handler 在每个真实提交点前调用):
+   * - 第一段(无 confirmToken):预估消耗 >0 积分 → 返回挑战(handler 原样返回,绝不提交)——
+   *   预估积分(动态 creditMapping 优先 / 静态契约表兜底)+ 短时效确认令牌 + 指引。
+   * - 第二段(带 confirmToken):校验(令牌与「最终 key + 预估」绑定 + TTL)→ 通过返回 undefined 放行。
+   * 0 积分提交(veo_3_1_upsampler_1080p)不触发;flow.videoConfirm=false 整门关闭。
+   * 模型/形状校验与提交同源(S300/S301 早失败 —— 不让用户确认一个注定失败的请求)。
+   */
+  async beginSubmissionConfirm(req: VideoRequest, confirmToken?: string): Promise<SubmissionConfirm | undefined> {
+    if (this.flowCfg?.videoConfirm === false) return undefined;
+    // 动态目录先刷新(0 点只读,10min TTL;失败静默回落静态):key 校验与预估都用动态真源 ——
+    // 目录新增 key(静态快照无)在门口即可解析,价目取实时 creditMapping。
+    await this.withToolDeadline(this.refreshCatalogIfStale(), "flow 确认门目录刷新");
+    const resolved = this.resolveBillingKey(req);
+    this.assertVideoInputShape(resolved.key, videoModeOfKey(resolved.key), req);
+    const cost = await this.withToolDeadline(this.lookupVideoCost(resolved.key), "flow 确认门预估");
+    if (cost.credits === 0) return undefined;
+    const credits = cost.credits; // null = 目录新增 key 静态表无价 → 保守仍要求确认
+    const digest = this.confirmDigest(resolved.key, credits);
+    if (!confirmToken) {
+      return {
+        needConfirm: true,
+        provider: "flow",
+        model: resolved.key,
+        estimatedCost: credits,
+        costSource: cost.source,
+        ...(cost.balance != null && credits != null
+          ? { currentBalance: cost.balance, estimatedBalanceAfter: Math.max(0, cost.balance - credits) }
+          : {}),
+        confirmToken: this.mintConfirmToken(digest),
+        expiresInSeconds: Math.round(this.confirmTtlMs() / 1000),
+        hint: `本次 create_video(provider=flow)将提交 Flow 视频生成,预计消耗 ${credits ?? "未知"} 积分(${cost.source === "dynamic" ? "动态目录实时价" : "静态契约表估算,flow_status 可查动态价"}${credits == null ? ";该 key 无静态价,提交后以实际扣减为准" : ""})。确认请用原参数加 confirmToken 重新调用;任何参数变化都会使令牌失效。0 积分操作(如 veo_3_1_upsampler_1080p)不触发本门;config 顶级 flow.videoConfirm=false 可关闭本门。`,
+      };
+    }
+    this.verifyConfirmToken(confirmToken, digest); // 失败抛 [flow] S320/S321
+    return undefined; // 放行提交
+  }
+
+  /** 动态目录过期则刷新(0 点只读 projectInitialData;失败静默 —— 静态快照兜底)。幂等。 */
+  private async refreshCatalogIfStale(): Promise<void> {
+    if (this.dynamicCatalog && Date.now() - this.dynamicCatalog.at < this.dynamicCatalogTtlMs) return;
+    try { await this.getProjectData(); } catch { /* 环境不可用 → 静态兜底 */ }
+  }
+
+  /**
+   * 查询 key 的积分价(0 点只读):动态 creditMapping(projectInitialData 缓存;过期则尽力 live 刷一次,
+   * Chrome 未开/网络失败静默回落)优先,静态契约表(estimateVideoCredits)兜底。
+   * 附带当前余额(尽力而为,不可得不阻断预估)。
+   */
+  private async lookupVideoCost(key: string): Promise<{ credits: number | null; source: "dynamic" | "static"; balance?: number }> {
+    await this.refreshCatalogIfStale();
+    let balance: number | undefined;
+    let tier: string | undefined;
+    try {
+      const c = await this.getCredits();
+      if (typeof c.credits === "number") balance = c.credits;
+      tier = c.serviceTier;
+    } catch { /* 余额/档位不可得 → 不阻断预估 */ }
+    const cat = this.dynamicCatalog && Date.now() - this.dynamicCatalog.at < this.dynamicCatalogTtlMs ? this.dynamicCatalog : null;
+    const mapping = cat?.creditByKey?.[key];
+    const dynCost = mapping && tier && Number.isFinite(Number(mapping[tier]?.cost)) ? Number(mapping[tier].cost) : undefined;
+    if (dynCost != null) return { credits: dynCost, source: "dynamic", balance };
+    return { credits: estimateVideoCredits(key) ?? null, source: "static", balance };
+  }
+
+  // ── 确认令牌(无状态 HMAC:签名覆盖「签发时刻 + 请求计费摘要」,无需服务端存储) ──
+
+  private confirmTtlMs(): number {
+    const v = this.flowCfg?.confirmTtlMs;
+    return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : DEFAULT_CONFIRM_TTL_MS;
+  }
+  /** 请求计费摘要:令牌与「最终 usage key + 预估积分」绑定 —— 确认后改模型/时长/预估刷新都使旧令牌失效。 */
+  private confirmDigest(key: string, credits: number | null): string {
+    return crypto.createHash("sha256").update(`${key}#${credits ?? "u"}`).digest("hex").slice(0, 24);
+  }
+  private mintConfirmToken(digest: string): string {
+    const issuedAt = Date.now().toString(36);
+    const mac = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${issuedAt}.${digest}`).digest("hex").slice(0, 32);
+    return `${CONFIRM_TOKEN_PREFIX}.${issuedAt}.${mac}`;
+  }
+  /** 校验令牌:格式 → 时钟 sanity → TTL(S321 过期)→ HMAC 常量时间比较(S320 不匹配)。 */
+  private verifyConfirmToken(token: string, digest: string): void {
+    const reget = "不带 confirmToken 重新调用 create_video(原参数)即可获取新预估与令牌";
+    const m = new RegExp(`^${CONFIRM_TOKEN_PREFIX}\\.([0-9a-z]+)\\.([0-9a-f]{32})$`).exec(token);
+    if (!m) {
+      throw new FlowError("S320", `confirmToken 格式非法(应为 ${CONFIRM_TOKEN_PREFIX}.<时刻>.<签名>,由确认门第一段返回)`, { hint: reget });
+    }
+    const issuedAt = parseInt(m[1], 36);
+    const age = Date.now() - issuedAt;
+    if (!Number.isFinite(issuedAt) || age < -30_000) {
+      throw new FlowError("S320", "confirmToken 签发时间非法(时钟异常)", { hint: reget });
+    }
+    if (age > this.confirmTtlMs()) {
+      throw new FlowError("S321", `confirmToken 已过期(TTL ${Math.round(this.confirmTtlMs() / 1000)}s,两段式确认窗口内未完成)`, { hint: reget });
+    }
+    const expect = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${m[1]}.${digest}`).digest("hex").slice(0, 32);
+    if (!crypto.timingSafeEqual(Buffer.from(m[2], "hex"), Buffer.from(expect, "hex"))) {
+      throw new FlowError("S320", "confirmToken 与当前请求不符(模型/时长/预估任一变化都会改变令牌绑定)", { hint: `${reget};确认后请勿改动参数` });
+    }
+  }
+
+  private async createVideoUnbounded(req: VideoRequest): Promise<VideoTask> {
+    await this.ensureReady();
+    const warnings: string[] = [];
+    // 丢弃参数必须告警(项目纪律,对齐 zhipu 丢弃 ratio/negativePrompt/seed 的先例)
+    if (req.negativePrompt) {
+      warnings.push("flow 不支持 negativePrompt,已忽略(负向约束请写进 prompt)。");
+    }
+    if (req.resolution && req.resolution !== "720p") {
+      warnings.push(`flow 视频分辨率由模型 key 决定(当前 720P),resolution=${req.resolution} 已忽略;更高分辨率请用 key 变体(如 veo_3_1_t2v_fast_ultra)或生成后用 veo_3_1_upsampler_1080p(0 点)超分。`);
+    }
+    // duration:numFrames/24 换算或 durationSeconds 原值 → 吸附到 Flow 合法集 {4,6,8,10}s
+    // (通用 schema 承诺 "nearest valid";此前非集合值直接 S301 与承诺矛盾 —— audit finding-4)。
+    // key 解析与计费确认门同源(resolveBillingKey):动态目录优先校验(10min 缓存;无缓存时静态快照
+    // 兜底,audit finding-7);durationSeconds 只传用户显式信号(全 key 自带时长而无时长参数时传
+    // undefined,让 embedded 时长生效 —— 否则默认吸附 8s 会与 "4s" 撞出伪冲突 S301)。
+    const resolved = this.resolveBillingKey(req);
+    if (req.durationSeconds != null && !FLOW_VIDEO_DURATIONS.includes(req.durationSeconds as any)) {
+      warnings.push(`durationSeconds=${req.durationSeconds} 不在 Flow 合法集 {4,6,8,10}s,已吸附为 ${resolved.duration}s(与工具层 numFrames 最近吸附语义一致)。`);
+    }
+    warnings.push(...resolved.warnings);
+    const mode = videoModeOfKey(resolved.key);
+    const shape = this.assertVideoInputShape(resolved.key, mode, req);
+    warnings.push(...shape.warnings);
+    // 视频源校验(extension/upsampler/edit 共用,网络侧):必须在项目内、是视频、已完成(§9.1/§9.2 videoInput:{mediaId};
+    // edit 同走 videoInput,E 轮 bundle Zod 定型 §11.1)
+    let sourceMedia: any = null;
+    if (shape.videoSource) {
+      sourceMedia = await this.findMedia(shape.videoSource);
       if (sourceMedia?.image?.generatedImage && !sourceMedia?.video?.generatedVideo) {
-        throw new FlowError("S301", `videoMediaId "${videoSource}" 是 image 媒体,不能作视频延长/超分的源(需视频 mediaId,可经 flow_status 查看)`);
+        throw new FlowError("S301", `videoMediaId "${shape.videoSource}" 是 image 媒体,不能作视频延长/超分的源(需视频 mediaId,可经 flow_status 查看)`);
       }
       // 生成中守卫:单一真源 mapMediaStatus(02 R-CI-08)—— SCHEDULED/PENDING/ACTIVE 三枚举全拦
       // (§10.6/§10.7 live 实证 PENDING/ACTIVE 为 in_progress;旧手写 includes("SCHEDULED") 漏拦 ACTIVE
@@ -1732,67 +1930,24 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
           : srcState.status === "failed"
             ? `状态不可用(${srcState.rawStatus ?? "无 mediaGenerationStatus,疑似上传残留或失败"}),不能作源`
             : "无 generatedVideo(非已完成的生成视频),不能作源";
-        throw new FlowError("S301", `videoMediaId "${videoSource}" ${why}`);
-      }
-    }
-    if (hasImage) {
-      if (mode != null && mode !== "i2v") {
-        throw new FlowError("S301", `image 起始图需 i2v 模式 key(如 abra_i2v_8s / veo_3_1_i2v_lite),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
-      }
-      if (mode == null) warnings.push(`模型 "${resolved.key}" 模式未知(目录新增家族),已按起始图(Image)端点提交。`);
-    } else if (kfCount) {
-      if (kfCount !== 2) {
-        throw new FlowError("S301", `keyframes 需要恰好 2 张(首帧+尾帧),收到 ${kfCount} 张`);
-      }
-      if (mode != null && mode !== "interpolation") {
-        throw new FlowError("S301", `首尾帧需 interpolation/_fl 模式 key(如 veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
-      }
-      if (mode == null) warnings.push(`模型 "${resolved.key}" 模式未知(目录新增家族),已按首尾帧(StartAndEndImage)端点提交。`);
-    } else if (refCount) {
-      // r2v 参考图(§9.3:referenceImages entry = {aspectRatio, mediaId};上传 0 点)
-      if (refCount > 10) {
-        throw new FlowError("S301", `images 参考图数量 ${refCount} 超上限(Flow references 最多 10)`);
-      }
-      if (mode != null && mode !== "r2v") {
-        throw new FlowError("S301", `images 参考图需 r2v 模式 key(如 abra_r2v_8s / veo_3_1_r2v_lite),当前 "${resolved.key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`);
-      }
-      if (mode == null) warnings.push(`模型 "${resolved.key}" 模式未知(目录新增家族),已按参考图(ReferenceImages)端点提交。`);
-    } else if (videoSource) {
-      if (mode === "upsampler" && req.prompt?.trim()) {
-        warnings.push("视频超分不消费 prompt(契约 §9.1 wire 无 textInput),已忽略提示词。");
-      }
-      if (mode === "edit" && !req.prompt?.trim()) {
-        throw new FlowError("S301", "edit 模式需要 prompt(编辑指令,如 \"make it snow\"),描述要对源视频做什么");
-      }
-    } else {
-      if (mode === "i2v") {
-        throw new FlowError("S301", `i2v 模式 key 需要传 image 起始图;纯文生视频请用 t2v key(如 ${resolved.key.replace(/i2v/, "t2v")})`);
-      }
-      if (mode === "interpolation") {
-        throw new FlowError("S301", "首尾帧模式 key 需要传 keyframes(2 张 = 首帧+尾帧);纯文生视频请用 t2v key");
-      }
-      if (mode === "r2v") {
-        throw new FlowError("S301", `r2v 模式 key 需要传 images(1-10 张参考图);纯文生视频请用 t2v key(如 ${resolved.key.replace(/r2v/, "t2v")})`);
-      }
-      if (mode === "extension" || mode === "upsampler" || mode === "edit") {
-        throw new FlowError("S301", `${VIDEO_MODE_LABELS[mode]}模式 key 需要传 videoMediaId(项目内已有视频的 mediaId,可经 flow_status 查看;延长/编辑/超分直接引用生成视频,无需上传)`);
+        throw new FlowError("S301", `videoMediaId "${shape.videoSource}" ${why}`);
       }
     }
     // 端点选择(契约 §7.3/§9/§11.1 端点表):mode=undefined 的未知家族按输入形态走对应端点
     const endpointMode = mode != null && OPEN_VIDEO_MODES.has(mode)
       ? mode
-      : hasImage ? "i2v" : kfCount === 2 ? "interpolation" : refCount ? "r2v" : videoSource ? "extension" : "t2v";
+      : shape.hasImage ? "i2v" : shape.kfCount === 2 ? "interpolation" : shape.refCount ? "r2v" : shape.videoSource ? "extension" : "t2v";
     const apiPathname = VIDEO_API_ENDPOINTS[endpointMode];
 
     // 图片输入:先上传为项目内媒体(契约 §7.1,0 点),再以 {aspectRatio?, mediaId} 引用(§7.3 oneof 只发 mediaId)
     let startImage: { aspectRatio?: string; mediaId: string } | undefined;
     let endImage: { aspectRatio?: string; mediaId: string } | undefined;
     let referenceImages: Array<{ aspectRatio?: string; mediaId: string }> | undefined;
-    if (hasImage) startImage = await this.videoImageInput(req.image!);
-    else if (kfCount === 2) {
+    if (shape.hasImage) startImage = await this.videoImageInput(req.image!);
+    else if (shape.kfCount === 2) {
       startImage = await this.videoImageInput(req.keyframes![0]);
       endImage = await this.videoImageInput(req.keyframes![1]);
-    } else if (refCount) {
+    } else if (shape.refCount) {
       referenceImages = [];
       for (const uri of req.images!) referenceImages.push(await this.videoImageInput(uri));
     }
@@ -1831,7 +1986,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     if (startImage) requestItem.startImage = startImage;
     if (endImage) requestItem.endImage = endImage;
     if (referenceImages) requestItem.referenceImages = referenceImages;
-    if (videoSource) requestItem.videoInput = { mediaId: videoSource };
+    if (shape.videoSource) requestItem.videoInput = { mediaId: shape.videoSource };
     const body = {
       clientContext,
       mediaGenerationContext: { batchId: crypto.randomUUID(), audioFailurePreference: "BLOCK_SILENCED_VIDEOS" },

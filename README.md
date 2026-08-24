@@ -187,7 +187,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 ```
 "画张赛博朋克猫,用 Flow,3:4 比例,seed 42"       → generate_image(provider="flow", aspect="3:4", seed=42)
-"用 Flow 生成 8 秒未来城市航拍视频"               → create_video(provider="flow", model="abra_t2v_8s")
+"用 Flow 生成 8 秒未来城市航拍视频"               → create_video(provider="flow", model="abra_t2v_8s")   ← 第一次返回积分预估+确认令牌,原参数加 confirmToken 复调才真提交
 "查一下 Flow 积分余额 / 这个 mediaId 生成完没"     → flow_status() / flow_status(mediaId=…)
 ```
 
@@ -329,6 +329,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **视频默认仍 agnes 优先**(免费);Flow 视频消耗积分,**刻意不进默认链**——要么在 `videoProviderPriority` 里显式写入(自担积分),要么每次显式 `provider="flow"`。
 - 不配置这两项 = 现行为(默认渠道 + agnes/智谱免费层自动互备),零影响。环境变量等价:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
 - **一键关闭 Flow(S000 硬门)**:`config.json` 顶级 `"flow": { "enabled": false }` —— Flow 从两条优先级链中剔除(链自动降级到下一渠道),显式 `provider="flow"` / Flow 模型 / `flow_status` / `flow_entity` 一律返回结构化 `[flow] S000` 禁用错(文案自带改回 `true` 的修复指引),绝不静默换渠道;配套 `"flow": { "toolDeadlineMs": 110000 }` = Flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,防卡死(单次调用 ≤120s),超时转 `[flow] S410` —— 底层操作不取消,稍后经 `flow_status(mediaId)` 复查落盘。
+- **计费确认门(两段式,默认开)**:视频路由到/显式用 Flow 时,`create_video` 第一次调用**不提交**,返回 `{needConfirm:true, estimatedCost(积分预估,动态 creditMapping 优先/静态表兜底), confirmToken, expiresInSeconds}`;用**原参数 + confirmToken** 重新调用才真提交。令牌短时效(默认 10 分钟,`flow.confirmTtlMs` 可调,env `FLOW_CONFIRM_TTL_MS`)且与「模型+时长+预估」绑定 —— 确认后改任何参数需重新获取;错误令牌返回 `[flow] S320`、过期返回 `[flow] S321`。0 积分操作(如 `veo_3_1_upsampler_1080p` 超分)与非 Flow 渠道**不触发**本门。关闭:`"flow": { "videoConfirm": false }`(默认 `true` —— 误门只多一次往返,漏门会真扣积分,故默认开)。
 
 **Flow 资产管理(全 0 积分)**:`flow_status` 除了查积分 / 查媒体状态 / 下载,还支持三件零消耗操作——`shareMediaIds=[…]` 生成公开分享链接(形如 `labs.google/fx/tools/flow/shared/image/<id>`,含提示词)、`cancelMediaIds=[…]` 取消生成中的视频(注意:图片生成不可取消)、`deleteMediaIds=[…]` 批量删除。`flow_entity` 工具可创建角色实体并绑定预设语音(30 种声线,先 `generate_image(provider="flow")` 出形象图再绑),后续生成可复用该角色。
 

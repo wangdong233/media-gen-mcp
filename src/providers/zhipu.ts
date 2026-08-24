@@ -283,6 +283,9 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
     const warnings = wantedWatermark
       ? []
       : ["已请求关闭水印(watermark_enabled=false);部分免费模型(如 cogview-3-flash)可能强制带水印,以实际产物为准。"];
+    // 丢弃参数告警(aspect/seed 为渠道专属直通参数,zhipu 图像不消费 —— 执行点内聚在丢弃方)
+    if (req.aspect) warnings.push("zhipu 不支持 aspect,已忽略;请用 size 控制尺寸。");
+    if (req.seed != null) warnings.push("zhipu 不支持 seed,已忽略。");
     return { outputs, raw: r, watermarked: wantedWatermark, warnings };
   }
 
@@ -363,6 +366,8 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
     if (req.ratio) warnings.push("zhipu 不支持 ratio,已忽略(用 extra.size 控制比例)。");
     if (req.negativePrompt) warnings.push("zhipu 不支持 negativePrompt,已忽略。");
     if (req.seed != null) warnings.push("zhipu 不支持 seed,已忽略。");
+    if (req.images?.length) warnings.push("zhipu 不支持 images(参考图),已忽略。");
+    if (req.videoMediaId) warnings.push("zhipu 不支持 videoMediaId(视频引用),已忽略。");
     if (!MODELS_WITH_DURATION.has(model) && (req.durationSeconds != null || req.numFrames != null)) {
       warnings.push(`duration 仅 cogvideox-3 支持,${model} 时长由模型固定,已忽略 durationSeconds/numFrames。`);
     }

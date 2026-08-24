@@ -21,7 +21,7 @@ import {
 import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, getProviderPriority, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
-import { FlowProvider, isFlowMediaIdLike } from "./providers/flow.js";
+import { FlowProvider } from "./providers/flow.js";
 import { isFallbackWorthy, isChainAdvanceable } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
@@ -164,7 +164,7 @@ function buildTools() {
     {
       name: "create_video",
       description:
-        "Create an AI video (text-to-video / image-to-video / keyframe animation; 文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) via free models (Agnes AI default, or Zhipu). Smart async: long videos return a handle to poll with `get_video`; short ones block until done.\n\nWHEN: user wants photorealistic or AI-generated video (写实视频 / AI 合成画面 / 让这张图动起来). AVOID when the user wants deterministic motion graphics — see below.\n\nAVOID:\n- HTML/CSS/GSAP motion graphics / kinetic typography / animated charts / brand intros (deterministic, same input → same output, no AI) → use `render_video` instead.\n\nNEXT: if the call returns a handle (async mode), poll with `get_video` until status=done. Call `list_models` first to verify allowed numFrames per provider (Agnes constraints vary by resolution). Flow provider (provider=\"flow\"): model = full usage key (live catalog via `flow_status`), durationSeconds ∈ {4,6,8,10}s (off-grid snaps nearest), ratio 16:9/9:16 only, ONE clip per call — repeat calls for x2-x4 (each bills credits and gets its own seed). Modes (2026-08-23 live-verified wire): text-to-video (t2v key), image-to-video (`image` + i2v key e.g. abra_i2v_8s; upload 0 credits), reference images (`images` 1-10 + r2v key e.g. abra_r2v_8s, 7-15 credits by duration), first+last frame (`keyframes` = exactly 2 images + interpolation/_fl key), extend (`videoMediaId` = an existing video's mediaId + extension key e.g. veo_3_1_extension_lite, 10 credits — references generated videos directly, no upload), upscale (`videoMediaId` + veo_3_1_upsampler_1080p, 0 credits), V2V edit (`videoMediaId` + prompt edit instruction + abra_edit, 20 credits — wire probe-verified, NOT yet live-submitted; the response carries a warning).\n\nMultilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
+        "Create an AI video (text-to-video / image-to-video / keyframe animation; 文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) via free models (Agnes AI default, or Zhipu). Smart async: long videos return a handle to poll with `get_video`; short ones block until done.\n\nWHEN: user wants photorealistic or AI-generated video (写实视频 / AI 合成画面 / 让这张图动起来). AVOID when the user wants deterministic motion graphics — see below.\n\nAVOID:\n- HTML/CSS/GSAP motion graphics / kinetic typography / animated charts / brand intros (deterministic, same input → same output, no AI) → use `render_video` instead.\n\nNEXT: if the call returns a handle (async mode), poll with `get_video` until status=done. Call `list_models` first to verify allowed numFrames per provider (Agnes constraints vary by resolution). Flow provider (provider=\"flow\") BILLING CONFIRM GATE: a video call without `confirmToken` returns {needConfirm:true, estimatedCost, confirmToken, expiresInSeconds} INSTEAD of submitting (0 credits spent); re-call with the same parameters + confirmToken to submit. model = full usage key (live catalog via `flow_status`), durationSeconds ∈ {4,6,8,10}s (off-grid snaps nearest), ratio 16:9/9:16 only, ONE clip per call — repeat calls for x2-x4 (each bills credits and gets its own seed). Modes (2026-08-23 live-verified wire): text-to-video (t2v key), image-to-video (`image` + i2v key e.g. abra_i2v_8s; upload 0 credits), reference images (`images` 1-10 + r2v key e.g. abra_r2v_8s, 7-15 credits by duration), first+last frame (`keyframes` = exactly 2 images + interpolation/_fl key), extend (`videoMediaId` = an existing video's mediaId + extension key e.g. veo_3_1_extension_lite, 10 credits — references generated videos directly, no upload), upscale (`videoMediaId` + veo_3_1_upsampler_1080p, 0 credits), V2V edit (`videoMediaId` + prompt edit instruction + abra_edit, 20 credits — wire probe-verified, NOT yet live-submitted; the response carries a warning).\n\nMultilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -183,6 +183,7 @@ function buildTools() {
           seed: { type: "number" },
           negativePrompt: { type: "string" },
           wait: { type: "boolean", description: "省略=智能(预估≤60s 同步、>60s 异步返回 handle);true=阻塞等待(发 progress);false=立即返回 handle。" },
+          confirmToken: { type: "string", description: "Two-phase billing confirm (provider=flow video only). First call WITHOUT this token returns {needConfirm:true, estimatedCost, confirmToken, expiresInSeconds} instead of submitting (zero credits spent). Re-call with the SAME parameters plus confirmToken to actually submit. Tokens are short-lived (default 10 min, flow.confirmTtlMs) and bound to model+duration+estimate — changing any parameter invalidates the token (fetch a fresh one). Free submissions (e.g. veo_3_1_upsampler_1080p) and non-flow providers never trigger the gate; disable via config flow.videoConfirm=false." },
           timeoutMs: { type: "number", default: 900000 },
           pollIntervalMs: { type: "number", default: 10000 },
           download: { type: "boolean", default: true },
@@ -661,28 +662,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (resolved.autoRouted) {
           warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
         }
-        // flow 专属直通参数(audit finding-2/6):通用 schema 的 aspect/seed 仅 flow 分支消费;
-        // agnes/zhipu 不识别 → 按项目纪律告警后忽略(不静默丢弃),且绝不塞进 extra
-        // (extra 会被 agnes/zhipu 的 Object.assign(body, extra) 直透上游请求体)。
+        // aspect/seed 直通参数:请求始终携带,支持的 provider(flow)消费,不支持者(agnes/zhipu)
+        // 自行告警后忽略(项目纪律执行点内聚在丢弃方 —— handler 不做渠道名特判;绝不塞进 extra,
+        // extra 会被 agnes/zhipu 的 Object.assign(body, extra) 直透上游请求体)。
         const aspect = optString(a.aspect);
         const imageSeed = optNumber(a.seed);
-        const flowDirect = p.name === "flow";
-        if (!flowDirect) {
-          if (aspect) warnings.push(`provider "${p.name}" 不支持 aspect(仅 flow 生图支持 16:9/9:16/1:1/3:4/4:3),已忽略;请用 size 控制尺寸。`);
-          if (imageSeed != null) warnings.push(`provider "${p.name}" 不支持 seed,已忽略。`);
-        }
         // n 批量:钳制 1-8;provider 忽略 n,工具层并发 fan-out(N 次单图调用 + 聚合)
         const reqN = optNumber(a.n);
         const n = reqN && reqN > 1 ? Math.min(Math.max(1, Math.floor(reqN)), 8) : 1;
         if (reqN && reqN > 8) warnings.push(`n=${reqN} 超上限,已钳制为 8。`);
-        // H3:images[] 须为 URI(与 create_video 对称,防本地路径/相对路径 silent 进 body)
+        // H3:images[] 须为 URI(与 create_video 对称,防本地路径/相对路径 silent 进 body)。
+        // 渠道专属输入引用例外经 provider 钩子放行(如 flow 2K 放大接受项目内 mediaId);
+        // 存在性/类型校验归 provider 提交路径的结构化错误。
         const imgs = toStringArray(a.images);
-        // flow 放大例外:images[0] 允许传已有图片的 mediaId(存在性/类型交给 provider findMedia 结构化 S400/S301;
-        // 形状 = UUID 或 UUID 派生名,如 §10.7 实证的 <源id>_upsampled —— 启发式定义在 provider 的 isFlowMediaIdLike)
-        const flowUpscale = p.name === "flow" && model === "GEM_PIX_2_UPSAMPLE_2K";
-        const uriOk = (u: string) => isImageUri(u) || (flowUpscale && imgs?.length === 1 && isFlowMediaIdLike(u));
+        const uriOk = (u: string) => isImageUri(u) || p.acceptsImageInputRef?.(u, { model, images: imgs }) === true;
         if (imgs?.some((u) => !uriOk(u))) {
-          return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。(provider=flow + GEM_PIX_2_UPSAMPLE_2K 时 images[0] 也接受已有图片的 mediaId)");
+          return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入(渠道专属输入引用如 mediaId 见该渠道参数说明)。");
         }
         // images 图生图:provider 不支持时拒绝(免静默丢弃 — zhipu cogview 纯文生图,传 images 会忽略)
         if (imgs?.length && p.supportsImageToImage?.() === false) {
@@ -690,27 +685,25 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         }
         const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
         // C 任务:渠道优先级链式 walk(复用 getFallbackProvider 的排序/熔断/能力谈判管线,不旁路)。
-        // 钉死守卫(audit finding-15 语义劫持防护):flow 经「显式点名」到达(provider=flow 或
-        // flow 模型 auto-route)→ 失败直抛,绝不静默换成 agnes 产物;
-        // flow 经「默认路由」到达(imageProviderPriority 链头,config 显式同意)→ 环境前置失败
-        // (S1xx precondition)与 fallback-worthy 错按序推进到下一渠道(agnes → zhipu)。
-        const flowPinned = resolved.provider.name === "flow"
-          && (optString(a.provider) != null || model != null);
+        // 钉死守卫(audit finding-15 语义劫持防护,通用化):显式点名 opt-in 渠道(provider=X 或
+        // model 归属 X,如 flow)→ 失败直抛,绝不静默换成其他渠道产物;免费渠道(agnes/zhipu)
+        // 保持既有单跳 fallback(零回归)。
+        const pinned = (optString(a.provider) != null || model != null)
+          && resolved.provider.requiresOptIn?.("image") === true;
         // 链长上限(priority 链 ≤3 成员 + 防御余量;每跳失败即 notifyUnavailable 打熔断,天然防 ping-pong)
         const MAX_CHAIN_HOPS = 4;
         const makeOne = async (): Promise<{ result: ImageResult; providerName: string }> => {
           let active = p;
-          let activeIsFlowDirect = flowDirect;
           let activeModel: string | undefined = model;
           let activeSize = optString(a.size) ?? "1024x1024";
           for (let hop = 0; ; hop++) {
             try {
-              const result = await active.generateImage({ prompt, model: activeModel, size: activeSize, images: imgs, extra, ...(activeIsFlowDirect ? { aspect, seed: imageSeed } : {}) });
+              const result = await active.generateImage({ prompt, model: activeModel, size: activeSize, images: imgs, extra, aspect, seed: imageSeed });
               return { result, providerName: active.name };
             } catch (e: any) {
-              // pares3 语义保留:非 fallback-worthy 的业务错直抛;钉死链(flow 显式点名)直抛。
+              // pares3 语义保留:非 fallback-worthy 的业务错直抛;钉死链(opt-in 渠道显式点名)直抛。
               // isChainAdvanceable = isFallbackWorthy ∪ 环境前置失败(请求从未提交,非业务错)。
-              if (flowPinned || hop >= MAX_CHAIN_HOPS || !isChainAdvanceable(e)) throw e;
+              if (pinned || hop >= MAX_CHAIN_HOPS || !isChainAdvanceable(e)) throw e;
               const fbRaw = getFallbackProvider(active.name, "image", { images: imgs });
               if (!fbRaw) throw e;
               const fb = asImageProvider(fbRaw);
@@ -719,12 +712,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
               activeSize = fb.snapImageSize?.(activeSize) ?? activeSize;
               warnings.push(`provider "${active.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"(免费)。`);
               active.notifyUnavailable?.(e);
-              // 离开 flow 时 aspect/seed 不再适用(flow-only 直通参数),按「丢弃必告警」纪律明示
-              if (activeIsFlowDirect && (aspect || imageSeed != null)) {
-                warnings.push(`fallback 到 "${fb.name}":aspect/seed 仅 flow 支持,已忽略。`);
-              }
+              // aspect/seed 是渠道专属直通参数:离开支持渠道后的丢弃由目标 provider 自行告警(不静默)
               active = fb;
-              activeIsFlowDirect = false;
               activeModel = undefined; // model 归属失败方(fallback 目标用其默认模型,现行为)
             }
           }
@@ -771,7 +760,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           imageWarnings.push(...checked.warnings);
         }
         warnings.push(...imageWarnings);
-        // 同 create_video/get_video:flow 的 data: URI 成品(可达数百 KB)不进响应,防灌爆调用方上下文。
+        // 同 create_video/get_video:provider 直返 data: URI 成品(可达数百 KB)不进响应,防灌爆调用方上下文。
         const outsOut = outputs.map((o, i) => {
           if (!o || typeof o.url !== "string" || !o.url.startsWith("data:")) return o;
           const kb = Math.round(o.url.length / 1024);
@@ -802,7 +791,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (image && !isImageUri(image)) return err("`image` 须为 http(s): 或 data: URI。");
         const keyframes = toStringArray(a.keyframes);
         if (keyframes?.some((u) => !isImageUri(u))) return err("`keyframes` 每项须为 http(s): 或 data: URI。");
-        // flow 专属:r2v 参考图数组 + extension/upsampler 视频源 mediaId(其他 provider 忽略并告警)
+        // images(r2v 参考图,URI 校验渠道中性)+ videoMediaId(渠道专属视频引用,非 URI 形态,
+        // 交 provider 提交路径结构化校验):不消费的 provider 自行告警忽略。
         const refImages = toStringArray(a.images);
         if (refImages?.some((u) => !isImageUri(u))) return err("`images` 每项须为 http(s): 或 data: URI(参考图)。");
         const videoMediaId = optString(a.videoMediaId);
@@ -849,30 +839,38 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const estimated = p.estimateGenerationSeconds(effFrames, frameRate);
         const wait = a.wait === true || (a.wait === undefined && estimated <= ASYNC_THRESHOLD_SECONDS);
 
+        // 计费确认门(用户核心诉求;渠道无关可选钩子 types.ts VideoProvider.beginSubmissionConfirm,
+        // flow 内聚实现):视频路由到/显式用计费渠道且未带 confirmToken → 先返回积分预估 + 短时效
+        // 确认令牌(不提交);带 token 复调经校验后放行。免费渠道未实现钩子 → undefined 直提交(零影响)。
+        const confirmToken = optString(a.confirmToken);
+        // videoReq 全参数渠道中性感构建:专属输入(images 参考图 / videoMediaId)由消费方使用、
+        // 不消费的 provider 自行告警忽略 —— handler 不做渠道名特判。
+        const videoReq = {
+          prompt, model, mode: mode as VideoMode | undefined, image, keyframes,
+          images: refImages, videoMediaId,
+          resolution: resolution as Resolution | undefined, ratio, numFrames: effFrames, frameRate,
+          durationSeconds: optNumber(a.durationSeconds), seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
+        };
+        {
+          const challenge = await p.beginSubmissionConfirm?.(videoReq, confirmToken);
+          if (challenge) return ok(challenge);
+        }
+
         // pares3: create_video fallback(铁律:仅 submit 可 fallback,poll 路径绝不 fallback)
         let activeProvider = p;
         let created: VideoTask;
-        // flow 直通参数(images=r2v 参考图 / videoMediaId=extension·upsampler 视频源):其他 provider 告警忽略
-        const flowVideo = p.name === "flow";
-        if (!flowVideo && (refImages?.length || videoMediaId)) {
-          warnings.push(`provider "${p.name}" 不支持 images(参考图)/videoMediaId(仅 flow 的 r2v/extension/upsampler 模式),已忽略。`);
-        }
+        // 钉死守卫(通用化):显式点名 opt-in 渠道(provider=X / model 归属 X,如 flow)→ 失败直抛
+        // (audit finding-15:用户点名的是该渠道模型,静默 fallback 成别家是语义劫持);
+        // 免费渠道(agnes/zhipu)保持既有单跳 fallback(零回归)。
+        const pinnedVideo = (optString(a.provider) != null || model != null)
+          && resolved.provider.requiresOptIn?.("video") === true;
         try {
-          created = await p.createVideo({
-            prompt, model, mode: mode as VideoMode | undefined, image, keyframes,
-            ...(flowVideo ? { images: refImages, videoMediaId } : {}),
-            resolution: resolution as Resolution | undefined, ratio, numFrames: effFrames, frameRate,
-            durationSeconds: optNumber(a.durationSeconds), seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
-          });
+          created = await p.createVideo(videoReq);
         } catch (e: any) {
           // pares3: create_video fallback(铁律:仅 submit 可 fallback,poll 路径绝不 fallback)
-          // flow 钉死守卫(audit finding-15):显式 provider=flow / flow 模型 auto-route 后,
-          // 用户点名的是 Flow 的 Veo/abra,静默 fallback 成 agnes 视频是语义劫持。
-          // C 任务:flow 经「默认路由」到达(仅当 videoProviderPriority 显式列入 flow)时,
+          // opt-in 渠道经「默认路由」到达(仅当 videoProviderPriority 显式列入)时,
           // 环境前置失败(S1xx)/fallback-worthy 错允许单跳推进(默认配置下链头永不为 flow,零漂移)。
-          const flowPinnedVideo = p.name === "flow"
-            && (optString(a.provider) != null || model != null);
-          if (flowPinnedVideo || !isChainAdvanceable(e)) throw e;
+          if (pinnedVideo || !isChainAdvanceable(e)) throw e;
           const fbRaw = getFallbackProvider(p.name, "video", { mode, keyframes, image });
           if (!fbRaw) throw e;
           const fb = asVideoProvider(fbRaw);
@@ -892,13 +890,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           activeProvider = fb;
           // 关键:不透传 durationSeconds —— Agnes.createVideo 会优先用 framesForDuration(durationSeconds) 重推导 numFrames,
           // 完全忽略传入的 fbFrames(1080p + durationSeconds∈[13,18]s 会推出 441>241 上限碰 API 400,正是 maxFramesFor 要防的场景)。
-          // 强制走 numFrames 路径,让上面的 fbFrames clamp 真正生效。
+          // 强制走 numFrames 路径,让上面的 fbFrames clamp 真正生效。images/videoMediaId 透传给 fb:
+          // 消费方(链内显式列入的 flow)使用,不消费方自行告警忽略(不静默丢弃)。
+          const fbReq = {
+            prompt, model: undefined, mode: mode as VideoMode | undefined, image, keyframes,
+            images: refImages, videoMediaId,
+            resolution: resolution as Resolution | undefined, ratio, numFrames: fbFrames, frameRate: fbFps,
+            seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
+          };
+          // 计费确认门对 fallback 目标同样生效:链内 flow = 用户显式列入(知情付费档),
+          // 其提交点前仍须两段式确认(与链头同规则)。
+          {
+            const fbChallenge = await fb.beginSubmissionConfirm?.(fbReq, confirmToken);
+            if (fbChallenge) return ok(fbChallenge);
+          }
           try {
-            created = await fb.createVideo({
-              prompt, model: undefined, mode: mode as VideoMode | undefined, image, keyframes,
-              resolution: resolution as Resolution | undefined, ratio, numFrames: fbFrames, frameRate: fbFps,
-              seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
-            });
+            created = await fb.createVideo(fbReq);
           } catch (fbErr: any) {
             if (isFallbackWorthy(fbErr)) fb.notifyUnavailable?.(fbErr);
             throw fbErr;
@@ -946,7 +953,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (done.status === "completed" && done.url && a.download !== false) {
           localPath = await downloadAsset(done.url, "vid", outDir, optString(a.name));
         }
-        // flow provider 的成品 url 是 data: URI(整段 base64,视频可达 MB 级);
+        // provider 直返的成品 url 若为 data: URI(整段 base64,可达 MB 级):
         // 已落盘或用户关下载时从响应剔除,防多 MB JSON 灌爆调用方上下文。
         const doneOut: Record<string, unknown> = { ...done };
         if (typeof doneOut.url === "string" && (doneOut.url as string).startsWith("data:")) {
@@ -977,7 +984,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (r.status === "completed" && r.url && a.download !== false) {
           localPath = await downloadAsset(r.url, "vid", resolveOutDir(a.outDir), optString(a.name));
         }
-        // 同 create_video:flow 的 data: URI 成品不进响应(防 MB 级 JSON)
+        // 同 create_video:provider 直返的 data: URI 成品不进响应(防 MB 级 JSON)
         const rOut: Record<string, unknown> = { ...r };
         if (typeof rOut.url === "string" && (rOut.url as string).startsWith("data:")) {
           const kb = Math.round((rOut.url as string).length / 1024);

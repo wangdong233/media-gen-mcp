@@ -57,10 +57,11 @@ async function withFlowDisabled<T>(fn: () => T | Promise<T>): Promise<T> {
 // ═══ 1. 配置解析(顶级 flow 段) ═══
 
 describe("parseFlowSection(容错:仅显式 false 才禁用)", () => {
-  test("缺省/空对象 → enabled=true + toolDeadlineMs=110s(默认开,配置错误不 fatal)", () => {
-    assert.deepEqual(parseFlowSection(undefined), { enabled: true, toolDeadlineMs: 110_000 });
-    assert.deepEqual(parseFlowSection({}), { enabled: true, toolDeadlineMs: 110_000 });
-    assert.deepEqual(parseFlowSection(null), { enabled: true, toolDeadlineMs: 110_000 });
+  const DEFAULTS = { enabled: true, toolDeadlineMs: 110_000, videoConfirm: true, confirmTtlMs: 600_000 };
+  test("缺省/空对象 → 全默认(enabled 开 + 110s 截止 + 确认门开 + 10min TTL;配置错误不 fatal)", () => {
+    assert.deepEqual(parseFlowSection(undefined), DEFAULTS);
+    assert.deepEqual(parseFlowSection({}), DEFAULTS);
+    assert.deepEqual(parseFlowSection(null), DEFAULTS);
   });
 
   test('flow.enabled=false 显式禁用;truthy / 类型错(字符串 "false")= 默认开', () => {
@@ -75,6 +76,15 @@ describe("parseFlowSection(容错:仅显式 false 才禁用)", () => {
     assert.equal(parseFlowSection({ toolDeadlineMs: -5 }).toolDeadlineMs, 110_000);
     assert.equal(parseFlowSection({ toolDeadlineMs: "90s" }).toolDeadlineMs, 110_000);
     assert.equal(parseFlowSection({ toolDeadlineMs: Number.NaN }).toolDeadlineMs, 110_000);
+  });
+
+  test("videoConfirm:默认开(防误耗红线下误门代价远小于漏门);仅显式 false 关;confirmTtlMs 非法回默认 10min", () => {
+    assert.equal(parseFlowSection({}).videoConfirm, true);
+    assert.equal(parseFlowSection({ videoConfirm: false }).videoConfirm, false);
+    assert.equal(parseFlowSection({ videoConfirm: "false" }).videoConfirm, true, "字符串 false 不关(类型错=默认开)");
+    assert.equal(parseFlowSection({ confirmTtlMs: 60_000 }).confirmTtlMs, 60_000);
+    assert.equal(parseFlowSection({ confirmTtlMs: -1 }).confirmTtlMs, 600_000);
+    assert.equal(parseFlowSection({ confirmTtlMs: "10m" }).confirmTtlMs, 600_000);
   });
 });
 

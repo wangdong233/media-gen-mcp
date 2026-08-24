@@ -189,7 +189,7 @@ Chrome が動いていない / 未ログインの場合、ツールは**構造�
 
 ```
 「Flow でサイバーパンクの猫を 3:4・seed 42 で描いて」          → generate_image(provider="flow", aspect="3:4", seed=42)
-「Flow で 8 秒の近未来都市フライオーバー動画を生成」            → create_video(provider="flow", model="abra_t2v_8s")
+「Flow で 8 秒の近未来都市フライオーバー動画を生成」            → create_video(provider="flow", model="abra_t2v_8s")   ← 初回はポイント見積り + 確認トークンを返すだけ;同じ引数 + confirmToken で再呼び出しすると実際に送信
 「Flow のクレジット残高 / この mediaId はできた?」            → flow_status() / flow_status(mediaId=…)
 ```
 
@@ -331,6 +331,7 @@ Chrome が動いていない / 未ログインの場合、ツールは**構造�
 - **動画はデフォルトで agnes 優先**(無料)。Flow の動画はクレジットを消費するため、**意図的にデフォルトルーティングから外しています** —— `videoProviderPriority` に明示的に書く(クレジットは自己負担)か、毎回 `provider="flow"` を渡すか、どちらかです。
 - 両方未設定なら現行挙動のまま(デフォルトプロバイダ + agnes/zhipu 無料枠の相互フォールバック)。影響ゼロ。環境変数でも同等:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
 - **スイッチ 1 つで Flow を停止(S000 ハードゲート)**:`config.json` のトップレベルに `"flow": { "enabled": false }` —— Flow は両方の優先チェーンから除外され(チェーンは次のプロバイダへ自動降格)、明示的な `provider="flow"` / Flow モデル / `flow_status` / `flow_entity` の呼び出しはすべて構造化された `[flow] S000` 無効化エラーを返します(メッセージに修正手順:`true` に戻す——付き)。プロバイダの無言切り替えは決してしません。関連ノブ `"flow": { "toolDeadlineMs": 110000 }` は、Flow の長時間操作(画像ポーリング / 動画サブミット / ダウンロード)の上限で、スタール防止ルール(1 回 ≤120s)を遵守;タイムアウト時は `[flow] S410` を返します —— 底側の操作はキャンセルされず、後で `flow_status(mediaId)` で確認・保存できます。
+- **課金確認ゲート(二段階、デフォルト ON)**:動画が Flow にルーティング/明示指定された場合、最初の `create_video` は送信せず `{needConfirm:true, estimatedCost(ポイント見積り:動的 creditMapping 優先 / 静的テーブルで代替), confirmToken, expiresInSeconds}` を返します。同じ引数 + `confirmToken` で再呼び出しすると実際に送信。トークンは短命(デフォルト 10 分、`flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS` で調整可能)で「モデル+尺+見積り」にバインド —— 確認後にパラメータを変えると新しいトークンが必要です。誤トークンは `[flow] S320`、期限切れは `[flow] S321`。無料操作(`veo_3_1_upsampler_1080p` など)と Flow 以外のプロバイダは本ゲートをトリガーしません。オフにするには `"flow": { "videoConfirm": false }`(デフォルト `true` —— 誤発火は往復 1 回の損、見逃しは実クレジット消費)。
 
 **Flow 資産管理(すべて 0 クレジット)**:`flow_status` はクレジット / メディア状態 / ダウンロードに加え、3 つの無料操作に対応 —— `shareMediaIds=[…]` は公開シェアリンクを作成(`labs.google/fx/tools/flow/shared/image/<id>` 形式、プロンプト付き)、`cancelMediaIds=[…]` は生成中の動画をキャンセル(注意:画像ジョブはキャンセル不可)、`deleteMediaIds=[…]` はメディアを一括削除。`flow_entity` ツールはキャラクターエンティティを作成し、30 種のプリセット音声をバインドします(先に `generate_image(provider="flow")` で外見を生成してから紐付け)。以降の生成でそのキャラクターを再利用できます。
 
