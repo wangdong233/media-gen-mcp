@@ -169,9 +169,9 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          prompt: { type: "string", description: "Video content description." },
+          prompt: { type: "string", description: "Video content description (subject + action + camera + style). For provider=flow V2V edit mode (videoMediaId + abra_edit) this is the EDIT INSTRUCTION (e.g. 'make it night with neon lights'), not a fresh scene description." },
           model: { type: "string", description: "Optional; omit to use the provider default video model. provider=flow: pass a FULL usage key (e.g. abra_t2v_8s / veo_3_1_t2v_lite / veo_3_1_upsampler_1080p) or mnemonic+durationSeconds (abra_t2v + 8) — the complete live catalog is in flow_status; open key families: t2v (text, shape-verified wire), i2v (+`image`), r2v (+`images`), interpolation/_fl (+`keyframes` 2), extension (+`videoMediaId`, e.g. veo_3_1_extension_lite / veo_3_1_extend_fast_landscape), upsampler (+`videoMediaId`, veo_3_1_upsampler_1080p = 0 credits; 4k tier-locked), edit (+`videoMediaId` + edit-instruction prompt, abra_edit = 20 credits, wire probe-verified). Tier locks: fast ultra/_4s/_6s + low_priority are ADVANCED-only; plain fast is NOT available on ADVANCED — unavailable keys are rejected with the per-tier matrix before submission." },
-          mode: { type: "string", enum: [...VIDEO_MODES] },
+          mode: { type: "string", enum: [...VIDEO_MODES], description: "Optional generation mode hint. Omit it — provider=flow infers the mode from the model key + inputs (image→i2v, images→r2v, keyframes→interpolation, videoMediaId→extension/edit/upsampler); mismatches (e.g. image + a t2v key) are rejected with a structured S301 naming the key to use." },
           image: { type: "string", description: "image-to-video: single image URL (http(s)/data:). provider=flow: START_IMAGE — upload (0 credits) then submit; requires an i2v key (e.g. abra_i2v_8s / veo_3_1_i2v_lite), a t2v key + image → structured S301 telling you the key to use." },
           keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image URL array. provider=flow: exactly 2 images (first + last frame), requires an interpolation/_fl key (e.g. veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl); other counts or key families → structured S301." },
           images: { type: "array", items: { type: "string" }, description: "reference images (provider=flow only): image URLs (http(s)/data:) for r2v keys (e.g. abra_r2v_8s / veo_3_1_r2v_lite) — uploaded (0 credits) then submitted as referenceImages. Per-key cap (live inputSpec): 7 for abra r2v / 3 for veo r2v keys. Mutually exclusive with image/keyframes/videoMediaId. Other providers ignore it with a warning." },
@@ -182,8 +182,8 @@ function buildTools() {
           numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Allowed: " + vc.allowedNumFrames.join("/") + " (provider-specific; cross-provider routing re-validates per actual provider — check list_models). provider=flow: prefer durationSeconds (native set = 96/144/192/240 @24fps)." },
           frameRate: { type: "number", enum: vc.allowedFrameRates, default: vc.defaultFrameRate, description: "允许值 " + vc.allowedFrameRates.join("/") + " (provider 专有;跨 provider 路由后按实际 provider 复算)" },
           durationSeconds: { type: "number", description: "If set, auto-pick the nearest valid numFrames (~3/5/10/18s). provider=flow: legal set {4,6,8,10}s — off-grid values snap to the nearest with a warning (5→4s, 12→10s)." },
-          seed: { type: "number" },
-          negativePrompt: { type: "string" },
+          seed: { type: "number", description: "Reproducibility seed. provider=flow: passed through, actual seed echoed in outputs; omit → random per call (repeat calls for xN each get a fresh seed; an explicit seed is reused across the N calls)." },
+          negativePrompt: { type: "string", description: "Negative prompt. provider=flow: NOT on the wire — ignored with a warning (fold exclusions into the prompt instead, e.g. 'no text overlays')." },
           wait: { type: "boolean", description: "省略=智能(预估≤60s 同步、>60s 异步返回 handle);true=阻塞等待(发 progress);false=立即返回 handle。" },
           confirmToken: { type: "string", description: "Two-phase billing confirm (provider=flow video only). First call WITHOUT this token returns {needConfirm:true, estimatedCost, confirmToken, expiresInSeconds} instead of submitting (zero credits spent). Re-call with the SAME parameters plus confirmToken to actually submit. Tokens are short-lived (default 10 min, flow.confirmTtlMs) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds) — changing any of them invalidates the token (fetch a fresh one). Free submissions (e.g. veo_3_1_upsampler_1080p) and non-flow providers never trigger the gate; tier-unavailable keys are rejected with a per-tier matrix instead of getting a token; disable via config flow.videoConfirm=false." },
           timeoutMs: { type: "number", default: 900000 },
@@ -203,7 +203,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          videoId: { type: "string" },
+          videoId: { type: "string", description: "Task id from create_video (agnes/zhipu async handle). provider=flow: pass the mediaId as taskId instead (flow has no separate videoId)." },
           taskId: { type: "string", description: "legacy fallback endpoint" },
           download: { type: "boolean", default: true },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>. For Flow: mediaId/seed/model/prompt are returned alongside local_path so each file maps back to its exact input. Existing files get -2/-3… suffix (never silently overwrites)." },

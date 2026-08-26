@@ -1632,6 +1632,8 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   } {
     const warnings: string[] = [];
     assertModeOpen(key, mode);
+    const ratioWarn = videoRatioKeyWarning(req.ratio, key);
+    if (ratioWarn) warnings.push(ratioWarn);
     const hasImage = Boolean(req.image);
     const kfCount = req.keyframes?.length ?? 0;
     const refCount = req.images?.length ?? 0;
@@ -1996,7 +1998,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const requestItem: Record<string, unknown> = {
       aspectRatio: endpointMode === "extension" || endpointMode === "upsampler" || endpointMode === "edit"
         ? videoAspectOfSource(sourceMedia, req.ratio)
-        : videoAspectRatioFor(req.ratio),
+        : videoAspectRatioFor(req.ratio, resolved.key),
       metadata: { collectionId: "", mediaIdSeed: crypto.randomUUID(), sceneId: "", workflowIdSeed: crypto.randomUUID() },
       seed: req.seed ?? crypto.randomInt(1_000_000),
       videoModelKey: resolved.key,
@@ -2095,10 +2097,25 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
 }
 
 /** ratio("16:9"/"9:16")→ Flow 视频比例枚举(契约 §3:视频仅 LANDSCAPE/PORTRAIT)。 */
-function videoAspectRatioFor(ratio?: string): string {
-  if (!ratio || ratio === "16:9") return "VIDEO_ASPECT_RATIO_LANDSCAPE";
-  if (ratio === "9:16") return "VIDEO_ASPECT_RATIO_PORTRAIT";
+function videoAspectRatioFor(ratio?: string, key?: string): string {
+  // key 方向后缀优先级(2026-08-27 补):veo 系 key 自带 _portrait/_landscape 方向后缀(§14.4)——
+  // 未传 ratio 时按后缀推导(_portrait → 9:16),杜绝"选了竖屏 key 却忘了 ratio → 默认发横屏"的静默错向;
+  // 显式 ratio 与后缀冲突 → 不硬拒(wire aspectRatio 实际生效,live 实证),交由调用方 warning 提示。
+  const keyDir = key?.includes("_portrait") ? "9:16" : key?.includes("_landscape") ? "16:9" : undefined;
+  const effective = ratio ?? keyDir;
+  if (!effective || effective === "16:9") return "VIDEO_ASPECT_RATIO_LANDSCAPE";
+  if (effective === "9:16") return "VIDEO_ASPECT_RATIO_PORTRAIT";
   throw new FlowError("S301", `视频比例仅支持 16:9 / 9:16(收到 "${ratio}";图片比例才支持 1:1/4:3/3:4)`);
+}
+
+/** ratio × key 方向后缀一致性(warning 级,不拒):显式 ratio 与 _portrait/_landscape 后缀相悖时提示。 */
+export function videoRatioKeyWarning(ratio: string | undefined, key: string | undefined): string | undefined {
+  if (!ratio || !key) return undefined;
+  const keyDir = key.includes("_portrait") ? "9:16" : key.includes("_landscape") ? "16:9" : undefined;
+  if (keyDir && ratio !== keyDir) {
+    return `模型 key "${key}" 内嵌 ${keyDir} 方向,与 ratio="${ratio}" 不一致(wire 以 ratio 为准;建议二者匹配或省略 ratio)。`;
+  }
+  return undefined;
 }
 
 /**

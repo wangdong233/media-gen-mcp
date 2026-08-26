@@ -1422,6 +1422,28 @@ describe("referenceAudio(§14.6 假 key 404 探针定型;v1 收窄 = r2v + 预�
   });
 });
 
+describe("ratio × key 方向后缀守卫(2026-08-27 补:portrait key 未传 ratio 不再默认横屏)", () => {
+  test("_portrait key 未传 ratio → wire PORTRAIT(按 key 后缀推导)", async () => {
+    const { t, p } = newProvider({});
+    await p.createVideo({ prompt: "x", model: "veo_3_1_r2v_fast_portrait", images: [PNG_1PX] });
+    const post = t.calls.find((c: any) => c.method === "POST" && c.url.includes("/video:"));
+    const body = JSON.parse(Buffer.from(post!.bodyB64!, "base64").toString("utf-8"));
+    assert.equal(body.requests[0].aspectRatio, "VIDEO_ASPECT_RATIO_PORTRAIT", "portrait key 缺省推导 9:16");
+  });
+  test("_portrait key + ratio=16:9 → 仍提交但带方向不一致 warning", async () => {
+    const { p } = newProvider({});
+    const r = await p.createVideo({ prompt: "x", model: "veo_3_1_r2v_fast_portrait", images: [PNG_1PX], ratio: "16:9" });
+    assert.ok((r.warnings ?? []).some((w: string) => w.includes("内嵌 9:16") && w.includes("ratio=\"16:9\"")), "方向冲突 warning");
+  });
+  test("无后缀 key + ratio=9:16 → 显式 ratio 生效(既有行为零回归)", async () => {
+    const { t, p } = newProvider({});
+    await p.createVideo({ prompt: "x", model: "abra_t2v_8s", ratio: "9:16" });
+    const post = t.calls.find((c: any) => c.method === "POST" && c.url.includes("/video:"));
+    const body = JSON.parse(Buffer.from(post!.bodyB64!, "base64").toString("utf-8"));
+    assert.equal(body.requests[0].aspectRatio, "VIDEO_ASPECT_RATIO_PORTRAIT");
+  });
+});
+
 describe("downloadAsset 防覆盖避让(用户指定 name 与既有文件冲突时绝不静默覆盖)", () => {
   test("同名已存在 → 自动 -2/-3 序号避让;不存在的名字直用", async () => {
     const { downloadAsset } = require_(path.join(distDir, "download.js"));
