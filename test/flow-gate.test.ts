@@ -1,22 +1,20 @@
 /**
- * flow.enabled S000 硬门 + toolDeadlineMs 防 stall 截止单元测试
- * (2026-08-24 合包时吸收自 flow-mcp test/flow-config.test.ts / S000 门禁与 withDeadline 用例)。
+ * 渠道治理单元测试:链即开关 + toolDeadlineMs 防 stall 截止
+ * (2026-08-26 简化:S000 硬门 flow.enabled/disabledReason 删除 —— 渠道启用唯一控制源 = 优先级链,
+ *  链中不配置 = 不启用;显式 provider=flow 点名永远合法,环境不可用由前置检测 S1xx 结构化报告)。
  *
  * 覆盖面:
- *   1. parseFlowSection 容错:缺省 enabled=true / 仅显式 false 才禁用 / 类型错回默认开;
- *      toolDeadlineMs 默认 110s / 非法值(非正数/类型错)回默认
- *   2. FlowProvider.disabledReason():S000 文案自带配置路径 + 修复动作;未禁用 = undefined
- *   3. 优先级链剔除(硬门①):flow.enabled=false → getProviderPriority 剔 flow,链降级
- *   4. 显式点名拦截(硬门②):resolveProvider 显式 provider=flow / flow 模型 auto-route → S000;
- *      enabled=true 显式点名正常解析(对照,零回归)
- *   5. 防 stall 截止:长操作超 toolDeadlineMs → [flow] S410 结构化错(底层不取消);
+ *   1. parseFlowSection 容错:toolDeadlineMs 默认 110s / 非法值回默认;
+ *      videoConfirm 默认开仅显式 false 关;confirmTtlMs 非法回默认 10min
+ *   2. 链即开关语义:未配置链 → resolveProvider 未点名不指向 flow(optIn 门禁,provider-priority
+ *      详测;此处钉契约要点)+ 显式 provider=flow 点名永远合法(原 S000 拦截的反向断言)
+ *   3. 防 stall 截止:长操作超 toolDeadlineMs → [flow] S410 结构化错(底层不取消);
  *      缺省截止不小于默认量级(不立即误抛);0 点工具入口(flowStatus/mediaStatus/deleteAssets/
  *      shareMedia/cancelGenerations/listPresetVoices/createEntity/updateEntity)逐一同样受保护(三审 finding-5)
  *
  * 导入方式:与 provider-priority.test.ts 同范式(createRequire 引编译产物 dist/;
  * npm test 先 build 再 build:tests,顺序保证存在)。
- * 测试隔离铁律:__priorityOverrideForTests 置 null + config.flow.enabled 用后必还原
- * (registry 的 FlowProvider 持 config.flow 对象引用,live 翻转即生效)。
+ * 测试隔离铁律:__priorityOverrideForTests 用后必还原。
  */
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -26,9 +24,9 @@ import { fileURLToPath } from "node:url";
 
 const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
-const { parseFlowSection, config } = require_(path.join(distDir, "config.js"));
+const { parseFlowSection } = require_(path.join(distDir, "config.js"));
 const reg = require_(path.join(distDir, "providers/registry.js"));
-const { getProviderPriority, getFallbackProvider, resolveProvider } = reg;
+const { getProviderPriority, resolveProvider } = reg;
 const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -39,37 +37,23 @@ before(() => {
   delete process.env.FLOW_TOOL_DEADLINE_MS;
 });
 after(() => {
-  // 双保险:无论用例内部怎么翻,结束后必回「默认开」(隔离后续 dist-test 用例)
-  config.flow.enabled = true;
   reg.__priorityOverrideForTests.image = null;
   reg.__priorityOverrideForTests.video = null;
 });
 
-/** 禁用翻转助手:改 config.flow.enabled(registry 的 FlowProvider 持同一对象引用,live 生效)。 */
-async function withFlowDisabled<T>(fn: () => T | Promise<T>): Promise<T> {
-  config.flow.enabled = false;
-  try {
-    return await fn();
-  } finally {
-    config.flow.enabled = true;
-  }
-}
+// ═══ 1. 配置解析(顶级 flow 段;enabled 已删 —— 链即开关) ═══
 
-// ═══ 1. 配置解析(顶级 flow 段) ═══
-
-describe("parseFlowSection(容错:仅显式 false 才禁用)", () => {
-  const DEFAULTS = { enabled: true, toolDeadlineMs: 110_000, videoConfirm: true, confirmTtlMs: 600_000 };
-  test("缺省/空对象 → 全默认(enabled 开 + 110s 截止 + 确认门开 + 10min TTL;配置错误不 fatal)", () => {
+describe("parseFlowSection(容错:非法值回默认,配置错误不 fatal)", () => {
+  const DEFAULTS = { toolDeadlineMs: 110_000, videoConfirm: true, confirmTtlMs: 600_000 };
+  test("缺省/空对象 → 全默认(110s 截止 + 确认门开 + 10min TTL)", () => {
     assert.deepEqual(parseFlowSection(undefined), DEFAULTS);
     assert.deepEqual(parseFlowSection({}), DEFAULTS);
     assert.deepEqual(parseFlowSection(null), DEFAULTS);
   });
 
-  test('flow.enabled=false 显式禁用;truthy / 类型错(字符串 "false")= 默认开', () => {
-    assert.equal(parseFlowSection({ enabled: false }).enabled, false);
-    assert.equal(parseFlowSection({ enabled: true }).enabled, true);
-    assert.equal(parseFlowSection({ enabled: "false" }).enabled, true, "字符串 false 不禁用(类型错=默认开)");
-    assert.equal(parseFlowSection({ enabled: 0 }).enabled, true, "0 是显式 falsy 但非布尔 —— 与 flow-mcp 同语义:仅字面 false 禁用");
+  test("历史 enabled 键已删除:解析结果不再含 enabled(未知键静默忽略)", () => {
+    const r = parseFlowSection({ enabled: false }) as Record<string, unknown>;
+    assert.equal("enabled" in r, false, "enabled 字段已随 S000 硬门删除(链即开关)");
   });
 
   test("toolDeadlineMs:合法值透传;非正数/类型错回默认 110s", () => {
@@ -89,102 +73,40 @@ describe("parseFlowSection(容错:仅显式 false 才禁用)", () => {
   });
 });
 
-// ═══ 2. provider 侧 S000 事实陈述 ═══
+// ═══ 2. 链即开关(原 S000 硬门的替代语义;详细链行为见 provider-priority.test.ts) ═══
 
-describe("FlowProvider.disabledReason(S000 文案:配置路径 + 修复动作)", () => {
-  test("enabled=false → '[flow] S000' 前缀 + 配置文件路径 + 改回 true 指引", () => {
-    const p = new FlowProvider({ flowCfg: { enabled: false }, configFile: "/tmp/cfg-x.json" });
-    const msg = p.disabledReason()!;
-    assert.match(msg, /^\[flow\] S000 /);
-    assert.ok(msg.includes("/tmp/cfg-x.json"), "文案自带配置文件路径");
-    assert.ok(msg.includes("改回 true"), "文案自带修复动作");
+describe("链即开关(不配置 = 不自动路由;显式点名永远合法)", () => {
+  test("未配置链:resolveProvider 未点名 → 不指向 flow(optIn 门禁;详细矩阵见 provider-priority.test.ts)", () => {
+    reg.__priorityOverrideForTests.image = null;
+    const r = resolveProvider(undefined, undefined, "image");
+    assert.notEqual(r.provider.name, "flow", "flow 未列入链 = 未启用,默认路由绝不指向它");
   });
 
-  test("enabled=true / 未传 flowCfg → undefined(无门)", () => {
-    assert.equal(new FlowProvider({ flowCfg: { enabled: true } }).disabledReason(), undefined);
-    assert.equal(new FlowProvider({}).disabledReason(), undefined);
-  });
-});
-
-// ═══ 3. 硬门①:优先级链剔除 ═══
-
-describe("getProviderPriority(flow.enabled=false → 链剔除)", () => {
-  test("链 [flow,agnes,zhipu] → [agnes,zhipu](flow 被剔除,链自动降级)", () => {
-    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
-    return withFlowDisabled(() => {
-      assert.deepEqual(getProviderPriority("image"), ["agnes", "zhipu"]);
-    });
-  });
-
-  test("链全为 flow → undefined(等价未配置,回落 legacy 默认)", () => {
-    reg.__priorityOverrideForTests.video = ["flow"];
-    return withFlowDisabled(() => {
-      assert.equal(getProviderPriority("video"), undefined);
-    });
-  });
-
-  test("enabled=true(默认):链保留 flow(对照,零回归)", () => {
-    reg.__priorityOverrideForTests.image = ["flow", "agnes"];
-    try {
-      assert.deepEqual(getProviderPriority("image"), ["flow", "agnes"]);
-    } finally {
-      reg.__priorityOverrideForTests.image = null;
-    }
-  });
-
-  // 三审 finding-2(mutant 回归):getFallbackProvider 的 disabledReason 过滤行(registry F2/B3)
-  // 无测试覆盖 —— 把该 filter 改为恒真后 flow-gate 全绿。本用例钉死语义:被禁渠道(S000)即使
-  // 显式列入链(链内成员豁免 configured/optIn 门)也绝不能作为 fallback 候选承接请求。
-  test("F2(B3):flow 入链但 enabled=false → getFallbackProvider 绝不返回被禁渠道,链内下一成员承接", () => {
-    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
-    try {
-      return withFlowDisabled(() => {
-        const fb = getFallbackProvider("agnes", "image", {});
-        assert.notEqual(fb?.name, "flow", "被禁渠道(disabledReason 非空)不得作为 fallback 候选");
-        assert.equal(fb?.name, "zhipu", "链内下一可用成员承接(flow 剔除后 = zhipu)");
-      });
-    } finally {
-      reg.__priorityOverrideForTests.image = null;
-    }
-  });
-});
-
-// ═══ 4. 硬门②:显式点名 / 模型归属路由拦截 ═══
-
-describe("resolveProvider(明确指向被禁渠道 → S000,绝不静默换渠道)", () => {
-  test("显式 provider=flow → 抛 [flow] S000(含修复动作)", () => {
-    return withFlowDisabled(() => {
-      assert.throws(
-        () => resolveProvider("flow", undefined, "image"),
-        (e: any) => /^\[flow\] S000 /.test(e.message) && e.message.includes("改回 true"),
-      );
-    });
-  });
-
-  test("flow 模型(NARWHAL)auto-route 到 flow → 同样 S000(不让模型归属绕过门)", () => {
-    return withFlowDisabled(() => {
-      assert.throws(() => resolveProvider("agnes", "NARWHAL", "image"), /\[flow\] S000 /);
-    });
-  });
-
-  test("链头剔除后默认路由不指向 flow:resolveProvider(未点名) 正常解析非 flow 渠道", () => {
-    reg.__priorityOverrideForTests.image = ["flow", "agnes"];
-    return withFlowDisabled(() => {
-      const r = resolveProvider(undefined, undefined, "image");
-      assert.notEqual(r.provider.name, "flow");
-    });
-  });
-
-  test("enabled=true(默认):显式 provider=flow 正常解析(对照,零回归)", () => {
+  test("显式 provider=flow 点名 → 正常解析(原 S000 拦截的反向钉死:点名永远合法)", () => {
+    reg.__priorityOverrideForTests.image = null;
     assert.equal(resolveProvider("flow", undefined, "image").provider.name, "flow");
   });
 
-  test("未知渠道报错不受门影响(非 S000;零网络)", () => {
+  test("配置链含 flow → getProviderPriority 保留(列入 = 启用,保序)", () => {
+    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
+    try {
+      assert.deepEqual(getProviderPriority("image"), ["flow", "agnes", "zhipu"]);
+    } finally {
+      reg.__priorityOverrideForTests.image = null;
+    }
+  });
+
+  test("FlowProvider 不再实现 disabledReason(钩子已删,防回潮)", () => {
+    const p = new FlowProvider({});
+    assert.equal((p as any).disabledReason, undefined, "S000 钩子已删除 —— 渠道启用唯一控制源是优先级链");
+  });
+
+  test("未知渠道报错不受影响(零网络)", () => {
     assert.throws(() => resolveProvider("no-such-provider", undefined, "image"), /Unknown provider/);
   });
 });
 
-// ═══ 5. 防 stall 戥止(withDeadline 思想,provider 边界) ═══
+// ═══ 3. 防 stall 截止(withDeadline 思想,provider 边界) ═══
 
 /** 悬挂传输:open 成功、pageFetch 悬挂 hangMs 后拒绝 —— 模拟 CDP 页面 fetch 卡死(零网络)。
  * 必须最终 settle(而非永挂):withToolDeadline 的截止 timer 只在 race settle 后才 clear,
@@ -206,7 +128,7 @@ class HangingTransport {
 
 describe("toolDeadlineMs(长操作截止 → [flow] S410)", () => {
   test("generateImage 超截止 → FlowError S410(结构化;提示 flow_status 复查 —— 底层不取消)", async () => {
-    const p = new FlowProvider({ transport: new HangingTransport() as any, flowCfg: { enabled: true, toolDeadlineMs: 60 } });
+    const p = new FlowProvider({ transport: new HangingTransport() as any, flowCfg: { toolDeadlineMs: 60 } });
     await assert.rejects(
       () => p.generateImage({ prompt: "x" } as any),
       (e: any) => {
@@ -259,7 +181,7 @@ describe("toolDeadlineMs(长操作截止 → [flow] S410)", () => {
       ])) as { code?: string; message?: string };
       assert.ok(e && e.code === "S410", `${label}: 期望 S410,实际 ${e?.message?.slice(0, 120)}`);
     };
-    const mk = () => new FlowProvider({ transport: new HangingTransport() as any, flowCfg: { enabled: true, toolDeadlineMs: 60 } });
+    const mk = () => new FlowProvider({ transport: new HangingTransport() as any, flowCfg: { toolDeadlineMs: 60 } });
     await expectS410("flowStatus()", () => mk().flowStatus());
     await expectS410("mediaStatus(id)", () => mk().mediaStatus("media-x-1"));
     await expectS410("deleteAssets(ids)", () => mk().deleteAssets(["media-x-1"]));

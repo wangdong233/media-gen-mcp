@@ -641,13 +641,11 @@ export interface FlowProviderConfig {
   /** 测试注入 stub transport(零网络零消耗)。 */
   transport?: FlowTransport;
   /**
-   * 顶级 flow 渠道运行时段(registry 注入 config.flow 对象引用):enabled=false = S000 硬门;
+   * 顶级 flow 渠道运行时段(registry 注入 config.flow 对象引用):
    * toolDeadlineMs = 长操作截止;videoConfirm/confirmTtlMs = 计费确认门开关与令牌 TTL。
-   * 传引用(非解构)使测试可 live 翻转。
+   * 传引用(非解构)使测试可 live 修改。
    */
-  flowCfg?: { enabled?: boolean; toolDeadlineMs?: number; videoConfirm?: boolean; confirmTtlMs?: number };
-  /** 配置文件路径(S000 禁用错的修复提示文案用)。 */
-  configFile?: string;
+  flowCfg?: { toolDeadlineMs?: number; videoConfirm?: boolean; confirmTtlMs?: number };
 }
 
 export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProvider {
@@ -676,16 +674,14 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   /** 动态目录缓存(projectInitialData 派生;10 分钟)。creditByKey 供计费确认门动态预估。 */
   private dynamicCatalog: { at: number; videoKeys: string[]; creditByKey?: Record<string, Record<string, any>> } | null = null;
   private readonly dynamicCatalogTtlMs = 10 * 60_000;
-  /** 顶级 flow 段引用(enabled 硬门 + toolDeadlineMs + 计费确认门;registry 注入 config.flow 对象)。 */
-  private readonly flowCfg?: { enabled?: boolean; toolDeadlineMs?: number; videoConfirm?: boolean; confirmTtlMs?: number };
-  private readonly cfgFile?: string;
+  /** 顶级 flow 段引用(toolDeadlineMs + 计费确认门;registry 注入 config.flow 对象)。 */
+  private readonly flowCfg?: { toolDeadlineMs?: number; videoConfirm?: boolean; confirmTtlMs?: number };
 
   constructor(c: FlowProviderConfig = {}) {
     this.transport = c.transport ?? new CdpFlowTransport(c.cdpPort ?? DEFAULT_CDP_PORT);
     this.cfgProjectId = c.projectId;
     this.models = c.models;
     this.flowCfg = c.flowCfg;
-    this.cfgFile = c.configFile;
   }
 
   // ── MediaProviderBase ──
@@ -701,16 +697,9 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   requiresOptIn(_modality: Modality): boolean {
     // image:0 积分但路由到 Google Flow 项目(隐私边界 + 模型语义变更须显式同意,防默认路由
     // 随「本机 Chrome 是否开着」漂移);video:消耗积分(误耗红线)。两模态统一「显式同意才介入」。
+    // 2026-08-26:链即开关 —— 显式列入 imageProviderPriority/videoProviderPriority = 启用,
+    // 不配置 = 不启用;原 S000 硬门(flow.enabled)删除(与链语义重复的正交维度)。
     return true;
-  }
-  /**
-   * S000 硬门(2026-08-24 吸收自 flow-mcp;config 顶级 flow.enabled=false 触发):
-   * 优先级链剔除 + 显式点名直抛(registry/handler 消费;provider 只陈述禁用事实)。
-   * 文案自带修复动作。缺省 / 类型错 = true(不禁用,配置错误不 fatal)。
-   */
-  disabledReason(): string | undefined {
-    if (this.flowCfg?.enabled !== false) return undefined;
-    return `[flow] S000 Flow 渠道已在配置中禁用;编辑 ${this.cfgFile ?? "~/.media-gen-mcp/config.json"} 将 flow.enabled 改回 true 并重启会话`;
   }
   listModels(): string[] { return [...this.listImageModels(), ...this.listVideoModels()]; }
   listImageModels(): string[] { return [...FLOW_IMAGE_MODELS]; }

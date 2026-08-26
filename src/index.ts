@@ -122,10 +122,10 @@ function buildTools() {
   // (例:defaultVideoProvider=zhipu 时展示 150/300,而非 agnes 的 81/121/...;handler 仍按实际 provider 复算 vc)。
   // C 任务:链头 = videoProviderPriority[0](若配置且具备 video 能力)→ 否则 defaultVideoProvider。
   // 与 scripts/check-schema.mjs 用同一 getProviderPriority 真源(能力缺失时双方各自回落,保一致)。
-  // S000 硬门:链头取 getProviderPriority 过滤后(渠道禁用/未注册名剔除)的首个成员 ——
-  // 禁用渠道不再作为 schema 默认展示(与运行时 defaultHead 同源;运行时解析仍以 resolveProvider 为准)。
+  // S000 门已删(2026-08-26,链即开关):链头 = 首个注册名(未注册名已剔除)——
+  // 链中不配置某渠道即不会被展示为默认(与运行时 defaultHead 同源;运行时解析仍以 resolveProvider 为准)。
   const videoHead = (() => {
-    // F5(B3):过滤后链为空(如 prio=["flow"] 且被禁)→ 兜底 legacy 默认(与 image 侧同款,消不对称)
+    // F5(B3):链为空/链头异常 → 兜底 legacy 默认(与 image 侧同款,消不对称)
     try { return asVideoProvider(getProvider(getProviderPriority("video")?.[0] ?? config.defaultVideoProvider)).name; }
     catch { return config.defaultVideoProvider; }
   })();
@@ -157,7 +157,7 @@ function buildTools() {
           download: { type: "boolean", default: true },
           name: { type: "string", description: "Output filename (without extension); multi-image adds -1/-2/… suffix. Defaults to img_<uuid>." },
           outDir: { type: "string", description: "产物落盘目录,省略用默认(会话目录/output)。" },
-          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); naming an opt-in provider (flow) pins it — errors surface instead of silently substituting, while free providers (agnes/zhipu) named explicitly still fall through with a warning. A provider disabled in config (e.g. flow.enabled=false) is removed from the chain and refuses explicit calls with a structured S000 error." },
+          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); naming an opt-in provider (flow) pins it — errors surface instead of silently substituting, while free providers (agnes/zhipu) named explicitly still fall through with a warning. Not listing a provider in the chain = it is not auto-routed; explicit provider calls are always allowed (environment problems surface as structured S1xx preflight errors)." },
         },
         required: ["prompt"],
       },
@@ -976,9 +976,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           return err("get_video requires `videoId` (preferred) or `taskId`");
         }
         const p = asVideoProvider(getProvider(optString(a.provider) ?? config.defaultVideoProvider));
-        // 渠道硬禁用门(S000):显式 provider=flow(或 config 默认指向 flow)时结构化报错,不静默换渠道
-        const pollDisabled = p.disabledReason?.();
-        if (pollDisabled) return err(pollDisabled);
         const r = await p.getVideo({ videoId: optString(a.videoId), taskId: optString(a.taskId) });
         let localPath: string | null = null;
         if (r.status === "completed" && r.url && a.download !== false) {
@@ -1013,9 +1010,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (!(p instanceof FlowProvider)) {
           return err("flow_status 仅支持 flow provider(registry 注册异常)");
         }
-        // S000 硬门(注册+门禁:工具仍在列表,禁用态自解释;吸收自 flow-mcp)
-        const flowDisabled = p.disabledReason?.();
-        if (flowDisabled) return err(flowDisabled);
         const mediaId = optString(a.mediaId);
         const deleteMediaIds = toStringArray(a.deleteMediaIds);
         const shareMediaIds = toStringArray(a.shareMediaIds);
@@ -1124,9 +1118,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (!(p instanceof FlowProvider)) {
           return err("flow_entity 仅支持 flow provider(registry 注册异常)");
         }
-        // S000 硬门(注册+门禁;与 flow_status 同语义)
-        const flowDisabled = p.disabledReason?.();
-        if (flowDisabled) return err(flowDisabled);
         const action = optString(a.action) ?? "create";
         if (action === "list") {
           const entities = p.listEntities();

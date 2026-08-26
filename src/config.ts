@@ -62,25 +62,22 @@ export function parseProviderPriority(fileVal: unknown, envName: string): string
 }
 
 /**
- * 渠道运行时开关段(顶级 "flow";2026-08-24 合包时吸收自 flow-mcp 同键同语义 ——
- * 同一份 config.json 在单包/独立包两种形态下行为一致,「一份配置统一控制渠道」的物理载体)。
+ * 渠道运行时段(顶级 "flow";2026-08-26 简化:删除 enabled/S000 硬门 ——
+ * 渠道启用与否的唯一控制源 = 优先级链,链中不配置 flow 即不启用;显式 provider=flow
+ * 点名永远合法,环境不可用由前置检测 S100-S102 结构化报告。视频费用安全由计费确认门兜底)。
  * 纯解析函数导出供单测白盒(与 parseProviderPriority 同范式:解析与 I/O 分离)。
  *
- *   - enabled:false = S000 硬门(仅显式 false 才禁用;缺省/类型错 = true,配置错误不 fatal):
- *     ① 优先级链剔除(imageProviderPriority/videoProviderPriority 中的 flow 失效);
- *     ② 显式 provider=flow / flow 模型 auto-route / flow_status / flow_entity → 结构化禁用错。
  *   - toolDeadlineMs:flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,
  *     防 stall 红线 ≤120s;默认 110s;超时转结构化 [flow] S410(底层操作不取消,诚实降级)。
  *   - videoConfirm:计费确认门(两段式确认令牌)。默认 true —— 防误耗红线下,误门(多一次
  *     往返拿确认令牌)的代价远小于漏门(真实扣积分);仅显式 false 关闭。
  *   - confirmTtlMs:确认令牌 TTL,默认 10 分钟(两段式往返留足阅读时间;过期重取,防陈旧确认)。
  */
-export function parseFlowSection(raw: unknown): { enabled: boolean; toolDeadlineMs: number; videoConfirm: boolean; confirmTtlMs: number } {
+export function parseFlowSection(raw: unknown): { toolDeadlineMs: number; videoConfirm: boolean; confirmTtlMs: number } {
   const s = (raw ?? {}) as Record<string, any>;
   const deadline = num("FLOW_TOOL_DEADLINE_MS", 110_000, s.toolDeadlineMs);
   const ttl = num("FLOW_CONFIRM_TTL_MS", 600_000, s.confirmTtlMs);
   return {
-    enabled: s.enabled !== false, // 仅显式 false 才禁用
     toolDeadlineMs: Number.isFinite(deadline) && deadline > 0 ? deadline : 110_000,
     videoConfirm: s.videoConfirm !== false, // 计费确认门默认 on(仅显式 false 才关)
     confirmTtlMs: Number.isFinite(ttl) && ttl > 0 ? ttl : 600_000,
@@ -151,8 +148,8 @@ export const config = {
   // 未用类成员,曾经的 imageProviderChainHead/videoProviderChainHead getter 会以死代码形态存活)。
 
   /**
-   * 顶级 "flow" 渠道运行时段(enabled 硬门 + toolDeadlineMs 防 stall)。
-   * 对象整体注入 FlowProvider(registry 传引用,测试可 live 翻转 enabled)。
+   * 顶级 "flow" 渠道运行时段(toolDeadlineMs 防 stall + 计费确认门开关/TTL)。
+   * 对象整体注入 FlowProvider(registry 传引用,测试可 live 修改)。
    */
   flow: parseFlowSection(userCfg.flow),
 
