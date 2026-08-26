@@ -8,4 +8,5 @@
   - `doc/模型调研/` + `媒体生成模型调研_总览.md` → 萃取为 `doc/Provider扩张路线图.md`(全渠道图景 + zhipu 价格速查表)。
   - `doc_v12`(快速生成-快速微调范式/收口决策)、`doc_v10`(识别开源方案 license 三梯队)、`doc_v4+v8`(离线/本地 provider 路线)、`doc_v13`(PPT 三级裁决 Path B) → 萃取为 `doc/架构要求清单.md` 的 ADR 与原则条目。
   - `doc_v11` 的 d2 探针(注释陷阱/整数属性/reserved-word) → 作为 `doc/架构要求清单.md` D2 语法规则 RULE1-3 的实证来源标注。
-- **原目录处置**:萃取与迁移完成后,旧目录下的 doc 系已物理删除(本快照即删除记录的回溯载体);`/Users/wangdong/Documents/Project/Agnes AI接入/` 整目录是否移除留用户确认(`.devteam/` 未动)。
+- **原目录处置(已执行)**:2026-08-26 萃取与迁移完成后,旧目录下全部 doc 系(`doc/ + doc_v2/ v3/ v4/ v5/ v8/ v10/ v11/ v12/ v13/ v14/` 共 11 个目录、128 个文件,清单见 `DELETED-MANIFEST.txt`)已物理删除;本快照(commit 67cb3e0)即其唯一存档与回溯载体。`/Users/wangdong/Documents/Project/Agnes AI接入/` 现仅剩 `.DS_Store` 与 `.devteam/`(agent 团队元数据,未动)——**整目录是否移除留用户确认**。
+- **相关提交**:快照 67cb3e0 → 迁移与更新 9e647b1 → 本删除记录 commit。
