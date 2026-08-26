@@ -516,3 +516,17 @@ CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome
 
 - **x1-x4 等价表述**(index.ts create_video 描述):UI 的 x1-x4 = N 次独立单元素 POST(§14.2 构造器实证),provider 单 POST 同构 —— 保留等价声明;**"each gets its own seed" 修正**为"seed 每次调用独立随机,**除非显式传 seed**(显式 seed 在 N 次调用间复用)"(flow.ts `req.seed ?? randomInt` 的诚实描述,D-5)。
 - **t2v 透明标注**(D-1):工具描述与 S303 hint 补"t2v wire 仅 404 形状探针验证,provider 路径从未 live 提交"(与 edit 的 EDIT_WIRE_WARNING 同款措辞;最终盘点 = 5 模式 live:i2v/首尾帧/r2v/extension/upsampler + 2 模式 shape-verified:t2v/edit)。
+
+### 14.10 lite 档全矩阵 live 实证(2026-08-27 用户授权真实测试;积分 1050→888,-162)
+
+18 条提交 **18/18 SUCCESSFUL、12/12 组合预估=实扣零误差、18/18 下载字节完整**(产物 /tmp/live-video-test/):
+
+| 模式×key | 时长(ffprobe) | 比例×数量 | 价/条 |
+|---|---|---|---|
+| 素材 abra_r2v_4s | **精确 4s** ✓ | {1280x720, 720x1280}×{x1,x2} | 7 |
+| 素材 veo_3_1_r2v_lite | 8s(默认) | 同上 | 10 |
+| 帧 veo_3_1_interpolation_lite | 8s(默认) | 同上 | 10 |
+
+- **x2 = 两条独立提交**(各自确认令牌/扣分/seed)——与页面 xN=N 次独立 POST 同构,等价性由真实提交坐实(§14.2 升级为 live 证据)。
+- **S303 tier 门 live 实证**:帧 `veo_3_1_i2v_s_lite_4s_fl`(本档 UNAVAILABLE)确认门即拦,零积分消耗,错误带 per-tier 矩阵(ADVANCED=5)。
+- **行为发现(待改进,低优先)**:veo 系 + `durationSeconds:4`(本档无 4s key)→ 吸附到默认 8s key **进入确认流程且未见告警**;应补"时长吸附/回落"告警(audioMediaIds 之外的丢弃参数均有告警纪律,此处遗漏)。
