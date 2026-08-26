@@ -11,3 +11,5 @@ _*.mjs
 _*.cjs
 # tesseract.js 运行时下载的语言数据(smoke 测试产生,勿入库)
 *.traineddata
+# macOS Finder 元数据
+.DS_Store
