@@ -620,7 +620,7 @@ A:这类模糊请求的路由已经做过校准 —— 「做卡片 / 海报 / O
 
 ---
 
-> 技术细节:服务方与引擎都可插拔,结构化工具同输入同输出可入 git,失败自动切换服务方。贡献者详见 `CONTRIBUTING.md`,完整文档见 `docs/` 目录。
+> 技术细节:服务方与引擎都可插拔,结构化工具同输入同输出可入 git,失败自动切换服务方。完整文档见 `doc/` 目录。
 
 <p align="center">
   <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>

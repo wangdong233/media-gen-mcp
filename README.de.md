@@ -621,7 +621,7 @@ Die vollständige Abhängigkeitskette der Erkennungsseite ist **Apache 2.0** (te
 
 ---
 
-> Technische Hinweise: Provider und Engines sind beide steckbar; strukturierte Werkzeuge liefern für dieselbe Eingabe dieselbe Ausgabe und können in git eingecheckt werden; bei Fehlern wird der Provider automatisch gewechselt. Siehe `CONTRIBUTING.md` für Mitwirkende und das Verzeichnis `docs/` für die vollständige Dokumentation.
+> Technische Hinweise: Provider und Engines sind beide steckbar; strukturierte Werkzeuge liefern für dieselbe Eingabe dieselbe Ausgabe und können in git eingecheckt werden; bei Fehlern wird der Provider automatisch gewechselt. Das Verzeichnis `doc/` enthält die vollständige Dokumentation.
 
 <p align="center">
   <sub>Gebaut für alle, die lieber <strong>sagen</strong> als <strong>skripten</strong>.</sub><br>

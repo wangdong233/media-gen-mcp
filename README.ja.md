@@ -622,7 +622,7 @@ WeChat | Alipay
 
 ---
 
-> 技術詳細:プロバイダとエンジンはすべて交換可能、構造化ツールは同入力・同出力で Git 管理可能、失敗時にプロバイダを自動切り替え。貢献者は `CONTRIBUTING.md`、完全なドキュメントは `docs/` ディレクトリを参照してください。
+> 技術詳細:プロバイダとエンジンはすべて交換可能、構造化ツールは同入力・同出力で Git 管理可能、失敗時にプロバイダを自動切り替え。完全なドキュメントは `doc/` ディレクトリを参照してください。
 
 <p align="center">
   <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>

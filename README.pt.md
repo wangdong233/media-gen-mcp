@@ -621,7 +621,7 @@ O lado do reconhecimento apoia-se numa stack inteira **Apache 2.0** (tesseract.j
 
 ---
 
-> Detalhes técnicos: provedores e motores são plugáveis, as ferramentas estruturadas produzem a mesma saída para a mesma entrada (podem ir para o git), e em caso de falha o provedor é trocado automaticamente. Contribuidores: ver `CONTRIBUTING.md`; documentação completa: diretório `docs/`.
+> Detalhes técnicos: provedores e motores são plugáveis, as ferramentas estruturadas produzem a mesma saída para a mesma entrada (podem ir para o git), e em caso de falha o provedor é trocado automaticamente. Documentação completa: diretório `doc/`.
 
 <p align="center">
   <sub>Feito para todos que preferem <strong>dizer</strong> a <strong>programar</strong>.</sub><br>

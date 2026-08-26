@@ -621,7 +621,7 @@ The recognition side's full dependency stack is **Apache 2.0** (tesseract.js + P
 
 ---
 
-> Technical notes: providers and engines are both pluggable; structured tools produce the same output for the same input and can be checked into git; failed providers auto-switch. See `CONTRIBUTING.md` for contributors, and the `docs/` directory for full documentation.
+> Technical notes: providers and engines are both pluggable; structured tools produce the same output for the same input and can be checked into git; failed providers auto-switch. See the `doc/` directory for full documentation.
 
 <p align="center">
   <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>

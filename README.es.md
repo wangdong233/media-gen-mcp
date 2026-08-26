@@ -622,7 +622,7 @@ El lado de reconocimiento es pila totalmente **Apache 2.0** (tesseract.js + Padd
 
 ---
 
-> Detalles técnicos: proveedores y motores son enchufables; las herramientas estructuradas producen la misma salida para la misma entrada (apto para git); conmutación automática de proveedor ante fallos. Contribuidores en `CONTRIBUTING.md`; documentación completa en el directorio `docs/`.
+> Detalles técnicos: proveedores y motores son enchufables; las herramientas estructuradas producen la misma salida para la misma entrada (apto para git); conmutación automática de proveedor ante fallos. Documentación completa en el directorio `doc/`.
 
 <p align="center">
   <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>

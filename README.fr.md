@@ -622,7 +622,7 @@ La pile de dépendances de reconnaissance est intégralement **Apache 2.0** (tes
 
 ---
 
-> Détails techniques : providers et moteurs sont tous plug-and-play, les outils structurels ont une sortie déterministe (même entrée = même sortie) et peuvent être versionnés dans git, bascule automatique de provider en cas d'échec. Contributeurs détaillés dans `CONTRIBUTING.md`, documentation complète dans le répertoire `docs/`.
+> Détails techniques : providers et moteurs sont tous plug-and-play, les outils structurels ont une sortie déterministe (même entrée = même sortie) et peuvent être versionnés dans git, bascule automatique de provider en cas d'échec. Documentation complète dans le répertoire `doc/`.
 
 <p align="center">
   <sub>Conçu pour tous ceux qui préfèrent <strong>le dire</strong> plutôt que <strong>le coder</strong>.</sub><br>
