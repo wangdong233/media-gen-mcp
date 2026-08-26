@@ -133,13 +133,13 @@
 ## 附：产物清单（绝对路径）
 
 **测试介质**：
-- `/Users/wangdong/Documents/Project/Agnes AI接入/media-gen-mcp/output/scenario-test-v0.12/sample.pdf`
-- `/Users/wangdong/Documents/Project/Agnes AI接入/media-gen-mcp/output/scenario-test-v0.12/sample-empty-layer.pdf`
-- `/Users/wangdong/Documents/Project/Agnes AI接入/media-gen-mcp/output/scenario-test-v0.12/chart-for-analyze.png`
-- `/Users/wangdong/Documents/Project/Agnes AI接入/media-gen-mcp/output/scenario-test-v0.12/s9_table_extract-table.md.md`
-- `/Users/wangdong/Documents/Project/Agnes AI接入/media-gen-mcp/output/scenario-test-v0.12/ai-smoke.png`
-- `/Users/wangdong/Documents/Project/Agnes AI接入/media-gen-mcp/output/scenario-test-v0.12/9_describe_image/vqa_answer.json`
-- `/Users/wangdong/Documents/Project/Agnes AI接入/media-gen-mcp/output/scenario-test-v0.12/9_describe_image/vqa_answer.txt`
+- `/Users/wangdong/Documents/Project/media-gen-mcp/output/scenario-test-v0.12/sample.pdf`
+- `/Users/wangdong/Documents/Project/media-gen-mcp/output/scenario-test-v0.12/sample-empty-layer.pdf`
+- `/Users/wangdong/Documents/Project/media-gen-mcp/output/scenario-test-v0.12/chart-for-analyze.png`
+- `/Users/wangdong/Documents/Project/media-gen-mcp/output/scenario-test-v0.12/s9_table_extract-table.md.md`
+- `/Users/wangdong/Documents/Project/media-gen-mcp/output/scenario-test-v0.12/ai-smoke.png`
+- `/Users/wangdong/Documents/Project/media-gen-mcp/output/scenario-test-v0.12/9_describe_image/vqa_answer.json`
+- `/Users/wangdong/Documents/Project/media-gen-mcp/output/scenario-test-v0.12/9_describe_image/vqa_answer.txt`
 
 **可复跑脚本**（`output/scenario-test-v0.12/_runs/`）：
 - `list-vision-capabilities.mjs`、`test-pdf.mjs`、`run-extract-table.mjs`、`scenario3-analyze-chart.mjs`、`scenario3-analyze-chart-result.json`、`run_scenario9_describe_image.mjs`、`agnes-smoke.mjs`

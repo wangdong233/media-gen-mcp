@@ -3,7 +3,7 @@
 > **用途**：media-gen-mcp 第二 Provider「zhipu」的开通与配置指南（README 补充）。
 > **核对基线**：2026-07，平台文本模型基线 GLM-5.2，API 版本 `/paas/v4`。
 > **数据来源**：智谱官方文档 docs.bigmodel.cn / 国际版 docs.z.ai（已逐项核对，3 处常见误区下方用 ⚠️ 标注）。
-> **配套调研**：更深入的模型/价格/开源对比见 [`doc/模型调研/智谱_(Zhipu___BigModel___Z.AI).md`](模型调研/智谱_(Zhipu___BigModel___Z.AI).md)。
+> **配套调研**：更深入的模型/价格/开源对比见 [`doc/Provider扩张路线图.md`](Provider扩张路线图.md) 的智谱(Zhipu)节。
 
 ---
 
@@ -217,7 +217,7 @@ media-gen-mcp 的 zhipu provider 已内置，只需在 config 里填三块：`ap
 ```
 
 > [!NOTE]
-> 国际版部分模型/价格与国内有差异（如 CogView-4 国际 $0.01/图、CogVideoX-3 国际 $0.20/视频）；免费模型 `cogview-3-flash` / `cogvideox-flash` 国际版同样免费。详见 `doc/模型调研/智谱_(Zhipu___BigModel___Z.AI).md` 价格速查表。
+> 国际版部分模型/价格与国内有差异（如 CogView-4 国际 $0.01/图、CogVideoX-3 国际 $0.20/视频）；免费模型 `cogview-3-flash` / `cogvideox-flash` 国际版同样免费。详见 [`doc/Provider扩张路线图.md`](Provider扩张路线图.md) 智谱节的「价格速查表」。
 
 ---
 

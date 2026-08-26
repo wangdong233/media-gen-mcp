@@ -412,3 +412,10 @@ POST /v1/flow/upsampleImage
 - `a1_0x4290` 数组抽取须 **string-aware 括号平衡**(朴素计数会被 CSS/正则字符串内的花括号破坏;正确切片 ~1.4MB,尾部 `return a1_0x4290();}`)。
 - 解码前必须先跑 **shuffle IIFE**(`(function(_0x1b8ff4,_0x104e7c){…rotate…})(a1_0x4290,0x767d6)`;校验和循环 shift/push 直至平衡)—— 不跑则全部索引错位(症状:解码值风马牛不相及)。
 - 关键索引:0x2425=aisandbox 根 URL / 0x1de3=cancelGeneration 端点 / 0x2828=`/tools/flow/shared/` / 0xad1=`image` / 0xb06=`video`(share URL 模板)/ 0x126a=CANCELED / 0x11ce=CANNOT_BE_CANCELED。
+
+## 12. 文档维护与归档(2026-08-26 补)
+
+- **活性契约**:本文档是 Flow wire 真相的唯一活性来源。新 wire 发现**追加新节**(§N+1),不追写进已定型的节;对既有结论的修正沿用先例格式「原结论 → 后被 §N.x 修正」(见 §10.4 action 误用归因的自我修正),已 live 验证的历史不删改。
+- **积分台账纪律(不变)**:每次 live 提交在对应节记录台账(如 §7 918→894、§10.6 911→901、§11 901→901);调研性探针默认零积分——优先 bundle Zod 明文 key 检索(§10.1,零请求),404 探针只作补充;严禁程序化 UI 机枪操作(§10.4 reCAPTCHA 打热 >15 分钟教训)。
+- **代码锚点**:provider 实现 `src/providers/flow.ts`(确认门 `beginSubmissionConfirm` §计费确认门;S000 硬门 `flow.enabled`);工具面 `generate_image`/`create_video`(`provider=flow`)+ `flow_status`(自省/下载/删除/分享/取消)+ `flow_entity`(角色实体,本地镜像读侧);测试 `dist-test/flow*.test.js` + `test/flow-*.integration.test.mjs`(confirmToken 单次消费 = faaeead)。
+- **历史归档**:pares0-14 各阶段实施/调研文档(含本项目 Flow 之前的全部实施方案)已于 2026-08-26 全量归档至仓库 `.doc-archive-snapshot/`(128 文件,PROVENANCE.md 记录萃取去向);渠道扩张全景与判据见 `doc/Provider扩张路线图.md`,渠道治理规则见 `doc/架构要求清单.md` §11 ADR-2。

@@ -1,9 +1,9 @@
 {
   "id": "root",
   "label": "media-gen-mcp 分层架构图",
-  "diagram": "direction: down\n\n用户层: {\n  label: \"用户接入层\"\n  style.fill: \"#F3E8FF\"\n  style.stroke-dash: 3\n  user: {\n    shape: person\n    label: \"Claude Code 用户\"\n  }\n  agent: {\n    shape: person\n    label: \"AI 助手\"\n  }\n  dev: {\n    shape: person\n    label: \"开发者(配置服务方)\"\n  }\n}\n\n能力层: {\n  label: \"业务能力层(三大功能域)\"\n  style.fill: \"#E0F2FE\"\n  style.stroke-dash: 3\n  生成: {\n    label: \"生成能力 ▾\\n写实图·视频·图标\"\n    link: \"drill:create\"\n  }\n  理解: {\n    label: \"理解能力 ▾\\nOCR·表格·图表·PDF\"\n    link: \"drill:understand\"\n  }\n  结构化: {\n    label: \"结构化能力 ▾\\n架构图·数据图·卡片·二维码\"\n    link: \"drill:structure\"\n  }\n}\n\n支撑层: {\n  label: \"技术支撑与交付保障层\"\n  style.fill: \"#F0FDF4\"\n  style.stroke-dash: 3\n  engines: \"本地引擎(D2·Vega·MathJax·Satori)\"\n  providers: \"外部服务(Agnes·智谱·tesseract·PaddleX·vLLM)\"\n  交付保障: {\n    label: \"交付保障 ▾\\n守门·错误契约·Golden\"\n    link: \"drill:deliver\"\n  }\n}\n\n用户层 -> 能力层: \"一句话需求\"\n能力层 -> 支撑层: \"调引擎/服务\"\n支撑层 -> 能力层: \"返回产物\"\n能力层 -> 用户层: \"图/视频/数据/卡片 落盘交付\"\n",
+  "diagram": "direction: down\n\n用户层: {\n  label: \"用户接入层\"\n  style.fill: \"#F3E8FF\"\n  style.stroke-dash: 3\n  user: {\n    shape: person\n    label: \"Claude Code 用户\"\n  }\n  agent: {\n    shape: person\n    label: \"AI 助手\"\n  }\n  dev: {\n    shape: person\n    label: \"开发者(配置服务方)\"\n  }\n}\n\n能力层: {\n  label: \"业务能力层(三大功能域)\"\n  style.fill: \"#E0F2FE\"\n  style.stroke-dash: 3\n  生成: {\n    label: \"生成能力 ▾\\n写实图·视频·图标\"\n    link: \"drill:create\"\n  }\n  理解: {\n    label: \"理解能力 ▾\\nOCR·表格·图表·PDF\"\n    link: \"drill:understand\"\n  }\n  结构化: {\n    label: \"结构化能力 ▾\\n架构图·数据图·卡片·二维码\"\n    link: \"drill:structure\"\n  }\n}\n\n支撑层: {\n  label: \"技术支撑与交付保障层\"\n  style.fill: \"#F0FDF4\"\n  style.stroke-dash: 3\n  engines: \"本地引擎(D2·Vega·MathJax·Satori)\"\n  providers: \"外部服务(Agnes·智谱·Flow·tesseract·PaddleX·vLLM)\"\n  交付保障: {\n    label: \"交付保障 ▾\\n守门·错误契约·确认门·Golden\"\n    link: \"drill:deliver\"\n  }\n}\n\n用户层 -> 能力层: \"一句话需求\"\n能力层 -> 支撑层: \"调引擎/服务\"\n支撑层 -> 能力层: \"返回产物\"\n能力层 -> 用户层: \"图/视频/数据/卡片 落盘交付\"\n",
   "diagramType": "architecture",
-  "notes": "C4 System Context(业务顶层,调研结论 1,主源 3-0 票高置信)——给所有人含非技术干系人看:中心是系统黑盒,左侧是人(Claude Code 用户经 AI 助手调用 / 开发者配置服务方),右侧是系统依赖的外部服务(AI 生成 · 视觉理解 · 图标 · 特效视频)。箭头是端到端价值流(调研结论 5 / arc42 §3):用户一句话进来,图/视频/数据/卡片落盘出去。刻意不出现 MCP/stdio/TypeScript/src 模块名/provider/engine——这些是 drill 三层后才看到的技术真相(01 §2.1 抽象层面)。三根业务能力柱(生成/理解/结构化 = WHAT 业务能做,调研结论 3)+ 一根交付保障(横切质量,非能力柱)可 drill。价值主张(README):把『装 N 个工具记 N 套参数』压缩成『装一次,一句话』。",
+  "notes": "功能分层 L0(2026-08-26 随 24 工具/Flow 渠道批重生成):上「用户接入层」(谁在用)/中「业务能力层」(WHAT——生成/理解/结构化三大功能域)/下「技术支撑与交付保障层」(HOW——本地引擎 + 外部服务 + 横切质量)。价值流纵向穿层:用户一句话需求进来,图/视频/数据/卡片落盘出去。外部服务现为三家生成渠道(Agnes/智谱/Flow)+ 四档识别(tesseract/GLM/PaddleX/vLLM);Flow 走本地 Chrome CDP 且受 S000 硬门+计费确认门治理。刻意不出现 MCP/stdio/TypeScript/src 模块名——这些是 drill 三层后才看到的技术真相(01 §2.1 抽象层面)。",
   "children": [
     {
       "id": "create",
@@ -15,9 +15,9 @@
         {
           "id": "create-tech",
           "label": "外部 AI 生成服务接入(生成背后)",
-          "diagram": "agnes: \"Agnes(默认,免费层永久开放)\"\nzhipu: \"智谱 cogview/cogvideox(中文原生 fallback)\"\nresolve: {\n  label: \"服务方调度与恢复 ▾\"\n  link: \"drill:provider-fallback\"\n}\nagnes -> resolve: \"implements\"\nzhipu -> resolve: \"implements\"\n",
+          "diagram": "agnes: \"Agnes(默认,免费层永久开放)\"\nzhipu: \"智谱 cogview/cogvideox(中文原生 fallback)\"\nflow: {\n  label: \"Google Flow(本地 Chrome CDP) ▾\"\n  link: \"drill:flow-governance\"\n}\nresolve: {\n  label: \"服务方调度与恢复 ▾\"\n  link: \"drill:provider-fallback\"\n}\nagnes -> resolve: \"implements\"\nzhipu -> resolve: \"implements\"\nflow -> resolve: \"implements\"\n",
           "diagramType": "architecture",
-          "notes": "技术实现(从旧 manifest 复用):两家免费生成服务方 Agnes(默认)+ 智谱 cogview(中文 fallback)。任一挂掉自动切换,用户无感。接口窄(MediaProvider 能力袋)、实现厚(私有协议/重试/熔断),典型深模块(01 §2.4)。",
+          "notes": "技术实现:三家生成渠道 Agnes(默认免费)+ 智谱 cogview(中文 fallback)+ Google Flow(本地 Chrome CDP 页面上下文,Veo/Abra 高质量视频,无 API key)。任一挂掉自动切换,用户无感;Flow 为 opt-in 点名钉定(不静默换渠道)。接口窄(MediaProvider 能力袋)、实现厚(私有协议/重试/熔断),典型深模块(01 §2.4)。",
           "children": [
             {
               "id": "provider-fallback",
@@ -25,6 +25,13 @@
               "diagram": "resolve: \"resolveProvider(模型→服务方自动路由)\"\nretry: \"withRetry(5xx 指数退避)\"\nfallback: \"getFallbackProvider 三过滤链\"\ntier: \"tier 降序排序键\"\nhealth: \"health 熔断(60 秒软冷却)\"\nresolve -> retry: \"同服务方重试\"\nretry -> fallback: \"仍失败则换服务方\"\nfallback -> tier\nfallback -> health\n",
               "diagramType": "flowchart",
               "notes": "深模块内部(三层恢复):同服务方 withRetry(5xx 指数退避)→ 换服务方(排除当前→health→capableOf→tier 降序)→ 60s 软熔断。复杂度全藏在小接口背后(01 §2.4 接口小实现厚)。视频轮询取片时钉定不切换(防拿到错的结果)。"
+            },
+            {
+              "id": "flow-governance",
+              "label": "Flow 渠道治理(S000 硬门 + 计费确认门)",
+              "diagram": "chain: \"优先级硬链(点名>模态链>全局;点名 flow 钉定不静默换)\"\ns000: \"S000 硬禁用门(flow.enabled=false → 剔除出链+结构化报错)\"\nconfirm: \"计费确认门(预估>0 积分 → confirmToken 二段式,单次消费)\"\nzero: \"图/上采样/实体 0 积分;视频 7-100 分/条\"\nchain -> s000\ns000 -> confirm: \"放行前\"\nconfirm -> zero: \"红线:绝不自动路由计费路径\"\n",
+              "diagramType": "flowchart",
+              "notes": "Flow 渠道治理三件硬件(2026-08-24/26):①渠道优先级硬链与 S000 硬禁用门(仅显式 enabled=false,配置错误不 fatal);②计费确认门——无 confirmToken 返回挑战(needConfirm/estimatedCost/TTL)绝不提交,令牌与 key+预估+prompt+输入引用绑定且单次消费;③积分红线——图/上采样/实体 0 积分,视频 7-100 积分/条必须显式确认。配套 flow_status(自省/下载/删除/分享/取消)与 flow_entity(角色实体,本地镜像读侧)。"
             }
           ]
         }
