@@ -1,0 +1,562 @@
+[
+  {
+    "kw": "opacity",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; opacity: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:25:25\",\"errmsg\":\"index:1:19: opacity must be style.opacity\"}]"
+  },
+  {
+    "kw": "opacity",
+    "scenario": "B_topLevelNode",
+    "code": "opacity: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:7:7\",\"errmsg\":\"index:1:1: opacity must be style.opacity\"}]"
+  },
+  {
+    "kw": "opacity",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { opacity: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:12:12\",\"errmsg\":\"index:1:6: opacity must be style.opacity\"}]"
+  },
+  {
+    "kw": "opacity",
+    "scenario": "D_asShapeName",
+    "code": "opacity: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:7:7\",\"errmsg\":\"index:1:1: opacity must be style.opacity\"}]"
+  },
+  {
+    "kw": "stroke",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; stroke: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:24:24\",\"errmsg\":\"index:1:19: stroke must be style.stroke\"}]"
+  },
+  {
+    "kw": "stroke",
+    "scenario": "B_topLevelNode",
+    "code": "stroke: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: stroke must be style.stroke\"}]"
+  },
+  {
+    "kw": "stroke",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { stroke: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:11:11\",\"errmsg\":\"index:1:6: stroke must be style.stroke\"}]"
+  },
+  {
+    "kw": "stroke",
+    "scenario": "D_asShapeName",
+    "code": "stroke: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: stroke must be style.stroke\"}]"
+  },
+  {
+    "kw": "fill",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; fill: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:22:22\",\"errmsg\":\"index:1:19: fill must be style.fill\"}]"
+  },
+  {
+    "kw": "fill",
+    "scenario": "B_topLevelNode",
+    "code": "fill: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:4:4\",\"errmsg\":\"index:1:1: fill must be style.fill\"}]"
+  },
+  {
+    "kw": "fill",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { fill: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:9:9\",\"errmsg\":\"index:1:6: fill must be style.fill\"}]"
+  },
+  {
+    "kw": "fill",
+    "scenario": "D_asShapeName",
+    "code": "fill: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:4:4\",\"errmsg\":\"index:1:1: fill must be style.fill\"}]"
+  },
+  {
+    "kw": "fill-pattern",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; fill-pattern: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:30:30\",\"errmsg\":\"index:1:19: fill-pattern must be style.fill-pattern\"}]"
+  },
+  {
+    "kw": "fill-pattern",
+    "scenario": "B_topLevelNode",
+    "code": "fill-pattern: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:12:12\",\"errmsg\":\"index:1:1: fill-pattern must be style.fill-pattern\"}]"
+  },
+  {
+    "kw": "fill-pattern",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { fill-pattern: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:17:17\",\"errmsg\":\"index:1:6: fill-pattern must be style.fill-pattern\"}]"
+  },
+  {
+    "kw": "fill-pattern",
+    "scenario": "D_asShapeName",
+    "code": "fill-pattern: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:12:12\",\"errmsg\":\"index:1:1: fill-pattern must be style.fill-pattern\"}]"
+  },
+  {
+    "kw": "stroke-width",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; stroke-width: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:30:30\",\"errmsg\":\"index:1:19: stroke-width must be style.stroke-width\"}]"
+  },
+  {
+    "kw": "stroke-width",
+    "scenario": "B_topLevelNode",
+    "code": "stroke-width: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:12:12\",\"errmsg\":\"index:1:1: stroke-width must be style.stroke-width\"}]"
+  },
+  {
+    "kw": "stroke-width",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { stroke-width: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:17:17\",\"errmsg\":\"index:1:6: stroke-width must be style.stroke-width\"}]"
+  },
+  {
+    "kw": "stroke-width",
+    "scenario": "D_asShapeName",
+    "code": "stroke-width: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:12:12\",\"errmsg\":\"index:1:1: stroke-width must be style.stroke-width\"}]"
+  },
+  {
+    "kw": "stroke-dash",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; stroke-dash: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:29:29\",\"errmsg\":\"index:1:19: stroke-dash must be style.stroke-dash\"}]"
+  },
+  {
+    "kw": "stroke-dash",
+    "scenario": "B_topLevelNode",
+    "code": "stroke-dash: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:11:11\",\"errmsg\":\"index:1:1: stroke-dash must be style.stroke-dash\"}]"
+  },
+  {
+    "kw": "stroke-dash",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { stroke-dash: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:16:16\",\"errmsg\":\"index:1:6: stroke-dash must be style.stroke-dash\"}]"
+  },
+  {
+    "kw": "stroke-dash",
+    "scenario": "D_asShapeName",
+    "code": "stroke-dash: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:11:11\",\"errmsg\":\"index:1:1: stroke-dash must be style.stroke-dash\"}]"
+  },
+  {
+    "kw": "border-radius",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; border-radius: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:31:31\",\"errmsg\":\"index:1:19: border-radius must be style.border-radius\"}]"
+  },
+  {
+    "kw": "border-radius",
+    "scenario": "B_topLevelNode",
+    "code": "border-radius: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:13:13\",\"errmsg\":\"index:1:1: border-radius must be style.border-radius\"}]"
+  },
+  {
+    "kw": "border-radius",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { border-radius: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:18:18\",\"errmsg\":\"index:1:6: border-radius must be style.border-radius\"}]"
+  },
+  {
+    "kw": "border-radius",
+    "scenario": "D_asShapeName",
+    "code": "border-radius: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:13:13\",\"errmsg\":\"index:1:1: border-radius must be style.border-radius\"}]"
+  },
+  {
+    "kw": "shadow",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; shadow: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:24:24\",\"errmsg\":\"index:1:19: shadow must be style.shadow\"}]"
+  },
+  {
+    "kw": "shadow",
+    "scenario": "B_topLevelNode",
+    "code": "shadow: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: shadow must be style.shadow\"}]"
+  },
+  {
+    "kw": "shadow",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { shadow: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:11:11\",\"errmsg\":\"index:1:6: shadow must be style.shadow\"}]"
+  },
+  {
+    "kw": "shadow",
+    "scenario": "D_asShapeName",
+    "code": "shadow: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: shadow must be style.shadow\"}]"
+  },
+  {
+    "kw": "3d",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; 3d: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:20:20\",\"errmsg\":\"index:1:19: 3d must be style.3d\"}]"
+  },
+  {
+    "kw": "3d",
+    "scenario": "B_topLevelNode",
+    "code": "3d: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:2:2\",\"errmsg\":\"index:1:1: 3d must be style.3d\"}]"
+  },
+  {
+    "kw": "3d",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { 3d: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:7:7\",\"errmsg\":\"index:1:6: 3d must be style.3d\"}]"
+  },
+  {
+    "kw": "3d",
+    "scenario": "D_asShapeName",
+    "code": "3d: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:2:2\",\"errmsg\":\"index:1:1: 3d must be style.3d\"}]"
+  },
+  {
+    "kw": "multiple",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; multiple: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:26:26\",\"errmsg\":\"index:1:19: multiple must be style.multiple\"}]"
+  },
+  {
+    "kw": "multiple",
+    "scenario": "B_topLevelNode",
+    "code": "multiple: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:8:8\",\"errmsg\":\"index:1:1: multiple must be style.multiple\"}]"
+  },
+  {
+    "kw": "multiple",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { multiple: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:13:13\",\"errmsg\":\"index:1:6: multiple must be style.multiple\"}]"
+  },
+  {
+    "kw": "multiple",
+    "scenario": "D_asShapeName",
+    "code": "multiple: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:8:8\",\"errmsg\":\"index:1:1: multiple must be style.multiple\"}]"
+  },
+  {
+    "kw": "font",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; font: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:22:22\",\"errmsg\":\"index:1:19: font must be style.font\"}]"
+  },
+  {
+    "kw": "font",
+    "scenario": "B_topLevelNode",
+    "code": "font: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:4:4\",\"errmsg\":\"index:1:1: font must be style.font\"}]"
+  },
+  {
+    "kw": "font",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { font: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:9:9\",\"errmsg\":\"index:1:6: font must be style.font\"}]"
+  },
+  {
+    "kw": "font",
+    "scenario": "D_asShapeName",
+    "code": "font: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:4:4\",\"errmsg\":\"index:1:1: font must be style.font\"}]"
+  },
+  {
+    "kw": "font-size",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; font-size: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:27:27\",\"errmsg\":\"index:1:19: font-size must be style.font-size\"}]"
+  },
+  {
+    "kw": "font-size",
+    "scenario": "B_topLevelNode",
+    "code": "font-size: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:9:9\",\"errmsg\":\"index:1:1: font-size must be style.font-size\"}]"
+  },
+  {
+    "kw": "font-size",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { font-size: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:14:14\",\"errmsg\":\"index:1:6: font-size must be style.font-size\"}]"
+  },
+  {
+    "kw": "font-size",
+    "scenario": "D_asShapeName",
+    "code": "font-size: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:9:9\",\"errmsg\":\"index:1:1: font-size must be style.font-size\"}]"
+  },
+  {
+    "kw": "font-color",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; font-color: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:28:28\",\"errmsg\":\"index:1:19: font-color must be style.font-color\"}]"
+  },
+  {
+    "kw": "font-color",
+    "scenario": "B_topLevelNode",
+    "code": "font-color: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:10:10\",\"errmsg\":\"index:1:1: font-color must be style.font-color\"}]"
+  },
+  {
+    "kw": "font-color",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { font-color: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:15:15\",\"errmsg\":\"index:1:6: font-color must be style.font-color\"}]"
+  },
+  {
+    "kw": "font-color",
+    "scenario": "D_asShapeName",
+    "code": "font-color: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:10:10\",\"errmsg\":\"index:1:1: font-color must be style.font-color\"}]"
+  },
+  {
+    "kw": "animated",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; animated: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:26:26\",\"errmsg\":\"index:1:19: animated must be style.animated\"}]"
+  },
+  {
+    "kw": "animated",
+    "scenario": "B_topLevelNode",
+    "code": "animated: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:8:8\",\"errmsg\":\"index:1:1: animated must be style.animated\"}]"
+  },
+  {
+    "kw": "animated",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { animated: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:13:13\",\"errmsg\":\"index:1:6: animated must be style.animated\"}]"
+  },
+  {
+    "kw": "animated",
+    "scenario": "D_asShapeName",
+    "code": "animated: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:8:8\",\"errmsg\":\"index:1:1: animated must be style.animated\"}]"
+  },
+  {
+    "kw": "bold",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; bold: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:22:22\",\"errmsg\":\"index:1:19: bold must be style.bold\"}]"
+  },
+  {
+    "kw": "bold",
+    "scenario": "B_topLevelNode",
+    "code": "bold: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:4:4\",\"errmsg\":\"index:1:1: bold must be style.bold\"}]"
+  },
+  {
+    "kw": "bold",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { bold: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:9:9\",\"errmsg\":\"index:1:6: bold must be style.bold\"}]"
+  },
+  {
+    "kw": "bold",
+    "scenario": "D_asShapeName",
+    "code": "bold: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:4:4\",\"errmsg\":\"index:1:1: bold must be style.bold\"}]"
+  },
+  {
+    "kw": "italic",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; italic: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:24:24\",\"errmsg\":\"index:1:19: italic must be style.italic\"}]"
+  },
+  {
+    "kw": "italic",
+    "scenario": "B_topLevelNode",
+    "code": "italic: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: italic must be style.italic\"}]"
+  },
+  {
+    "kw": "italic",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { italic: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:11:11\",\"errmsg\":\"index:1:6: italic must be style.italic\"}]"
+  },
+  {
+    "kw": "italic",
+    "scenario": "D_asShapeName",
+    "code": "italic: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: italic must be style.italic\"}]"
+  },
+  {
+    "kw": "underline",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; underline: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:27:27\",\"errmsg\":\"index:1:19: underline must be style.underline\"}]"
+  },
+  {
+    "kw": "underline",
+    "scenario": "B_topLevelNode",
+    "code": "underline: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:9:9\",\"errmsg\":\"index:1:1: underline must be style.underline\"}]"
+  },
+  {
+    "kw": "underline",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { underline: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:14:14\",\"errmsg\":\"index:1:6: underline must be style.underline\"}]"
+  },
+  {
+    "kw": "underline",
+    "scenario": "D_asShapeName",
+    "code": "underline: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:9:9\",\"errmsg\":\"index:1:1: underline must be style.underline\"}]"
+  },
+  {
+    "kw": "filled",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; filled: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:24:24\",\"errmsg\":\"index:1:19: filled must be style.filled\"}]"
+  },
+  {
+    "kw": "filled",
+    "scenario": "B_topLevelNode",
+    "code": "filled: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: filled must be style.filled\"}]"
+  },
+  {
+    "kw": "filled",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { filled: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:11:11\",\"errmsg\":\"index:1:6: filled must be style.filled\"}]"
+  },
+  {
+    "kw": "filled",
+    "scenario": "D_asShapeName",
+    "code": "filled: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:6:6\",\"errmsg\":\"index:1:1: filled must be style.filled\"}]"
+  },
+  {
+    "kw": "double-border",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; double-border: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:31:31\",\"errmsg\":\"index:1:19: double-border must be style.double-border\"}]"
+  },
+  {
+    "kw": "double-border",
+    "scenario": "B_topLevelNode",
+    "code": "double-border: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:13:13\",\"errmsg\":\"index:1:1: double-border must be style.double-border\"}]"
+  },
+  {
+    "kw": "double-border",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { double-border: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:18:18\",\"errmsg\":\"index:1:6: double-border must be style.double-border\"}]"
+  },
+  {
+    "kw": "double-border",
+    "scenario": "D_asShapeName",
+    "code": "double-border: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:13:13\",\"errmsg\":\"index:1:1: double-border must be style.double-border\"}]"
+  },
+  {
+    "kw": "text-transform",
+    "scenario": "A_sameLineSemicolon",
+    "code": "a: { shape: oval; text-transform: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:18:18-0:32:32\",\"errmsg\":\"index:1:19: text-transform must be style.text-transform\"}]"
+  },
+  {
+    "kw": "text-transform",
+    "scenario": "B_topLevelNode",
+    "code": "text-transform: hello",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:14:14\",\"errmsg\":\"index:1:1: text-transform must be style.text-transform\"}]"
+  },
+  {
+    "kw": "text-transform",
+    "scenario": "C_singleLineInBlock",
+    "code": "a: { text-transform: red }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:5:5-0:19:19\",\"errmsg\":\"index:1:6: text-transform must be style.text-transform\"}]"
+  },
+  {
+    "kw": "text-transform",
+    "scenario": "D_asShapeName",
+    "code": "text-transform: { label: x }",
+    "ok": false,
+    "errmsg": "[{\"range\":\"index,0:0:0-0:14:14\",\"errmsg\":\"index:1:1: text-transform must be style.text-transform\"}]"
+  }
+]

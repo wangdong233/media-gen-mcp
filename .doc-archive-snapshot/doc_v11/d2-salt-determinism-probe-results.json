@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-07-21",
+  "verdict": "C3 hypothesis (salt default = random) DISPROVEN; D2 default IS byte-identical",
+  "in_process_test_A": {
+    "trivial_3runs_byte_identical": true,
+    "medium_3runs_byte_identical": true,
+    "styled_3runs_byte_identical": true,
+    "note": "All 3 cases × 3 runs without explicit salt produced byte-identical SVG"
+  },
+  "test_B_id_pattern": {
+    "note": "IDs look random (e.g. mk-d2-2044524636-3488378134) but are STABLE hash-derived from DSL content, not random/timestamp",
+    "shared_constant_suffix": "3488378134 (appears in all 3 cases — board ID hash)",
+    "dsl_specific_prefix_varies": ["2044524636 (trivial)", "1959611918 (medium)", "1020813647 (styled)"]
+  },
+  "test_C_three_lever_combo": {
+    "config": "darkThemeID:1 + noXMLTag:true + salt:'media-gen-mcp-interactive'",
+    "out1_eq_out2": true,
+    "len": 22247
+  },
+  "test_D_salt_actually_affects_ids": {
+    "salt_A_id": "mk-d2-63113870-3488378134",
+    "salt_B_id": "mk-d2-46336251-3488378134",
+    "note": "Salt IS real (changes IDs when explicitly set), but optional"
+  },
+  "test_E_default_vs_explicit": {
+    "default_run1_eq_run2": true,
+    "default_eq_empty_salt": true,
+    "default_eq_fixed_salt": false,
+    "note": "Default behavior == salt:'' (empty string is the implicit default, NOT random)"
+  },
+  "cross_process_test": {
+    "proc1": {"LEN": 22247, "HASH_djb2": "5174486", "FIRST_ID": "mk-d2-382716993-3488378134"},
+    "proc2_independent": {"LEN": 22247, "HASH_djb2": "5174486", "FIRST_ID": "mk-d2-382716993-3488378134"},
+    "byte_identical_across_processes": true,
+    "note": "Two completely independent Node invocations produced identical length+hash+first_id+tail"
+  },
+  "implications": {
+    "S5_byte_identical_achievable": true,
+    "fixed_salt_strictly_necessary": false,
+    "dagre_tie_break_is_deterministic": true,
+    "no_timestamp_leakage": true,
+    "MEMORY_caliber_holds": "byte-level claim remains valid for D2 just as for render_video",
+    "downgrade_to_structure_level_likelihood": "very low"
+  },
+  "real_caveat_P0_5_partially_missed": {
+    "issue": "d2.ts resolveD2Icons fetches Iconify API + rasterizes via resvg. If DSL contains icon: attributes, PNG data URIs could vary across runs if Iconify returns different bytes or network fails.",
+    "already_in_MEMORY": "Yes — media-gen-mcp-project.md says '除 icon(Iconify API)与 card 默认字体外全本地确定性'",
+    "severity_for_P0_5": "Low — same caveat as generate_diagram; typical architecture diagrams may or may not use icons"
+  }
+}
