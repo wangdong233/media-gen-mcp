@@ -2074,6 +2074,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       rawStatus: mapped.rawStatus,
       model: gen.model,
       seed: gen.seed,
+      prompt: gen.prompt, // 输入↔产物映射闭环:落盘文件 ↔ mediaId ↔ seed ↔ model ↔ 原始 prompt
       dimensions: m?.dimensions?.length,
     };
     if (mapped.status === "completed") {

@@ -22,6 +22,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
@@ -499,6 +500,7 @@ describe("getVideo(零消耗轮询/取件)", () => {
     assert.match(r.url, /^data:video\/mp4;base64,/);
     assert.equal(r.raw.model, "abra_t2v_8s");
     assert.equal(r.raw.seed, 18075);
+    assert.equal(r.raw.prompt, "a serene mountain lake at dawn", "输入↔产物映射:prompt 回读(文件↔mediaId↔seed↔model↔prompt 闭环)");
   });
   test("SCHEDULED → in_progress(不下载)", async () => {
     const { p } = newProvider({ media: [{ name: "m-run", mediaMetadata: { mediaStatus: { mediaGenerationStatus: "MEDIA_GENERATION_STATUS_SCHEDULED" } } }] });
@@ -1417,5 +1419,27 @@ describe("referenceAudio(§14.6 假 key 404 探针定型;v1 收窄 = r2v + 预�
       () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: ["achernar", "charon"] }),
       (e: any) => e.code === "S301" && /该 key 1.*目录 inputSpec/.test(e.message),
     );
+  });
+});
+
+describe("downloadAsset 防覆盖避让(用户指定 name 与既有文件冲突时绝不静默覆盖)", () => {
+  test("同名已存在 → 自动 -2/-3 序号避让;不存在的名字直用", async () => {
+    const { downloadAsset } = require_(path.join(distDir, "download.js"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dl-avoid-"));
+    // 本地 http 服务器供下载(零外网)
+    const http = require_("node:http") as typeof import("node:http");
+    const srv = http.createServer((req, res) => { res.writeHead(200, { "content-type": "image/jpeg" }); res.end(Buffer.from("jpeg-bytes-x")); });
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+    const port = (srv.address() as any).port;
+    const url = `http://127.0.0.1:${port}/x.jpg`;
+    try {
+      const fp1 = await downloadAsset(url, "img", dir, "explorer");   // 新名 → explorer.jpg
+      const fp2 = await downloadAsset(url, "img", dir, "explorer");   // 撞名 → explorer-2.jpg
+      const fp3 = await downloadAsset(url, "img", dir, "explorer");   // 再撞 → explorer-3.jpg
+      assert.ok(fp1.endsWith("explorer.jpg") && fs.existsSync(fp1), "首名直用");
+      assert.ok(fp2.endsWith("explorer-2.jpg") && fs.existsSync(fp2), "第二次自动 -2");
+      assert.ok(fp3.endsWith("explorer-3.jpg") && fs.existsSync(fp3), "第三次自动 -3");
+      assert.equal(fs.readFileSync(fp1, "utf-8"), "jpeg-bytes-x", "原文件未被覆盖");
+    } finally { srv.close(); }
   });
 });

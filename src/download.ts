@@ -51,7 +51,10 @@ export async function downloadAsset(
     else if (ct.includes("svg")) ext = ".svg";
   }
   const base = sanitizeFileBase(nameHint) || `${kind}_${crypto.randomUUID().slice(0, 12)}`;
-  const fp = path.join(outDir, base + ext);
+  // 防覆盖:目标已存在时自动加 -2/-3… 序号避让,绝不静默覆盖既有文件(用户指定同名重下/取件是
+  // 高频操作;覆盖旧产物违背"看一眼再覆盖"纪律)。UUID 兜底名不会撞,仅在显式 name 时可能触发。
+  let fp = path.join(outDir, base + ext);
+  for (let i = 2; fsSync.existsSync(fp); i++) fp = path.join(outDir, `${base}-${i}${ext}`);
 
   const ws = fsSync.createWriteStream(fp);
   const reader = res.body.getReader();
