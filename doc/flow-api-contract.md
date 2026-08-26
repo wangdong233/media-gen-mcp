@@ -398,14 +398,14 @@ POST /v1/flow/upsampleImage
 
 ### 11.5 实体 PATCH ✓(live 200;0 点;无需 reCAPTCHA)
 
-- `PATCH /v1/flow/entities` Bearer body `{entity:{projectId, entityId, entityInfo:{entityType:"CHARACTER", displayName, characterInfo:{audioReferences:[{presetVoiceId}], imageReferences:[{workflowId}]}}}, updateMask:"entityInfo.displayName,entityInfo.characterInfo.audioReferences,…"}`。
+- `PATCH /v1/flow/entities` Bearer body `{entity:{projectId, entityId, entityInfo:{entityType:"CHARACTER", displayName, characterInfo:{audioReferences:[{presetVoiceId}], imageReferences:[{workflowId}]}}}, updateMask:"entityInfo.displayName,entityInfo.characterInfo.audioReferences,…"}`。〔imageReferences 路径后被 §13.1 修正:服务端 400 拒绝,仅 displayName/audioReferences 可 PATCH〕
 - **updateMask 语义(live)**:mask 外字段被服务端忽略(发 imageReferences 但 mask 不含 → 响应无该字段、不落库)—— 增量更新只 PATCH 变更字段。
 - entry schema(bundle Zod):audioReference = `{presetVoiceId?, workflowId?}`;imageReference = `{workflowId?}`。
 - provider 代码路径 live 全链:建(默认名)→ PATCH 改名+绑 charon → 再 PATCH 只改 displayName(mask 单字段)→ 镜像落盘,全程积分 901 恒定。
 
 ### 11.6 30 预设语音路径纠偏(§8.8 补充;live)
 
-- externalReferenceMedia 条目形状:`{mediaId:"achernar", mediaType:"AUDIO", workflowDisplayName:"Achernar", media:{name, audio:{generatedAudio:{name, description, isPresetAudioSample:true, audioSamplePath}}}}` —— **audio 嵌在 entry.media 下**(§8.8 未记录层级);30 条恒在(live 复核),已折入 flow_status `preset_voices` 段 + flow_entity(action=voices)。
+- externalReferenceMedia 条目形状:`{mediaId:"achernar", mediaType:"AUDIO", workflowDisplayName:"Achernar", media:{name, audio:{generatedAudio:{name, description, isPresetAudioSample:true, audioSamplePath}}}}` —— **audio 嵌在 entry.media 下**(§8.8 未记录层级);30 条恒在(live 复核),已折入 flow_status `preset_voices` 段 + flow_entity(action=voices)〔后者已随工具移除,§13.5;voices 现仅经 flow_status 快照〕。
 
 ### 11.7 字符串表解码方法沉淀(§10.1 的工程化补全)
 
@@ -417,5 +417,36 @@ POST /v1/flow/upsampleImage
 
 - **活性契约**:本文档是 Flow wire 真相的唯一活性来源。新 wire 发现**追加新节**(§N+1),不追写进已定型的节;对既有结论的修正沿用先例格式「原结论 → 后被 §N.x 修正」(见 §10.4 action 误用归因的自我修正),已 live 验证的历史不删改。
 - **积分台账纪律(不变)**:每次 live 提交在对应节记录台账(如 §7 918→894、§10.6 911→901、§11 901→901);调研性探针默认零积分——优先 bundle Zod 明文 key 检索(§10.1,零请求),404 探针只作补充;严禁程序化 UI 机枪操作(§10.4 reCAPTCHA 打热 >15 分钟教训)。
-- **代码锚点**:provider 实现 `src/providers/flow.ts`(确认门 `beginSubmissionConfirm` §计费确认门;渠道启停 = 优先级链,S000 硬门已于 2026-08-26 删除);工具面 `generate_image`/`create_video`(`provider=flow`)+ `flow_status`(自省/下载/删除/分享/取消)+ `flow_entity`(角色实体,本地镜像读侧);测试 `dist-test/flow*.test.js` + `test/flow-*.integration.test.mjs`(confirmToken 单次消费 = faaeead)。
+- **代码锚点**:provider 实现 `src/providers/flow.ts`(确认门 `beginSubmissionConfirm` §计费确认门;渠道启停 = 优先级链,S000 硬门已于 2026-08-26 删除);工具面 `generate_image`/`create_video`(`provider=flow`)+ `flow_status`(自省/下载/删除/分享/取消;flow_entity 已按用户裁决移除 2026-08-26,存档 §13);测试 `dist-test/flow*.test.js` + `test/flow-*.integration.test.mjs`(confirmToken 单次消费 = faaeead)。
 - **历史归档**:pares0-14 各阶段实施/调研文档(含本项目 Flow 之前的全部实施方案)已于 2026-08-26 全量归档至仓库 `.doc-archive-snapshot/`(128 文件,PROVENANCE.md 记录萃取去向);渠道扩张全景与判据见 `doc/Provider扩张路线图.md`,渠道治理规则见 `doc/架构要求清单.md` §11 ADR-2。
+
+## 13. 角色域存档:移除裁决 + 终局 wire 实证(2026-08-26;积分 1050→1050,全部 0 消耗)
+
+> **用户裁决(2026-08-26)**:生图只需"上传参考图 + 描述引用参考图"(= `generate_image(provider=flow)` 的 images 底图+参考图,§7.2 已 live);**Google Flow 的场景与角色域不用** → `flow_entity` 工具(第 24 工具)整体移除(24→23)。本节存档全部调研成果,凭此 30 分钟可恢复。
+
+### 13.1 imageReferences PATCH 被服务端拒绝(修正 §8/§11.5 的"可 PATCH"结论)
+
+- **原结论(§8.1/§11.5)**:`PATCH /v1/flow/entities` + updateMask `entityInfo.characterInfo.imageReferences` 可绑形象图("live 定型")。
+- **后被本节修正**:该路径**从未 live 验证过带 imageReferences 的提交**(E 轮实体仅 displayName+audio)。2026-08-26 六变体全量实测(displayName-only 200 ✓ / audio-only 200 ✓ 对照组):imageReferences 裸 workflowId、`workflows/` 前缀、单 mask、`entityInfo.characterInfo` 整 mask、query 参数 `?updateMask=`、与 audioReferences 联合 mask —— **全部 HTTP 400 INVALID_ARGUMENT**(无 fieldViolations 细节)。元素 Zod schema 已 bundle 确证就是 `{workflowId}` 单字段,非形状问题;服务端另有绑定路径未逆向(见 13.3)。
+
+### 13.2 生图引用角色(referenceEntities wire,bundle 原文确证)
+
+- **动态目录 requirements 矩阵**(flow_status image_families):三生图模型均支持 `IMAGE_REQUIREMENT_CHARACTERS` 组合(TEXT+REFS+CHARACTERS±BASE_IMAGE)。
+- **wire(bundle 客户端构造原文)**:`requests[0].referenceEntities = entityIds.map(x => ({entityId: x}))`;兄弟字段 `referenceLikenesses = [{likenessId}]`(数字形象,另有 `/v1/flow/likeness:checkEligibility`,§9.4)。`IMAGE_INPUT_TYPE_*` 枚举只有 BASE_IMAGE/REFERENCE/UNKNOWN 三种(characters 不走 imageInputs)。
+- **live 行为**:裸角色(仅绑语音无形象图)提交 referenceEntities → **HTTP 500 INTERNAL**;空元素 `{}` → 400 PUBLIC_ERROR_UNSAFE_GENERATION。角色必须先有形象图才可被引用 —— 与 13.1 绑定路径被拒互为死锁(工具侧两头断链,即移除的根因)。
+
+### 13.3 UI 绑定路径观察(未捕获,留待恢复时逆向)
+
+角色编辑面板"从项目中添加"点选项目媒体后 UI 即出现 下载图片/删除图片/重新生成 控件,但:① 全量 Network 捕获(无过滤)未见任何实体写请求(疑本地预览态);② 点"完成"后亦零写请求;③"删除图片"按钮时有时无(状态漂移)。真实持久化 mutation 未捕获 —— 恢复角色域时优先做"UI 绑图全程 Network 录制"(建议 DevTools 手动操作一次即可定位端点)。
+
+### 13.4 4K 图片放大(tier 锁,记录不开)
+
+动态目录存在 `GEM_PIX_2_UPSAMPLE_4K`(cost: INTERMEDIATE/ENTRY = **UNAVAILABLE**,ADVANCED = 0)。400 探针显示 `/v1/flow/upsampleImage` 的 4K body 形状与 2K 不同(无 `requests` 字段,完整 fieldViolations 见台账);当前账号(G1_TIER1/INTERMEDIATE)不可用,不实现;升级 tier 后按 §9.5 方法逆向。
+
+### 13.5 移除清单(代码锚点)
+
+工具注册+handler(src/index.ts)、createEntity/updateEntity/patchEntity/resolveWorkflowIds/readEntities/writeEntities/listEntities/FlowEntityRecord/FLOW_ENTITIES_FILE(src/providers/flow.ts)、flow_entity 测试族、README×8、功能清单/测试用例清单/用户场景清单/架构图 manifest。**保留**:listPresetVoices(flow_status 快照 preset_voices 消费)、本地镜像文件 ~/.media-gen-mcp/flow-entities.json(历史数据,无害)。
+
+### 13.6 关联:lasso Chrome idle reaper(外部消费场景)
+
+CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome --port 9223 --idle-ms 0`(record 级禁用收割);默认 60s idle 后被 lasso server 常驻 reaper 树杀(详见 lasso 仓库 doc/BUG-chrome-idle-reaper-second-consumer.md)。README 的 `--mode visible` 档天然 kill 豁免,不受影响。

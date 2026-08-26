@@ -31,7 +31,7 @@
               "label": "Flow 渠道治理(S000 硬门 + 计费确认门)",
               "diagram": "chain: \"优先级硬链(点名>模态链>全局;点名 flow 钉定不静默换)\"\ns000: \"S000 硬禁用门(flow.enabled=false → 剔除出链+结构化报错)\"\nconfirm: \"计费确认门(预估>0 积分 → confirmToken 二段式,单次消费)\"\nzero: \"图/上采样/实体 0 积分;视频 7-100 分/条\"\nchain -> s000\ns000 -> confirm: \"放行前\"\nconfirm -> zero: \"红线:绝不自动路由计费路径\"\n",
               "diagramType": "flowchart",
-              "notes": "Flow 渠道治理三件硬件(2026-08-24/26):①渠道优先级硬链与 S000 硬禁用门(仅显式 enabled=false,配置错误不 fatal);②计费确认门——无 confirmToken 返回挑战(needConfirm/estimatedCost/TTL)绝不提交,令牌与 key+预估+prompt+输入引用绑定且单次消费;③积分红线——图/上采样/实体 0 积分,视频 7-100 积分/条必须显式确认。配套 flow_status(自省/下载/删除/分享/取消)与 flow_entity(角色实体,本地镜像读侧)。"
+              "notes": "Flow 渠道治理三件硬件(2026-08-24/26):①渠道优先级硬链=链即开关(2026-08-26 起 S000 硬门删除,不配置=不启用);②计费确认门——无 confirmToken 返回挑战(needConfirm/estimatedCost/TTL)绝不提交,令牌与 key+预估+prompt+输入引用绑定且单次消费;③积分红线——图/上采样/实体 0 积分,视频 7-100 积分/条必须显式确认。配套 flow_status(自省/下载/删除/分享/取消);flow_entity 已按用户裁决移除 2026-08-26(角色域存档见 flow-api-contract.md §13)。"
             }
           ]
         }

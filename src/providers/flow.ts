@@ -92,26 +92,7 @@ const DEFAULT_CONFIRM_TTL_MS = 600_000;
 const CONFIRM_SECRET = crypto.randomBytes(32);
 const CONFIRM_TOKEN_PREFIX = "fvc1";
 const FLOW_PROJECT_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-project.json");
-/**
- * 角色实体本地镜像文件(§11.4:Flow 无实体读端点 → projectContents 无 entities 键,
- * /v1/flowCollections/ REST 页面上下文 CORS 拒绝;镜像对齐 flow-project.json 先例)。
- */
-const FLOW_ENTITIES_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-entities.json");
 
-/** 实体镜像记录(flow_entity 工具的读侧真源;写侧 = createEntity/updateEntity live wire)。 */
-export interface FlowEntityRecord {
-  entityId: string;
-  projectId: string;
-  displayName: string;
-  /** 绑定的预设语音(契约 §8.8,30 选 1;audioReferences.presetVoiceId)。 */
-  presetVoiceId?: string;
-  /** 形象图引用(workflowId;经 workflows[].metadata.primaryMediaId 从 imageMediaIds 解析)。 */
-  imageWorkflowIds?: string[];
-  /** 形象图 mediaId(镜像冗余,便于 flow_status 交叉查)。 */
-  imageMediaIds?: string[];
-  created?: string;
-  updated?: string;
-}
 
 const LAUNCH_HINT =
   "启动:lasso launch-chrome --port 9223 --mode visible,打开 https://labs.google/fx/tools/flow 项目页并确认已登录(Chrome 需保持运行)";
@@ -1199,29 +1180,6 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     return { canceled, notCancelable, statusAfter };
   }
 
-  // ── 角色实体(契约 §8.1 + §11.4/§11.5 E 轮 live 定型;0 点;flow_entity 第 24 工具的后端) ──
-
-  /**
-   * 实体本地镜像(~/.media-gen-mcp/flow-entities.json,对齐 flow-project.json 先例)。
-   * 为什么需要:Flow 无实体读端点 —— projectContents 键固定 workflows/media/externalReferenceMedia/
-   * scenes/agentInfo(§9.6 + §11.4 live 复核),/v1/flowCollections/ REST 页面上下文 CORS 拒绝 →
-   * 写侧 wire(createEntity/updateEntity)全 live,读侧退化为本地镜像(工具描述明示局限)。
-   */
-  entitiesFile: string | null = null; // 测试注入缝(public 实例字段,对齐 preflightTtlMs/cooldownMs 先例;默认 ~/.media-gen-mcp/flow-entities.json)
-
-  private readEntities(): FlowEntityRecord[] {
-    const file = this.entitiesFile ?? FLOW_ENTITIES_FILE;
-    try {
-      const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
-      return Array.isArray(raw?.entities) ? raw.entities : [];
-    } catch { return []; }
-  }
-
-  private writeEntities(entities: FlowEntityRecord[]): void {
-    const file = this.entitiesFile ?? FLOW_ENTITIES_FILE;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ entities, updatedAt: new Date().toISOString() }, null, 2));
-  }
 
   /**
    * 30 预设语音清单(契约 §8.8;只读源 = projectInitialData projectContents.externalReferenceMedia 的
@@ -1229,7 +1187,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 非条目顶层;30 条恒在,0 点)。
    */
   async listPresetVoices(): Promise<Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }>> {
-    // 三审 finding-5:flow_entity(voices) 工具路径受工具级截止封顶(防 stall 红线)
+    // 三审 finding-5:voices 读取路径受工具级截止封顶(防 stall 红线;原 flow_entity 工具已删,flow_status voices 消费)
     return this.withToolDeadline(this.listPresetVoicesUnbounded(), "flow 预设语音清单");
   }
   private async listPresetVoicesUnbounded(): Promise<Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }>> {
@@ -1250,182 +1208,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   }
 
   /**
-   * 创建角色实体(0 点,live 定型 §11.4):tRPC flow.createEntity POST {json:{projectId, collectionId:""}}
-   * —— collectionId 空串可过 zod(§9.6 的 "Expected string, received null" 只拒 null;E 轮 live 200
-   * 实证空串直接建实体,无需先建 collection → 集合 wire 依赖蒸发)。
-   * 服务端默认 displayName "Untitled Character";传 displayName/语音/图即追加一次 PATCH(客户端编排)。
-   * imageMediaIds:项目内已完成图片的 mediaId → imageReferences 需 workflowId(workflows[].metadata.primaryMediaId
-   * 映射,live 实证),此处自动解析并写入镜像。
-   */
-  async createEntity(req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
-    // 三审 finding-5:语音先验 + createEntity + PATCH + workflow 解析的多步链受工具级截止封顶(防 stall 红线)
-    return this.withToolDeadline(this.createEntityUnbounded(req), "flow 实体创建");
-  }
-  private async createEntityUnbounded(req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
-    await this.ensureReady();
-    const pid = await this.ensureProjectId();
-    // 前置:语音 id 校验(拼错立即失败,不落到 PATCH)
-    if (req.presetVoiceId) {
-      const voices = await this.listPresetVoicesUnbounded(); // 内部调用走 Unbounded(外层 createEntity/updateEntity 已有工具级截止,免嵌套双 timer)
-      if (!voices.some((v) => v.id === req.presetVoiceId)) {
-        throw new FlowError("S301", `presetVoiceId "${req.presetVoiceId}" 不在预设语音清单(共 ${voices.length} 个)`, { hint: "flow_entity(action=voices) 可查看全部预设语音" });
-      }
-    }
-    const f = await this.transport.pageFetch({
-      url: `${LABS_ORIGIN}/fx/api/trpc/flow.createEntity`,
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      bodyB64: utf8ToB64(JSON.stringify({ json: { projectId: pid, collectionId: "" } })),
-    });
-    if (!f.ok) {
-      throw new FlowError("S201", `createEntity HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: f.status });
-    }
-    let r: any;
-    try { r = JSON.parse(bufToUtf8(f.bodyB64)); } catch { throw new FlowError("S202", "createEntity 响应体非 JSON", { flowStatus: 0 }); }
-    const created = r?.result?.data?.json ?? r?.result?.data ?? {};
-    const entityId = created?.entityId;
-    if (typeof entityId !== "string" || !entityId) {
-      throw new FlowError("S202", `createEntity 响应无 entityId:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
-    }
-    // displayName/语音/图 → 一次 PATCH 补齐(§8.1 wire;均为可选)
-    const displayName = req.displayName?.trim() || undefined;
-    const imageWorkflowIds = req.imageMediaIds?.length ? await this.resolveWorkflowIds(req.imageMediaIds) : undefined;
-    const mask: string[] = [];
-    if (displayName) mask.push("entityInfo.displayName");
-    if (req.presetVoiceId) mask.push("entityInfo.characterInfo.audioReferences");
-    if (imageWorkflowIds) mask.push("entityInfo.characterInfo.imageReferences");
-    if (mask.length) {
-      await this.patchEntity(pid, entityId, mask, {
-        ...(displayName ? { displayName } : {}),
-        ...(req.presetVoiceId ? { audioReferences: [{ presetVoiceId: req.presetVoiceId }] } : {}),
-        ...(imageWorkflowIds ? { imageReferences: imageWorkflowIds.map((workflowId) => ({ workflowId })) } : {}),
-      });
-    }
-    const now = new Date().toISOString();
-    const record: FlowEntityRecord = {
-      entityId,
-      projectId: pid,
-      displayName: displayName ?? created?.entityInfo?.displayName ?? "Untitled Character",
-      ...(req.presetVoiceId ? { presetVoiceId: req.presetVoiceId } : {}),
-      ...(imageWorkflowIds ? { imageWorkflowIds, imageMediaIds: req.imageMediaIds } : {}),
-      ...(typeof created?.createTime === "string" ? { created: created.createTime } : {}),
-      updated: now,
-    };
-    this.writeEntities([...this.readEntities().filter((e) => e.entityId !== entityId), record]);
-    return { ...record, raw: created };
-  }
+
 
   /**
-   * 更新角色实体(0 点,live 定型 §8.5):PATCH aisandbox /v1/flow/entities
-   * body {entity:{projectId, entityId, entityInfo}, updateMask:"entityInfo.displayName,…"}(dotted mask;
-   * mask 外字段被服务端忽略 —— §11.5 live 实证)。Bearer 认证,无需 reCAPTCHA。
-   * 只 PATCH 变更字段;当前值读本地镜像(无服务端读端点)。
-   */
-  async updateEntity(entityId: string, req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
-    // 三审 finding-5:同 createEntity,多步链受工具级截止封顶(防 stall 红线)
-    return this.withToolDeadline(this.updateEntityUnbounded(entityId, req), "flow 实体更新");
-  }
-  private async updateEntityUnbounded(entityId: string, req: { displayName?: string; presetVoiceId?: string; imageMediaIds?: string[] }): Promise<FlowEntityRecord & { raw: unknown }> {
-    await this.ensureReady();
-    const pid = await this.ensureProjectId();
-    const existing = this.readEntities().find((e) => e.entityId === entityId);
-    if (!existing) {
-      throw new FlowError("S400", `entityId "${entityId}" 不在本地镜像(${FLOW_ENTITIES_FILE})。Flow 无实体读端点(契约 §9.6),只有本工具创建的实体可更新`, { hint: "flow_entity(action=list) 查看已镜像实体;非本工具创建的实体暂无法更新(读端点未逆向)" });
-    }
-    if (req.presetVoiceId) {
-      const voices = await this.listPresetVoicesUnbounded(); // 内部调用走 Unbounded(外层 createEntity/updateEntity 已有工具级截止,免嵌套双 timer)
-      if (!voices.some((v) => v.id === req.presetVoiceId)) {
-        throw new FlowError("S301", `presetVoiceId "${req.presetVoiceId}" 不在预设语音清单(共 ${voices.length} 个)`, { hint: "flow_entity(action=voices) 可查看全部预设语音" });
-      }
-    }
-    const displayName = req.displayName?.trim() || undefined;
-    const imageWorkflowIds = req.imageMediaIds?.length ? await this.resolveWorkflowIds(req.imageMediaIds) : undefined;
-    const mask: string[] = [];
-    if (displayName) mask.push("entityInfo.displayName");
-    if (req.presetVoiceId) mask.push("entityInfo.characterInfo.audioReferences");
-    if (imageWorkflowIds) mask.push("entityInfo.characterInfo.imageReferences");
-    if (!mask.length) {
-      throw new FlowError("S301", "update 至少需要 displayName / presetVoiceId / imageMediaIds 之一");
-    }
-    const raw = await this.patchEntity(pid, entityId, mask, {
-      ...(displayName ? { displayName } : {}),
-      ...(req.presetVoiceId ? { audioReferences: [{ presetVoiceId: req.presetVoiceId }] } : {}),
-      ...(imageWorkflowIds ? { imageReferences: imageWorkflowIds.map((workflowId) => ({ workflowId })) } : {}),
-    });
-    const record: FlowEntityRecord = {
-      ...existing,
-      ...(displayName ? { displayName } : {}),
-      ...(req.presetVoiceId ? { presetVoiceId: req.presetVoiceId } : {}),
-      ...(imageWorkflowIds ? { imageWorkflowIds, imageMediaIds: req.imageMediaIds } : {}),
-      updated: new Date().toISOString(),
-    };
-    this.writeEntities([...this.readEntities().filter((e) => e.entityId !== entityId), record]);
-    return { ...record, raw };
-  }
 
-  /** PATCH /v1/flow/entities 共用提交(updateMask dotted;§8.1 live + §11.5 复验)。返回响应 JSON。 */
-  private async patchEntity(pid: string, entityId: string, mask: string[], parts: { displayName?: string; audioReferences?: unknown[]; imageReferences?: unknown[] }): Promise<unknown> {
-    const token = await this.getAccessToken();
-    const characterInfo: Record<string, unknown> = {};
-    if (parts.audioReferences) characterInfo.audioReferences = parts.audioReferences;
-    if (parts.imageReferences) characterInfo.imageReferences = parts.imageReferences;
-    const body = {
-      entity: {
-        projectId: pid,
-        entityId,
-        entityInfo: {
-          entityType: "CHARACTER",
-          ...(parts.displayName ? { displayName: parts.displayName } : {}),
-          ...(Object.keys(characterInfo).length ? { characterInfo } : {}),
-        },
-      },
-      updateMask: mask.join(","),
-    };
-    const f = await this.transport.pageFetch({
-      url: `${AISANDBOX_ORIGIN}/v1/flow/entities`,
-      method: "PATCH",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      bodyB64: utf8ToB64(JSON.stringify(body)),
-    });
-    if (!f.ok) {
-      throw new FlowError("S201", `PATCH /v1/flow/entities HTTP ${f.status}: ${bufToUtf8(f.bodyB64).slice(0, 240)}`, { flowStatus: f.status });
-    }
-    try { return JSON.parse(bufToUtf8(f.bodyB64)); } catch { return { rawText: bufToUtf8(f.bodyB64).slice(0, 200) }; }
-  }
-
-  /**
-   * imageMediaIds → workflowIds:实体 imageReferences 引用的是 workflowId 而非 mediaId(§8.1);
-   * workflows[].metadata.primaryMediaId 是映射源(§11.4 live 实证)。要求图片已完成且在项目内。
-   */
-  private async resolveWorkflowIds(imageMediaIds: string[]): Promise<string[]> {
-    const data = await this.getProjectData();
-    const mediaById = new Map((data.projectContents?.media ?? []).map((m: any) => [m?.name, m]));
-    const wfByPrimary = new Map<string, string>();
-    for (const w of data.projectContents?.workflows ?? []) {
-      if (typeof w?.name === "string" && typeof w?.metadata?.primaryMediaId === "string") wfByPrimary.set(w.metadata.primaryMediaId, w.name);
-    }
-    const out: string[] = [];
-    for (const id of imageMediaIds) {
-      const m = mediaById.get(id) as any;
-      if (!m) {
-        throw new FlowError("S400", `imageMediaIds 中的 "${id}" 不在本项目 media 列表`, { hint: "不带参数调 flow_status 可查看全部 media" });
-      }
-      if (!m?.image?.generatedImage) {
-        throw new FlowError("S301", `imageMediaIds 中的 "${id}" 不是已生成的图片(实体形象需已完成图片的 mediaId)`);
-      }
-      const wf = wfByPrimary.get(id);
-      if (!wf) {
-        throw new FlowError("S202", `mediaId "${id}" 找不到对应 workflow(primaryMediaId 映射缺失)`, { hint: "生成中的图片可能尚无 workflow 记录,等完成后再绑定" });
-      }
-      out.push(wf);
-    }
-    return out;
-  }
-
-  /** 本地镜像列表(Flow 无实体读端点 —— 只回镜像,如实标注局限)。 */
-  listEntities(): FlowEntityRecord[] {
-    return this.readEntities();
-  }
 
   /** flow_status 工具主入口:全量自省(零消耗)。 */
   async flowStatus(): Promise<Record<string, unknown>> {
@@ -1489,7 +1275,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       video_families: videoFamilies,
       ...(voices.length ? { preset_voices: voices } : {}),
       media,
-      hint: "提交视频消耗积分(abra t2v/i2v/r2v 7-15/abra_edit 20/veo lite 10/fast 20/quality 100 每条;upsampler_1080p 0 点);生图/图片上传/图片放大/删除/分享/取消 0 点。create_video(provider=flow)已开放:t2v / i2v(image)/ 参考图(r2v + images)/ 首尾帧(keyframes 2 张)/ 延长(extension + videoMediaId)/ 编辑(edit + videoMediaId + prompt,abra_edit,wire 定型未 live)/ 视频超分(veo_3_1_upsampler_1080p + videoMediaId,0 点);generate_image(provider=flow)支持 images(底图+参考)与 GEM_PIX_2_UPSAMPLE_2K 放大;flow_status(deleteMediaIds) 删媒体 / (shareMediaIds) 生成公开分享链接 / (cancelMediaIds) 取消生成中任务;flow_entity 建角色实体/绑预设语音(全 0 点)。",
+      hint: "提交视频消耗积分(abra t2v/i2v/r2v 7-15/abra_edit 20/veo lite 10/fast 20/quality 100 每条;upsampler_1080p 0 点);生图/图片上传/图片放大/删除/分享/取消 0 点。create_video(provider=flow)已开放:t2v / i2v(image)/ 参考图(r2v + images)/ 首尾帧(keyframes 2 张)/ 延长(extension + videoMediaId)/ 编辑(edit + videoMediaId + prompt,abra_edit,wire 定型未 live)/ 视频超分(veo_3_1_upsampler_1080p + videoMediaId,0 点);generate_image(provider=flow)支持 images(底图+参考)与 GEM_PIX_2_UPSAMPLE_2K 放大;flow_status(deleteMediaIds) 删媒体 / (shareMediaIds) 生成公开分享链接 / (cancelMediaIds) 取消生成中任务;flow_status(action=voices) 列 30 预设语音(全 0 点)。",
     };
   }
 

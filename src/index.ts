@@ -230,21 +230,6 @@ function buildTools() {
       },
     },
     {
-      name: "flow_entity",
-      description:
-        "Google Flow character entities (角色实体, ZERO-CREDIT; 24th tool). Create/update CHARACTER entities and bind a preset voice for later audio/character generation. Create: tRPC flow.createEntity {projectId, collectionId:\"\"} (empty string passes zod — no collection needed); update: PATCH /v1/flow/entities with dotted updateMask (displayName / characterInfo.audioReferences=[{presetVoiceId}] / characterInfo.imageReferences=[{workflowId}]). Entity images attach via imageMediaIds (completed image mediaIds; the workflowId mapping is resolved automatically from project workflows). 30 preset voices are star-named (achernar/charon/kore/…) with descriptions — list them via action=voices or flow_status preset_voices.\n\nLIMITATION (honest): Flow has NO entity read endpoint (projectContents has no entities key; collections REST is CORS-blocked in page context) — only entities created via this tool are tracked, in a local mirror ~/.media-gen-mcp/flow-entities.json (aligned with flow-project.json precedent). action=list returns the mirror, not a server query.\n\nWHEN: 角色卡 / 建角色 / character entity / bind voice / 角色绑定语音 / 绑定形象图.\n\nNEXT: generate the character image first (generate_image provider=flow), then flow_entity(action=create, displayName=…, imageMediaIds=[…], presetVoiceId=…) wires it up; all operations are 0-credit.\n\nMultilingual triggers: 角色 · 实体 · character · entity · voice binding (zh/en).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          action: { type: "string", enum: ["create", "update", "list", "voices"], default: "create", description: "create = new CHARACTER entity (+optional displayName/presetVoiceId/imageMediaIds in one call); update = rename/rebind an entity from the local mirror (entityId required); list = local mirror records (Flow has no entity read endpoint); voices = 30 preset voices (id/displayName/description)." },
-          entityId: { type: "string", description: "action=update: the entityId from create (must exist in the local mirror)." },
-          displayName: { type: "string", description: "Character display name (create defaults to server's 'Untitled Character' if omitted; update renames)." },
-          presetVoiceId: { type: "string", description: "Preset voice id to bind as the character voice (e.g. charon; see action=voices for all 30). Validated before submission." },
-          imageMediaIds: { type: "array", items: { type: "string" }, description: "Completed image mediaIds (from generate_image provider=flow / flow_status) to attach as the character's look — resolved to workflowIds automatically." },
-        },
-      },
-    },
-    {
       name: "extract_text",
       description:
         "Extract/recognize text from an image (OCR / 文字识别 / 文字提取 / 画像からの文字起こし) — verification codes, digits, license plates, printed Latin, or Chinese documents. Zero-config: tesseract runs in-process (WASM, bundled). Chinese accuracy is weak by default; configure a `paddleocr` provider for Chinese SOTA. The reverse operation is generate_image (text→image).\n\nNEXT: for multi-page PDFs use `extract_pdf`; for tables use `extract_table`; for charts use `analyze_chart`; for handwriting/scene/formula use `describe_image`.\n\nMultilingual triggers: 文字识别 · OCR · 文字提取 · 文字起こし · texto · textoerkennung (ja/es/de).",
@@ -1111,53 +1096,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
       }
 
-      case "flow_entity": {
-        // Google Flow 角色实体(第 24 工具;全 0 点 —— create/update/voices 均不触生成提交)。
-        // 读侧局限(诚实):Flow 无实体读端点 → list 只回本地镜像(契约 §9.6/§11.4)。
-        const p = getProvider("flow");
-        if (!(p instanceof FlowProvider)) {
-          return err("flow_entity 仅支持 flow provider(registry 注册异常)");
-        }
-        const action = optString(a.action) ?? "create";
-        if (action === "list") {
-          const entities = p.listEntities();
-          return ok({
-            ok: true,
-            entities,
-            count: entities.length,
-            hint: entities.length
-              ? "本地镜像记录(Flow 无实体读端点,只追踪本工具创建的实体);更新请用 action=update + entityId。"
-              : "镜像为空:用 action=create 创建;Flow 无服务端实体读端点,非本工具创建的实体无法枚举(契约 §9.6)。",
-          });
-        }
-        if (action === "voices") {
-          const voices = await p.listPresetVoices();
-          return ok({ ok: true, voices, count: voices.length, hint: "30 预设语音(projectInitialData externalReferenceMedia 只读);绑定用 presetVoiceId(如 charon)。" });
-        }
-        if (action === "create") {
-          const created = await p.createEntity({
-            displayName: optString(a.displayName),
-            presetVoiceId: optString(a.presetVoiceId),
-            imageMediaIds: toStringArray(a.imageMediaIds),
-          });
-          return ok({
-            ok: true,
-            ...created,
-            hint: `实体已创建${created.presetVoiceId ? `并绑定语音 ${created.presetVoiceId}` : ""}${created.imageWorkflowIds?.length ? `并绑定形象图 ${created.imageWorkflowIds.length} 张` : ""};本地镜像已更新(~/.media-gen-mcp/flow-entities.json)。全 0 点。`,
-          });
-        }
-        if (action === "update") {
-          const entityId = optString(a.entityId);
-          if (!entityId) return err("action=update 需要 entityId(action=create 的返回)。");
-          const updated = await p.updateEntity(entityId, {
-            displayName: optString(a.displayName),
-            presetVoiceId: optString(a.presetVoiceId),
-            imageMediaIds: toStringArray(a.imageMediaIds),
-          });
-          return ok({ ok: true, ...updated, hint: "实体已更新(PATCH updateMask 只动变更字段);本地镜像已同步。" });
-        }
-        return err(`action 非法:"${action}"(合法:create / update / list / voices)`);
-      }
 
       case "extract_text": {
         const image = requireString(a.image, "image");

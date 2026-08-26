@@ -56,9 +56,6 @@ class StubTransport {
   deleteBodies: any[] = [];
   shareBodies: any[] = [];
   cancelBodies: any[] = [];
-  entityCreates: any[] = [];
-  entityPatches: any[] = [];
-  entityResp: any = { projectId: "proj-test", entityId: "ent-new-1", entityInfo: { entityType: "CHARACTER", displayName: "Untitled Character", characterInfo: {} }, createTime: "2026-08-23T17:59:29.918917Z" };
   workflows: any[] = [];
   externalRef: any[] = [];
   media: any[];
@@ -113,14 +110,6 @@ class StubTransport {
     if (args.method === "POST" && args.url.includes("flow.share.shareMedia")) {
       this.shareBodies.push(JSON.parse(Buffer.from(args.bodyB64, "base64").toString("utf8")));
       return this.json({ result: { data: { json: { result: { mediaShareId: "share-" + (this.shareBodies.length) + "-uuid" } } } } });
-    }
-    if (args.method === "POST" && args.url.includes("flow.createEntity")) {
-      this.entityCreates.push(JSON.parse(Buffer.from(args.bodyB64, "base64").toString("utf8")));
-      return this.json({ result: { data: { json: this.entityResp } } });
-    }
-    if (args.method === "PATCH" && args.url.includes("/v1/flow/entities")) {
-      this.entityPatches.push(JSON.parse(Buffer.from(args.bodyB64, "base64").toString("utf8")));
-      return this.json({ entity: this.entityResp });
     }
     if (args.method === "POST" && args.url.includes("flowMedia:")) {
       return this.json({ media: this.submitMedia });
@@ -1198,65 +1187,13 @@ describe("E-parity:V2V edit 模式 wire(契约 §11.1;bundle Zod + 假 key 404 �
   });
 });
 
-describe("E-parity:角色实体(契约 §8.1 + §11.4/§11.5;createEntity 空串 collectionId live 实证)", () => {
+describe("预设语音(契约 §8.8;原 flow_entity 工具 2026-08-26 用户裁决移除,listPresetVoices 保留供 flow_status voices 消费)", () => {
   const VOICES = [
     { mediaId: "achernar", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Achernar", description: "Female, soft, high pitch", isPresetAudioSample: true, audioSamplePath: "https://gstatic.com/aitestkitchen/voices/samples/Achernar.wav" } } } },
     { mediaId: "charon", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Charon", description: "Male", isPresetAudioSample: true } } } },
   ];
-  const IMG_DONE = { name: "img-face", image: { generatedImage: { seed: 7 } } };
-  const WORKFLOWS = [{ name: "wf-1", metadata: { primaryMediaId: "img-face" } }];
-  function entityProvider(opts: any = {}) {
-    const r = newProvider({ media: [IMG_DONE], workflows: WORKFLOWS, externalRef: VOICES, ...opts });
-    (r.p as any).entitiesFile = path.join(os.tmpdir(), `flow-entities-test-${crypto.randomUUID()}.json`);
-    return r;
-  }
-  test("createEntity:tRPC body {json:{projectId, collectionId:\"\"}}(空串过 zod,§11.4 live;无需先建集合)", async () => {
-    const { t, p } = entityProvider();
-    const r = await p.createEntity({ displayName: "测试角色", presetVoiceId: "charon", imageMediaIds: ["img-face"] });
-    assert.equal(r.entityId, "ent-new-1");
-    assert.deepEqual(t.entityCreates, [{ json: { projectId: "proj-test", collectionId: "" } }]);
-    assert.equal(r.presetVoiceId, "charon");
-    assert.deepEqual(r.imageWorkflowIds, ["wf-1"], "imageMediaIds 经 workflows.primaryMediaId 映射为 workflowId");
-    // 一次 PATCH 补齐 displayName + 语音 + 形象(dotted updateMask)
-    const patch = t.entityPatches[0];
-    assert.equal(patch.updateMask, "entityInfo.displayName,entityInfo.characterInfo.audioReferences,entityInfo.characterInfo.imageReferences");
-    assert.equal(patch.entity.entityInfo.displayName, "测试角色");
-    assert.deepEqual(patch.entity.entityInfo.characterInfo.audioReferences, [{ presetVoiceId: "charon" }]);
-    assert.deepEqual(patch.entity.entityInfo.characterInfo.imageReferences, [{ workflowId: "wf-1" }]);
-    // 镜像落盘可 list
-    assert.equal(p.listEntities().length, 1);
-    assert.equal(p.listEntities()[0].entityId, "ent-new-1");
-  });
-  test("非法 presetVoiceId → S301 零提交(语音清单前置校验)", async () => {
-    const { t, p } = entityProvider();
-    await assert.rejects(
-      () => p.createEntity({ presetVoiceId: "no-such-voice" }),
-      (e: any) => e.code === "S301" && e.message.includes("no-such-voice"),
-    );
-    assert.equal(t.entityCreates.length, 0, "校验先于创建,零提交");
-  });
-  test("imageMediaIds 非已完成图片 → S301", async () => {
-    const { p } = entityProvider({ media: [{ name: "m-unknown" }], workflows: [] });
-    await assert.rejects(
-      () => p.createEntity({ imageMediaIds: ["m-unknown"] }),
-      (e: any) => e.code === "S301" && /不是已生成的图片/.test(e.message),
-    );
-  });
-  test("updateEntity:镜像外 entityId → S400(Flow 无实体读端点,只可更新本工具创建的实体)", async () => {
-    const { p } = entityProvider();
-    await assert.rejects(() => p.updateEntity("ghost", { displayName: "x" }), (e: any) => e.code === "S400");
-  });
-  test("updateEntity:改 displayName 只 PATCH 对应 mask 字段(§11.5:mask 外字段被服务端忽略)", async () => {
-    const { t, p } = entityProvider();
-    await p.createEntity({ displayName: "初名" });
-    const r = await p.updateEntity("ent-new-1", { displayName: "新名" });
-    assert.equal(r.displayName, "新名");
-    const patch = t.entityPatches[t.entityPatches.length - 1];
-    assert.equal(patch.updateMask, "entityInfo.displayName");
-    assert.equal(p.listEntities()[0].displayName, "新名", "镜像同步");
-  });
   test("listPresetVoices:路径 e.media.audio.generatedAudio(§11.4 纠偏:非条目顶层)", async () => {
-    const { p } = entityProvider();
+    const { p } = newProvider({ externalRef: VOICES });
     const voices = await p.listPresetVoices();
     assert.equal(voices.length, 2);
     assert.equal(voices[0].id, "achernar");

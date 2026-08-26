@@ -219,10 +219,10 @@ test("user journey happy Graphviz: 合法 DOT → 成功返回 svg", async () =>
 // 用户旅程 7:23 工具枚举(flow 加入 flow_status 后 22→23;向后兼容)
 // ═══════════════════════════════════════════════════════════════════════
 
-test("user journey 工具枚举: tools/list 返回 24 个工具(flow_entity 后)", async () => {
+test("user journey 工具枚举: tools/list 返回 23 个工具(flow_entity 移除后)", async () => {
   const resp = await callTool(null, null, "tools/list");
   const tools = resp.result.tools;
-  assert.equal(tools.length, 24, `24 工具枚举破:${tools.length} 个`);
+  assert.equal(tools.length, 23, `23 工具枚举破:${tools.length} 个`);
   // 关键工具名仍在
   const names = tools.map((t) => t.name).sort();
   for (const required of ["generate_diagram", "generate_chart", "render_svg", "generate_interactive_diagram", "generate_nested_diagram", "extract_image_meta", "flow_status"]) {

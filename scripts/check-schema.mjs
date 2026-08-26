@@ -52,8 +52,8 @@ try {
     eq(cv.inputSchema.properties.frameRate.enum, vc.allowedFrameRates, `frameRate.enum === ${effProvider} allowedFrameRates`);
   }
 
-  console.log("[G2] 24 工具齐全(pares5 M2 +extract_table/analyze_chart/describe_image;pares6 +list_vision_capabilities/extract_pdf/get_pdf;P0-5 +generate_interactive_diagram;P0-5B +generate_nested_diagram;P0-6 +extract_image_meta;flow +flow_status;E-parity +flow_entity)");
-  eq(tools.map((t) => t.name).sort(), ["analyze_chart", "create_video", "describe_image", "extract_image_meta", "extract_pdf", "extract_table", "extract_text", "flow_entity", "flow_status", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_interactive_diagram", "generate_nested_diagram", "generate_qrcode", "get_pdf", "get_video", "list_models", "list_vision_capabilities", "render_svg", "render_video"], "24 工具齐全");
+  console.log("[G2] 23 工具齐全(pares5 M2 +extract_table/analyze_chart/describe_image;pares6 +list_vision_capabilities/extract_pdf/get_pdf;P0-5 +generate_interactive_diagram;P0-5B +generate_nested_diagram;P0-6 +extract_image_meta;flow +flow_status;flow_entity 已按用户裁决移除 2026-08-26)");
+  eq(tools.map((t) => t.name).sort(), ["analyze_chart", "create_video", "describe_image", "extract_image_meta", "extract_pdf", "extract_table", "extract_text", "flow_status", "generate_card", "generate_chart", "generate_diagram", "generate_formula", "generate_icon", "generate_image", "generate_interactive_diagram", "generate_nested_diagram", "generate_qrcode", "get_pdf", "get_video", "list_models", "list_vision_capabilities", "render_svg", "render_video"], "23 工具齐全");
 
   console.log("[G3] mode/resolution schema enum 与共享常量一致(0.8.1 单一真源)");
   if (cv) {

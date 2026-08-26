@@ -3,9 +3,9 @@
 > The all-in-one image toolkit for Claude Code — generate, draw, and understand images in a single sentence. Free.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.1-blue">
-  <img src="https://img.shields.io/badge/license-MIT-green">
-  <img src="https://img.shields.io/badge/MCP-compatible-purple">
+ <img src="https://img.shields.io/badge/version-0.13.1-blue">
+ <img src="https://img.shields.io/badge/license-MIT-green">
+ <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
 
 **Install it once into Claude Code, and every image task afterward becomes a single sentence.** Designers creating visuals, engineers drawing architecture diagrams, marketers making share cards, finance teams extracting tables from invoices — generation/recognition + drawing/cards/QRCodes all covered, **100% free** (free providers + local engines — works the moment you install it).
@@ -91,18 +91,18 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 
 ```bash
 # ① Sign up for a free account at https://open.bigmodel.cn/console/apikey and apply for an api_key (format: {id}.{secret})
-#    Note: only standard open.bigmodel.cn keys are accepted; Code Plan keys (ZAI_API_KEY) do NOT work —
-#    they are bound to the Z.ai endpoint + a whitelisted tool set, and using them here will get your account banned
+# Note: only standard open.bigmodel.cn keys are accepted; Code Plan keys (ZAI_API_KEY) do NOT work —
+# they are bound to the Z.ai endpoint + a whitelisted tool set, and using them here will get your account banned
 
 # ② Write it to ~/.media-gen-mcp/config.json
 {
-  "providers": {
-    "glm-vision": { "apiKey": "your-{id}.{secret}" }
-  }
+ "providers": {
+ "glm-vision": { "apiKey": "your-{id}.{secret}" }
+ }
 }
 
 # ③ Back in Claude Code, say: "Recognize the table in this Chinese invoice screenshot" / "How many people are in this image? What are they doing?"
-#    → Chinese SOTA recognition + visual QA, saved to disk / answered directly
+# → Chinese SOTA recognition + visual QA, saved to disk / answered directly
 ```
 
 > Once configured, the MCP auto-includes it in the fallback chain: **paddle → glm-vision → vlm → tesseract**; if any tier temporarily goes down, it auto-degrades without you noticing. See [Configuration Deep Dive · Tier 2](#tier-2-zhipu-glm-46v-flash-cloud-free-zero-deployment--chinese-sota--vqa).
@@ -111,18 +111,18 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 
 ```bash
 # ① Grab a free API Key (Agnes recommended, the default provider)
-#    https://platform.agnes-ai.com/ → Sign up → API Keys → copy sk-xxx
-#    (Zhipu cogview-3-flash / cogvideox-flash are also permanently free — pick one or configure both)
+# https://platform.agnes-ai.com/ → Sign up → API Keys → copy sk-xxx
+# (Zhipu cogview-3-flash / cogvideox-flash are also permanently free — pick one or configure both)
 
 # ② Write it to ~/.media-gen-mcp/config.json (configuring just one provider is fine)
 {
-  "providers": {
-    "agnes": { "apiKey": "sk-your-agnes-key" }
-  }
+ "providers": {
+ "agnes": { "apiKey": "sk-your-agnes-key" }
+ }
 }
 
 # ③ Back in Claude Code, say: "Draw a cyberpunk orange cat, photorealistic"
-#    → A photorealistic AI image is saved. Same for video: "Generate a 5-second seaside sunset video"
+# → A photorealistic AI image is saved. Same for video: "Generate a 5-second seaside sunset video"
 ```
 
 > Don't want to use npx? A global install works too: run `npm i -g media-gen-mcp-server` first, then `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`.
@@ -169,15 +169,7 @@ If Chrome isn't running / not logged in, the tools return a **structured error c
 
 - **Image generation**: Nano Banana Pro / Nano Banana 2 (default) / Nano Banana 2 Lite; aspect ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproducible seeds; base-image edits + up to 10 reference images
 - **Upscaling**: 2K image upscale (model=`GEM_PIX_2_UPSAMPLE_2K`), 1080p video upscale (model=`veo_3_1_upsampler_1080p`)
-- **Asset management**: upload images, batch-delete, create public share links (`labs.google/fx/tools/flow/shared/…`), cancel in-flight videos, check credits / media status (`flow_status`); create character entities and bind one of 30 preset voices (`flow_entity`)
-
-**Video generation bills credits (per clip — know before you submit)**:
-
-| Model | Example keys | Credits per clip |
-|---|---|---|
-| Omni Flash (abra) text / image / reference | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15 (by 4/6/8/10s duration) |
-| Omni Flash video edit (V2V) | `abra_edit` | 20 |
-| Veo 3.1 Lite (incl. extend, first+last frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
+- **Asset management**: upload images, batch-delete, create public share links (`labs.google/fx/tools/flow/shared/…`), cancel in-flight videos, check credits / media status (`flow_status`); create character entities and bind one of 30 preset voices (1 Lite (incl. extend, first+last frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
 | Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Video upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
@@ -187,9 +179,9 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 **Usage (explicit `provider="flow"`)**:
 
 ```
-"Draw a cyberpunk cat via Flow, 3:4, seed 42"     → generate_image(provider="flow", aspect="3:4", seed=42)
-"Generate an 8s future-city flyover video via Flow" → create_video(provider="flow", model="abra_t2v_8s")   ← first call returns a credit estimate + confirm token; re-call with the SAME params + confirmToken to actually submit
-"Check my Flow credits / is this mediaId done?"    → flow_status() / flow_status(mediaId=…)
+"Draw a cyberpunk cat via Flow, 3:4, seed 42" → generate_image(provider="flow", aspect="3:4", seed=42)
+"Generate an 8s future-city flyover video via Flow" → create_video(provider="flow", model="abra_t2v_8s") ← first call returns a credit estimate + confirm token; re-call with the SAME params + confirmToken to actually submit
+"Check my Flow credits / is this mediaId done?" → flow_status() / flow_status(mediaId=…)
 ```
 
 **The `flow_status` introspection tool (0-credit throughout)**: with no arguments it returns a full snapshot — logged-in account, credit balance, the live model catalog (with per-key reference durations), 30 preset voices, and the project media list; with a `mediaId` it tracks one media and downloads the finished asset (`thumbnail=true` fetches the video thumbnail); `deleteMediaIds` batch-deletes, `shareMediaIds` creates public share links, `cancelMediaIds` cancels in-flight videos (images are not cancelable).
@@ -301,12 +293,12 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 
 ```json
 {
-  "providers": {
-    "agnes": { "apiKey": "sk-your-agnes-key" },
-    "zhipu": { "apiKey": "your-zhipu-key" }
-  },
-  "defaultProvider": "agnes",
-  "outDir": "/absolute/path/to/output"
+ "providers": {
+ "agnes": { "apiKey": "sk-your-agnes-key" },
+ "zhipu": { "apiKey": "your-zhipu-key" }
+ },
+ "defaultProvider": "agnes",
+ "outDir": "/absolute/path/to/output"
 }
 ```
 
@@ -321,8 +313,8 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 
 ```json
 {
-  "imageProviderPriority": ["flow", "agnes", "zhipu"],
-  "videoProviderPriority": ["agnes", "zhipu"]
+ "imageProviderPriority": ["flow", "agnes", "zhipu"],
+ "videoProviderPriority": ["agnes", "zhipu"]
 }
 ```
 
@@ -332,7 +324,7 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 - **Channel on/off = the priority chain (the chain IS the switch)**: whether a channel is enabled is decided solely by whether it appears in the two priority chains — **not configured = not enabled** (no auto-routing, no fallback), **listed = enabled** (chain head = default channel). A separate `flow.enabled` switch is not needed (and no longer supported); an explicit `provider="flow"` call is always allowed — when the environment is unavailable it returns a structured `[flow] S1xx` preflight error (with launch guidance), never a silent provider swap. Companion knob `"flow": { "toolDeadlineMs": 110000 }` caps Flow's long operations (image polling / video submission / asset downloads) to satisfy the no-stall rule (≤120s per call): on timeout it returns `[flow] S410` — the underlying operation is NOT cancelled; re-check and download later via `flow_status(mediaId)`.
 - **Billing confirm gate (two-phase, ON by default)**: when a video routes to / explicitly uses Flow, the first `create_video` call does NOT submit — it returns `{needConfirm:true, estimatedCost (credit estimate: dynamic creditMapping first, static table fallback), confirmToken, expiresInSeconds}`; re-call with the SAME parameters plus `confirmToken` to actually submit. Tokens are short-lived (default 10 min, tunable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId) — changing any of them after confirming requires a fresh token; a wrong token returns `[flow] S320`, an expired one `[flow] S321`. Free operations (e.g. the `veo_3_1_upsampler_1080p` upscale) and non-Flow providers NEVER trigger the gate. Turn off with `"flow": { "videoConfirm": false }` (default `true` — a false trigger only costs one extra round trip, a missed one bills real credits).
 
-**Flow asset management (all 0-credit)**: besides credits / media status / downloads, `flow_status` supports three zero-cost operations — `shareMediaIds=[…]` creates public share links (like `labs.google/fx/tools/flow/shared/image/<id>`, prompt included), `cancelMediaIds=[…]` cancels in-flight VIDEO generations (note: image jobs are not cancelable), and `deleteMediaIds=[…]` batch-deletes media. The `flow_entity` tool creates character entities and binds one of 30 preset voices (generate the look first via `generate_image(provider="flow")`, then attach it) for reuse in later generations.
+**Flow asset management (all 0-credit)**: besides credits / media status / downloads, `flow_status` supports three zero-cost operations — `shareMediaIds=[…]` creates public share links (like `labs.google/fx/tools/flow/shared/image/<id>`, prompt included), `cancelMediaIds=[…]` cancels in-flight VIDEO generations (note: image jobs are not cancelable), and `deleteMediaIds=[…]` batch-deletes media.
 
 **Config File Location**: `~/.media-gen-mcp/config.json` (macOS / Linux) or `%USERPROFILE%\.media-gen-mcp\config.json` (Windows).
 
@@ -349,11 +341,11 @@ Recognition capabilities come in **four tiers** — install on demand; the first
 - **What it can do**: English / digit / captcha / simple document OCR
 - **Need to run a service?**: **No**, packaged into the MCP process as WASM, language model auto-loads on first call
 - **Minimum Resource Requirements**:
-  - CPU: any (pure CPU, no GPU dependency)
-  - GPU: not required
-  - Memory: ~200–500MB (fluctuates with image size)
-  - Disk: ~30–50MB (WASM engine + language packs)
-  - Model size: included in the disk footprint above (English language pack, on the order of a few MB)
+ - CPU: any (pure CPU, no GPU dependency)
+ - GPU: not required
+ - Memory: ~200–500MB (fluctuates with image size)
+ - Disk: ~30–50MB (WASM engine + language packs)
+ - Model size: included in the disk footprint above (English language pack, on the order of a few MB)
 - **Speed**: ~3–5 seconds per image
 - **Who it's for**: 90% of lightweight OCR scenarios, overseas documents, captcha recognition
 
@@ -369,19 +361,19 @@ Recognition capabilities come in **four tiers** — install on demand; the first
 - **Who it's for**: users who want Chinese SOTA + VQA but **don't want to self-host PaddleX / vLLM**; perfectly fills the deployment gap left by the self-hosted tiers 3/4
 - **How to Configure**: register a free account at [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) and apply for an api_key (format `{id}.{secret}`), then add this to `config.json`:
 
-  ```json
-  {
-    "providers": {
-      "glm-vision": { "apiKey": "your-{id}.{secret}" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "glm-vision": { "apiKey": "your-{id}.{secret}" }
+ }
+ }
+ ```
 
-  The default model is `glm-4.6v-flash`; you can switch it to `glm-4v-flash` (free, lightweight) or paid vision models (`glm-4.6v` / `glm-ocr`, etc.) via `providers["glm-vision"].model`. Once configured, the MCP auto-includes it in the fallback chain: **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
+ The default model is `glm-4.6v-flash`; you can switch it to `glm-4v-flash` (free, lightweight) or paid vision models (`glm-4.6v` / `glm-ocr`, etc.) via `providers["glm-vision"].model`. Once configured, the MCP auto-includes it in the fallback chain: **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
 
 - ⚠️ **Compliance Notes** (important):
-  - Only standard **open.bigmodel.cn api_keys** are accepted; **Code Plan keys (ZAI_API_KEY) do NOT work** — they're bound to the dedicated Z.ai endpoint + limited to 9 whitelisted tools (Claude Code / Cline / Cursor, etc. — media-gen-mcp is not on the list). Three violation-triggered calls get the account banned, with the subscription fee non-refundable
-  - Multi-key rotation (`apiKeys: ["k1", "k2", ...]`) is technically supported, but **Zhipu's User Agreement §2/§3 prohibits multi-account usage / account sharing** — rotating multiple keys may violate the agreement and the platform reserves the right to ban the account. Make sure every key comes from a compliant account you legitimately own
+ - Only standard **open.bigmodel.cn api_keys** are accepted; **Code Plan keys (ZAI_API_KEY) do NOT work** — they're bound to the dedicated Z.ai endpoint + limited to 9 whitelisted tools (Claude Code / Cline / Cursor, etc. — media-gen-mcp is not on the list). Three violation-triggered calls get the account banned, with the subscription fee non-refundable
+ - Multi-key rotation (`apiKeys: ["k1", "k2", ...]`) is technically supported, but **Zhipu's User Agreement §2/§3 prohibits multi-account usage / account sharing** — rotating multiple keys may violate the agreement and the platform reserves the right to ban the account. Make sure every key comes from a compliant account you legitimately own
 
 #### Tier 3: PaddleX / PP-StructureV3 (Chinese SOTA + Table Recognition)
 
@@ -389,30 +381,30 @@ Recognition capabilities come in **four tiers** — install on demand; the first
 - **Need to run a service?**: **Yes**, self-host a PaddleX REST service; the MCP calls it via `baseUrl`
 - **Minimum Resource Requirements** (measured):
 
-  | Mode | Minimum | Recommended | Notes |
-  |---|---|---|---|
-  | GPU mode | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | Model loading ~2.4GB; peak ~6GB on complex PDFs |
-  | CPU mode | 4-core CPU + 8GB RAM | 8-core + 16GB RAM | Runs (lightweight docs OK); batch / complex PDFs are 3–5× slower |
-  | Disk | ~3GB | ~5GB | paddlepaddle + paddlex + model weights |
-  | Model size | ~100–300MB (per pipeline) | — | Stacks up across multiple pipelines |
+ | Mode | Minimum | Recommended | Notes |
+ |---|---|---|---|
+ | GPU mode | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | Model loading ~2.4GB; peak ~6GB on complex PDFs |
+ | CPU mode | 4-core CPU + 8GB RAM | 8-core + 16GB RAM | Runs (lightweight docs OK); batch / complex PDFs are 3–5× slower |
+ | Disk | ~3GB | ~5GB | paddlepaddle + paddlex + model weights |
+ | Model size | ~100–300MB (per pipeline) | — | Stacks up across multiple pipelines |
 
 - **CUDA Requirement**: Compute Capability ≥ 7.0 (V100 / T4 / RTX 20/30/40 series; 50-series not yet fully supported); needs CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 for GPU acceleration
 - **How to Install**:
 
-  ```bash
-  pip install paddlex paddlepaddle          # GPU version: paddlepaddle-gpu
-  paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
-  ```
+ ```bash
+ pip install paddlex paddlepaddle # GPU version: paddlepaddle-gpu
+ paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
+ ```
 
-  Then add one line to `config.json`:
+ Then add one line to `config.json`:
 
-  ```json
-  {
-    "providers": {
-      "paddle": { "baseUrl": "http://127.0.0.1:8080" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "paddle": { "baseUrl": "http://127.0.0.1:8080" }
+ }
+ }
+ ```
 
 #### Tier 4: vLLM + Qwen2.5-VL (General Vision-Understanding VLM)
 
@@ -420,31 +412,31 @@ Recognition capabilities come in **four tiers** — install on demand; the first
 - **Need to run a service?**: **Yes**, self-host a vLLM inference service
 - **Minimum Resource Requirements** (measured):
 
-  | Mode | Minimum | Recommended | Notes |
-  |---|---|---|---|
-  | GPU Full-Precision 7B (FP16) | 16GB VRAM | **24GB VRAM** (RTX 3090 / 4090 / A5000) | Model weights ~15–16GB + KV cache; vLLM occupies 90% of VRAM by default |
-  | GPU Quantized 7B (INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | Quantized version fits RTX 4080 / 4060 Ti 16GB |
-  | GPU Lightweight 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 ~6–8GB, INT4 ~3–4GB — the sweet spot for individual developers |
-  | CPU mode | Not recommended | — | Runs but 5–10× slower; use a GPU for production |
-  | Memory | 16GB | 16–32GB | — |
-  | Disk | ~14GB (7B weights) | — | 3B is ~6GB |
-  | CUDA Requirement | Compute Capability ≥ 7.0 | — | Tesla T4 (7.5) minimum; V100 / A100 / RTX 30/40 series all work |
+ | Mode | Minimum | Recommended | Notes |
+ |---|---|---|---|
+ | GPU Full-Precision 7B (FP16) | 16GB VRAM | **24GB VRAM** (RTX 3090 / 4090 / A5000) | Model weights ~15–16GB + KV cache; vLLM occupies 90% of VRAM by default |
+ | GPU Quantized 7B (INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | Quantized version fits RTX 4080 / 4060 Ti 16GB |
+ | GPU Lightweight 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 ~6–8GB, INT4 ~3–4GB — the sweet spot for individual developers |
+ | CPU mode | Not recommended | — | Runs but 5–10× slower; use a GPU for production |
+ | Memory | 16GB | 16–32GB | — |
+ | Disk | ~14GB (7B weights) | — | 3B is ~6GB |
+ | CUDA Requirement | Compute Capability ≥ 7.0 | — | Tesla T4 (7.5) minimum; V100 / A100 / RTX 30/40 series all work |
 
 - **How to Install**:
-  ```bash
-  pip install vllm
-  vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
-  # When you see "Uvicorn running on http://0.0.0.0:8000", it's ready
-  ```
-  For more options (GPU selection / quantization / concurrency limits) see the [vLLM official docs](https://docs.vllm.ai). Then add this to `config.json`:
+ ```bash
+ pip install vllm
+ vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
+ # When you see "Uvicorn running on http://0.0.0.0:8000", it's ready
+ ```
+ For more options (GPU selection / quantization / concurrency limits) see the [vLLM official docs](https://docs.vllm.ai). Then add this to `config.json`:
 
-  ```json
-  {
-    "providers": {
-      "vlm": { "baseUrl": "http://127.0.0.1:8000" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "vlm": { "baseUrl": "http://127.0.0.1:8000" }
+ }
+ }
+ ```
 
 ##### Advanced: Unlimited-OCR Long-Document Parsing (SGLang/vLLM self-hosted)
 
@@ -456,18 +448,18 @@ Tier 4's default Qwen2.5-VL is a general VLM (strong at VQA / scene description)
 
 ```bash
 # Pull image (see Unlimited-OCR README for details)
-docker pull vllm/vllm-openai:unlimited-ocr          # Default CUDA 13.0
+docker pull vllm/vllm-openai:unlimited-ocr # Default CUDA 13.0
 # For Hopper GPUs use cu129:
 # docker pull vllm/vllm-openai:unlimited-ocr-cu129
 
 # Start the SGLang server (key params explained in the Unlimited-OCR README «SGLang» section)
 python -m sglang.launch_server \
-  --model baidu/Unlimited-OCR \
-  --served-model-name Unlimited-OCR \
-  --attention-backend fa3 --page-size 1 \
-  --mem-fraction-static 0.8 --context-length 32768 \
-  --enable-custom-logit-processor \
-  --host 0.0.0.0 --port 10000
+ --model baidu/Unlimited-OCR \
+ --served-model-name Unlimited-OCR \
+ --attention-backend fa3 --page-size 1 \
+ --mem-fraction-static 0.8 --context-length 32768 \
+ --enable-custom-logit-processor \
+ --host 0.0.0.0 --port 10000
 ```
 
 `custom_logit_processor` is the stringified output of Python-side `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` (a SGLang-private serialization format that TS cannot synthesize). **Run it once at deploy time** and paste the string into `config.json`:
@@ -482,18 +474,18 @@ python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoR
 
 ```json
 {
-  "providers": {
-    "vlm": {
-      "baseUrl": "http://127.0.0.1:10000",
-      "models": { "default": "Unlimited-OCR" },
-      "extra_body": {
-        "images_config": { "image_mode": "gundam" },
-        "custom_params": { "ngram_size": 35, "window_size": 128 },
-        "custom_logit_processor": "<the string printed by python -c above>",
-        "skip_special_tokens": false
-      }
-    }
-  }
+ "providers": {
+ "vlm": {
+ "baseUrl": "http://127.0.0.1:10000",
+ "models": { "default": "Unlimited-OCR" },
+ "extra_body": {
+ "images_config": { "image_mode": "gundam" },
+ "custom_params": { "ngram_size": 35, "window_size": 128 },
+ "custom_logit_processor": "<the string printed by python -c above>",
+ "skip_special_tokens": false
+ }
+ }
+ }
 }
 ```
 
@@ -624,6 +616,6 @@ The recognition side's full dependency stack is **Apache 2.0** (tesseract.js + P
 > Technical notes: providers and engines are both pluggable; structured tools produce the same output for the same input and can be checked into git; failed providers auto-switch. See the `doc/` directory for full documentation.
 
 <p align="center">
-  <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>
-  <sub>Install once, and every image task afterward becomes a single sentence.</sub>
+ <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>
+ <sub>Install once, and every image task afterward becomes a single sentence.</sub>
 </p>

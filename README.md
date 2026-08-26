@@ -3,9 +3,9 @@
 > Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.1-blue">
-  <img src="https://img.shields.io/badge/license-MIT-green">
-  <img src="https://img.shields.io/badge/MCP-compatible-purple">
+ <img src="https://img.shields.io/badge/version-0.13.1-blue">
+ <img src="https://img.shields.io/badge/license-MIT-green">
+ <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
 
 **给 Claude Code 装一次,以后所有图像活儿都是一句话。** 设计师出图、程序员画架构图、运营做分享卡、财务抠发票表格 —— 生图 / 视频 + 识别 + 画图 / 卡片 / 二维码全覆盖,**全免费**(免费服务方 + 本地引擎,装上即用)。
@@ -91,17 +91,17 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 ```bash
 # ① 到 https://open.bigmodel.cn/console/apikey 注册免费账号 + 申请 api_key(格式 {id}.{secret})
-#    注意:只接受 open.bigmodel.cn 标准 key;Code Plan key(ZAI_API_KEY)不可用 —— 它绑定 Z.ai 端点 + 白名单工具,违规调用会封号
+# 注意:只接受 open.bigmodel.cn 标准 key;Code Plan key(ZAI_API_KEY)不可用 —— 它绑定 Z.ai 端点 + 白名单工具,违规调用会封号
 
 # ② 写到 ~/.media-gen-mcp/config.json
 {
-  "providers": {
-    "glm-vision": { "apiKey": "你的{id}.{secret}" }
-  }
+ "providers": {
+ "glm-vision": { "apiKey": "你的{id}.{secret}" }
+ }
 }
 
 # ③ 回 Claude Code 说:"识别这张中文发票截图里的表格" / "这张图里有几个人?在做什么?"
-#    → 中文 SOTA 识别 + 看图问答,落盘 / 直接回答
+# → 中文 SOTA 识别 + 看图问答,落盘 / 直接回答
 ```
 
 > 配好后 MCP 自动纳入 fallback 链:**paddle → glm-vision → vlm → tesseract**;哪一档临时挂掉自动降级,你无感。详见[配置详解 · 档位 2](#档位-2智谱-glm-46v-flash云端免费零部署中文-sota--vqa)。
@@ -110,18 +110,18 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 ```bash
 # ① 拿免费 API Key(推荐 Agnes,默认服务方)
-#    https://platform.agnes-ai.com/ → 注册 → API Keys → 复制 sk-xxx
-#    (智谱 cogview-3-flash / cogvideox-flash 也永久免费,可二选一或都配)
+# https://platform.agnes-ai.com/ → 注册 → API Keys → 复制 sk-xxx
+# (智谱 cogview-3-flash / cogvideox-flash 也永久免费,可二选一或都配)
 
 # ② 写到 ~/.media-gen-mcp/config.json(只配一家也行)
 {
-  "providers": {
-    "agnes": { "apiKey": "sk-你的agnes-key" }
-  }
+ "providers": {
+ "agnes": { "apiKey": "sk-你的agnes-key" }
+ }
 }
 
 # ③ 回 Claude Code 说:"画只赛博朋克橙猫,写实风"
-#    → AI 写实图落盘。视频同理:"生成 5 秒海边日落视频"
+# → AI 写实图落盘。视频同理:"生成 5 秒海边日落视频"
 ```
 
 > 不想用 npx?全局装也行:先 `npm i -g media-gen-mcp-server`,再 `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`。
@@ -168,7 +168,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 - **生图**:Nano Banana Pro / Nano Banana 2(默认)/ Nano Banana 2 Lite;比例 16:9 / 9:16 / 1:1 / 3:4 / 4:3;seed 可复现;支持底图改图 + 最多 10 张参考图
 - **放大**:图片 2K 放大(model=`GEM_PIX_2_UPSAMPLE_2K`)、视频 1080p 超分(model=`veo_3_1_upsampler_1080p`)
-- **资产管理**:上传图片、批量删除、生成公开分享链接(`labs.google/fx/tools/flow/shared/…`)、取消生成中的视频、查积分 / 查媒体状态(`flow_status`);建角色实体并绑定 30 种预设语音(`flow_entity`)
+- **资产管理**:上传图片、批量删除、生成公开分享链接(`labs.
 
 **生视频按积分计费(每条,提交前请知悉)**:
 
@@ -186,9 +186,9 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 **用法(显式 `provider="flow"`)**:
 
 ```
-"画张赛博朋克猫,用 Flow,3:4 比例,seed 42"       → generate_image(provider="flow", aspect="3:4", seed=42)
-"用 Flow 生成 8 秒未来城市航拍视频"               → create_video(provider="flow", model="abra_t2v_8s")   ← 第一次返回积分预估+确认令牌,原参数加 confirmToken 复调才真提交
-"查一下 Flow 积分余额 / 这个 mediaId 生成完没"     → flow_status() / flow_status(mediaId=…)
+"画张赛博朋克猫,用 Flow,3:4 比例,seed 42" → generate_image(provider="flow", aspect="3:4", seed=42)
+"用 Flow 生成 8 秒未来城市航拍视频" → create_video(provider="flow", model="abra_t2v_8s") ← 第一次返回积分预估+确认令牌,原参数加 confirmToken 复调才真提交
+"查一下 Flow 积分余额 / 这个 mediaId 生成完没" → flow_status() / flow_status(mediaId=…)
 ```
 
 **`flow_status` 自省工具(全程 0 积分)**:不带参数返回全景 —— 登录账号、积分余额、动态模型目录(含每个 key 的参考耗时)、30 种预设语音、项目媒体列表;带 `mediaId` 查单个媒体状态并下载成品(`thumbnail=true` 取视频缩略图);`deleteMediaIds` 批量删除、`shareMediaIds` 生成公开分享链接、`cancelMediaIds` 取消生成中的视频(图片不可取消)。
@@ -300,12 +300,12 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 ```json
 {
-  "providers": {
-    "agnes": { "apiKey": "sk-你的agnes-key" },
-    "zhipu": { "apiKey": "你的智谱-key" }
-  },
-  "defaultProvider": "agnes",
-  "outDir": "/absolute/path/to/output"
+ "providers": {
+ "agnes": { "apiKey": "sk-你的agnes-key" },
+ "zhipu": { "apiKey": "你的智谱-key" }
+ },
+ "defaultProvider": "agnes",
+ "outDir": "/absolute/path/to/output"
 }
 ```
 
@@ -320,8 +320,8 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 ```json
 {
-  "imageProviderPriority": ["flow", "agnes", "zhipu"],
-  "videoProviderPriority": ["agnes", "zhipu"]
+ "imageProviderPriority": ["flow", "agnes", "zhipu"],
+ "videoProviderPriority": ["agnes", "zhipu"]
 }
 ```
 
@@ -331,7 +331,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **渠道启停 = 优先级链(链即开关)**:渠道是否启用由两条优先级链是否包含它决定 —— **不配置 = 不启用**(不自动路由、不进 fallback),**列出 = 启用**(链头即默认渠道)。不需要(也不再支持)单独的 `flow.enabled` 开关;显式 `provider="flow"` 点名永远合法,环境不可用时返回结构化 `[flow] S1xx` 前置错(自带启动指引),绝不静默换渠道。配套 `"flow": { "toolDeadlineMs": 110000 }` = Flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,防卡死(单次调用 ≤120s),超时转 `[flow] S410` —— 底层操作不取消,稍后经 `flow_status(mediaId)` 复查落盘。
 - **计费确认门(两段式,默认开)**:视频路由到/显式用 Flow 时,`create_video` 第一次调用**不提交**,返回 `{needConfirm:true, estimatedCost(积分预估,动态 creditMapping 优先/静态表兜底), confirmToken, expiresInSeconds}`;用**原参数 + confirmToken** 重新调用才真提交。令牌短时效(默认 10 分钟,`flow.confirmTtlMs` 可调,env `FLOW_CONFIRM_TTL_MS`)且与「模型+时长+预估+prompt+输入引用(image/keyframes/images/videoMediaId)」绑定 —— 确认后改任一项需重新获取;错误令牌返回 `[flow] S320`、过期返回 `[flow] S321`。0 积分操作(如 `veo_3_1_upsampler_1080p` 超分)与非 Flow 渠道**不触发**本门。关闭:`"flow": { "videoConfirm": false }`(默认 `true` —— 误门只多一次往返,漏门会真扣积分,故默认开)。
 
-**Flow 资产管理(全 0 积分)**:`flow_status` 除了查积分 / 查媒体状态 / 下载,还支持三件零消耗操作——`shareMediaIds=[…]` 生成公开分享链接(形如 `labs.google/fx/tools/flow/shared/image/<id>`,含提示词)、`cancelMediaIds=[…]` 取消生成中的视频(注意:图片生成不可取消)、`deleteMediaIds=[…]` 批量删除。`flow_entity` 工具可创建角色实体并绑定预设语音(30 种声线,先 `generate_image(provider="flow")` 出形象图再绑),后续生成可复用该角色。
+**Flow 资产管理(全 0 积分)**:`flow_status` 除了查积分 / 查媒体状态 / 下载,还支持三件零消耗操作——`shareMediaIds=[…]` 生成公开分享链接(形如 `labs.google/fx/tools/flow/shared/image/<id>`,含提示词)、`cancelMediaIds=[…]` 取消生成中的视频(注意:图片生成不可取消)、`deleteMediaIds=[…]` 批量删除。
 
 **配置文件位置**:`~/.media-gen-mcp/config.json`(macOS / Linux)或 `%USERPROFILE%\.media-gen-mcp\config.json`(Windows)。
 
@@ -348,11 +348,11 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **能干什么**:英文 / 数字 / 验证码 / 简单文档 OCR
 - **要不要装服务**:**不用**,以 WASM 形式打包进 MCP 进程,首次调用时自动加载语言模型
 - **最小资源需求**:
-  - CPU:任意(纯 CPU 运行,无 GPU 依赖)
-  - GPU:不需要
-  - 内存:约 200–500MB(随图片大小波动)
-  - 磁盘:约 30–50MB(WASM 引擎 + 语言包)
-  - 模型大小:含在上面磁盘占用里(英文语言包,几 MB 级)
+ - CPU:任意(纯 CPU 运行,无 GPU 依赖)
+ - GPU:不需要
+ - 内存:约 200–500MB(随图片大小波动)
+ - 磁盘:约 30–50MB(WASM 引擎 + 语言包)
+ - 模型大小:含在上面磁盘占用里(英文语言包,几 MB 级)
 - **速度**:单张约 3–5 秒
 - **适合谁**:90% 的轻量 OCR 场景、海外文档、验证码识别
 
@@ -368,19 +368,19 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **适合谁**:想要中文 SOTA + VQA 但**不想自建 PaddleX / vLLM** 的用户;完美补上档位 3/4 自建服务的部署门槛
 - **怎么配**:到 [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) 注册免费账号 + 申请 api_key(格式 `{id}.{secret}`),在 `config.json` 加:
 
-  ```json
-  {
-    "providers": {
-      "glm-vision": { "apiKey": "你的{id}.{secret}" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "glm-vision": { "apiKey": "你的{id}.{secret}" }
+ }
+ }
+ ```
 
-  默认模型 `glm-4.6v-flash`,可经 `providers["glm-vision"].model` 改为 `glm-4v-flash`(免费轻量)或付费视觉模型(`glm-4.6v` / `glm-ocr` 等)。配置后 MCP 自动纳入 fallback 链:**paddle(10)→ glm-vision(9)→ vlm(8)→ tesseract(1)**。
+ 默认模型 `glm-4.6v-flash`,可经 `providers["glm-vision"].model` 改为 `glm-4v-flash`(免费轻量)或付费视觉模型(`glm-4.6v` / `glm-ocr` 等)。配置后 MCP 自动纳入 fallback 链:**paddle(10)→ glm-vision(9)→ vlm(8)→ tesseract(1)**。
 
 - ⚠️ **合规说明**(重要):
-  - 仅接受 **open.bigmodel.cn 标准 api_key**;**Code Plan key(ZAI_API_KEY)不可用** —— 绑定 Z.ai 专用端点 + 限 9 个白名单工具(Claude Code / Cline / Cursor 等,media-gen-mcp 不在内),违规调用 3 次封号且订阅费不退
-  - 多 key 轮换(`apiKeys: ["k1", "k2", ...]`)技术上支持,但**智谱 User Agreement §2/§3 禁止多账号 / 账号共享** —— 多 key 轮换可能违约,平台有权封号。请确认所有 key 均为合规自有账号
+ - 仅接受 **open.bigmodel.cn 标准 api_key**;**Code Plan key(ZAI_API_KEY)不可用** —— 绑定 Z.ai 专用端点 + 限 9 个白名单工具(Claude Code / Cline / Cursor 等,media-gen-mcp 不在内),违规调用 3 次封号且订阅费不退
+ - 多 key 轮换(`apiKeys: ["k1", "k2", ...]`)技术上支持,但**智谱 User Agreement §2/§3 禁止多账号 / 账号共享** —— 多 key 轮换可能违约,平台有权封号。请确认所有 key 均为合规自有账号
 
 #### 档位 3:PaddleX / PP-StructureV3(中文 SOTA + 表格识别)
 
@@ -388,30 +388,30 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **要不要装服务**:**要**,自托管 PaddleX REST 服务,MCP 通过 `baseUrl` 调用
 - **最小资源需求**(实测):
 
-  | 模式 | 最低门槛 | 推荐 | 说明 |
-  |---|---|---|---|
-  | GPU 模式 | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | 模型加载约 2.4GB,处理复杂 PDF 峰值约 6GB |
-  | CPU 模式 | 4 核 CPU + 8GB 内存 | 8 核 + 16GB 内存 | 能跑(轻量文档可用),批量 / 复杂 PDF 明显慢 3–5 倍 |
-  | 磁盘 | 约 3GB | 约 5GB | paddlepaddle + paddlex + 模型权重 |
-  | 模型大小 | 约 100–300MB(单pipeline) | — | 多 pipeline 累加 |
+ | 模式 | 最低门槛 | 推荐 | 说明 |
+ |---|---|---|---|
+ | GPU 模式 | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | 模型加载约 2.4GB,处理复杂 PDF 峰值约 6GB |
+ | CPU 模式 | 4 核 CPU + 8GB 内存 | 8 核 + 16GB 内存 | 能跑(轻量文档可用),批量 / 复杂 PDF 明显慢 3–5 倍 |
+ | 磁盘 | 约 3GB | 约 5GB | paddlepaddle + paddlex + 模型权重 |
+ | 模型大小 | 约 100–300MB(单pipeline) | — | 多 pipeline 累加 |
 
 - **CUDA 要求**:Compute Capability ≥ 7.0(V100 / T4 / RTX 20/30/40 系;50 系暂未完全适配),需 CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 才有 GPU 加速
 - **怎么装**:
 
-  ```bash
-  pip install paddlex paddlepaddle          # GPU 版:paddlepaddle-gpu
-  paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
-  ```
+ ```bash
+ pip install paddlex paddlepaddle # GPU 版:paddlepaddle-gpu
+ paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
+ ```
 
-  然后在 `config.json` 加一行:
+ 然后在 `config.json` 加一行:
 
-  ```json
-  {
-    "providers": {
-      "paddle": { "baseUrl": "http://127.0.0.1:8080" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "paddle": { "baseUrl": "http://127.0.0.1:8080" }
+ }
+ }
+ ```
 
 #### 档位 4:vLLM + Qwen2.5-VL(通用视觉理解 VLM)
 
@@ -419,31 +419,31 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **要不要装服务**:**要**,自建 vLLM 推理服务
 - **最小资源需求**(实测):
 
-  | 模式 | 最低门槛 | 推荐 | 说明 |
-  |---|---|---|---|
-  | GPU 满精度 7B(FP16) | 16GB VRAM | **24GB VRAM**(RTX 3090 / 4090 / A5000) | 模型权重约 15–16GB + KV cache,vLLM 默认占用 90% 显存 |
-  | GPU 量化 7B(INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | 量化版可塞进 RTX 4080 / 4060 Ti 16GB |
-  | GPU 轻量版 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 约 6–8GB,INT4 约 3–4GB,个人开发者甜点 |
-  | CPU 模式 | 不推荐 | — | 能跑但慢 5–10 倍,生产场景请上 GPU |
-  | 内存 | 16GB | 16–32GB | — |
-  | 磁盘 | 约 14GB(7B 权重) | — | 3B 约 6GB |
-  | CUDA 要求 | Compute Capability ≥ 7.0 | — | Tesla T4(7.5)起步,V100 / A100 / RTX 30/40 系均可 |
+ | 模式 | 最低门槛 | 推荐 | 说明 |
+ |---|---|---|---|
+ | GPU 满精度 7B(FP16) | 16GB VRAM | **24GB VRAM**(RTX 3090 / 4090 / A5000) | 模型权重约 15–16GB + KV cache,vLLM 默认占用 90% 显存 |
+ | GPU 量化 7B(INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | 量化版可塞进 RTX 4080 / 4060 Ti 16GB |
+ | GPU 轻量版 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 约 6–8GB,INT4 约 3–4GB,个人开发者甜点 |
+ | CPU 模式 | 不推荐 | — | 能跑但慢 5–10 倍,生产场景请上 GPU |
+ | 内存 | 16GB | 16–32GB | — |
+ | 磁盘 | 约 14GB(7B 权重) | — | 3B 约 6GB |
+ | CUDA 要求 | Compute Capability ≥ 7.0 | — | Tesla T4(7.5)起步,V100 / A100 / RTX 30/40 系均可 |
 
 - **怎么装**:
-  ```bash
-  pip install vllm
-  vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
-  # 看到 "Uvicorn running on http://0.0.0.0:8000" 即就绪
-  ```
-  更多参数(GPU 选择 / 量化版本 / 并发上限)见 [vLLM 官方文档](https://docs.vllm.ai)。然后在 `config.json` 加:
+ ```bash
+ pip install vllm
+ vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
+ # 看到 "Uvicorn running on http://0.0.0.0:8000" 即就绪
+ ```
+ 更多参数(GPU 选择 / 量化版本 / 并发上限)见 [vLLM 官方文档](https://docs.vllm.ai)。然后在 `config.json` 加:
 
-  ```json
-  {
-    "providers": {
-      "vlm": { "baseUrl": "http://127.0.0.1:8000" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "vlm": { "baseUrl": "http://127.0.0.1:8000" }
+ }
+ }
+ ```
 
 ##### 进阶:Unlimited-OCR 长文档解析(SGLang/vLLM 自托管)
 
@@ -455,18 +455,18 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 ```bash
 # 拉镜像(详见 Unlimited-OCR README)
-docker pull vllm/vllm-openai:unlimited-ocr          # 默认 CUDA 13.0
+docker pull vllm/vllm-openai:unlimited-ocr # 默认 CUDA 13.0
 # Hopper GPU 用 cu129:
 # docker pull vllm/vllm-openai:unlimited-ocr-cu129
 
 # 启动 SGLang server(关键参数解释见 Unlimited-OCR README「SGLang」节)
 python -m sglang.launch_server \
-  --model baidu/Unlimited-OCR \
-  --served-model-name Unlimited-OCR \
-  --attention-backend fa3 --page-size 1 \
-  --mem-fraction-static 0.8 --context-length 32768 \
-  --enable-custom-logit-processor \
-  --host 0.0.0.0 --port 10000
+ --model baidu/Unlimited-OCR \
+ --served-model-name Unlimited-OCR \
+ --attention-backend fa3 --page-size 1 \
+ --mem-fraction-static 0.8 --context-length 32768 \
+ --enable-custom-logit-processor \
+ --host 0.0.0.0 --port 10000
 ```
 
 `custom_logit_processor` 是 Python 端 `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` 的字符串化产物(SGLang 私有序列化格式,TS 侧无法合成)。**部署期跑一次**取串,粘进 `config.json`:
@@ -481,18 +481,18 @@ python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoR
 
 ```json
 {
-  "providers": {
-    "vlm": {
-      "baseUrl": "http://127.0.0.1:10000",
-      "models": { "default": "Unlimited-OCR" },
-      "extra_body": {
-        "images_config": { "image_mode": "gundam" },
-        "custom_params": { "ngram_size": 35, "window_size": 128 },
-        "custom_logit_processor": "<上一步 python -c 打印的串>",
-        "skip_special_tokens": false
-      }
-    }
-  }
+ "providers": {
+ "vlm": {
+ "baseUrl": "http://127.0.0.1:10000",
+ "models": { "default": "Unlimited-OCR" },
+ "extra_body": {
+ "images_config": { "image_mode": "gundam" },
+ "custom_params": { "ngram_size": 35, "window_size": 128 },
+ "custom_logit_processor": "<上一步 python -c 打印的串>",
+ "skip_special_tokens": false
+ }
+ }
+ }
 }
 ```
 
@@ -623,6 +623,6 @@ A:这类模糊请求的路由已经做过校准 —— 「做卡片 / 海报 / O
 > 技术细节:服务方与引擎都可插拔,结构化工具同输入同输出可入 git,失败自动切换服务方。完整文档见 `doc/` 目录。
 
 <p align="center">
-  <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>
-  <sub>装一次,以后所有图像活儿都是一句话。</sub>
+ <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>
+ <sub>装一次,以后所有图像活儿都是一句话。</sub>
 </p>

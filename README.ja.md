@@ -170,13 +170,13 @@ Chrome が動いていない / 未ログインの場合、ツールは**構造�
 
 - **画像生成**:Nano Banana Pro / Nano Banana 2(デフォルト)/ Nano Banana 2 Lite。比率は 16:9 / 9:16 / 1:1 / 3:4 / 4:3、seed 再現可、ベース画像による編集 + 参考画像最大 10 枚に対応
 - **アップスケール**:画像の 2K アップスケール(model=`GEM_PIX_2_UPSAMPLE_2K`)、動画の 1080p アップスケール(model=`veo_3_1_upsampler_1080p`)
-- **アセット管理**:画像アップロード、一括削除、公開シェアリンク作成(`labs.google/fx/tools/flow/shared/…`)、生成中の動画のキャンセル、クレジット / メディア状態の照会(`flow_status`)。キャラクターエンティティ作成と 30 種のプリセット音声のバインド(`flow_entity`)
+- **アセット管理**:画像アップロード、一括削除、公開シェアリンク作成(`labs.google/fx/tools/flow/shared/…`)、生成中の動画のキャンセル、クレジット / メディア状態の照会(`flow_status`)。30 種のプリセット音声は `flow_status` スナップショットの `preset_voices` で参照可能
 
-**動画生成はクレジット消費(1 本あたり、送信前に把握を)**:
+**動画はクレジット課金(1 本ごと、送信前に確認を)**:
 
-| モデル | key 例 | 1 本あたりのクレジット |
+| モデル | key 例 | クレジット/本 |
 |---|---|---|
-| Omni Flash(abra)テキスト / 画像 / 参考画像 | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15(長さ 4/6/8/10 秒で変動) |
+| Omni Flash(abra)テキスト/画像/参考画像 | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15(長さ 4/6/8/10 秒) |
 | Omni Flash 動画編集(V2V) | `abra_edit` | 20 |
 | Veo 3.1 Lite(延長・最初と最後のフレームを含む) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
 | Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
@@ -333,7 +333,7 @@ Chrome が動いていない / 未ログインの場合、ツールは**構造�
 - **チャネルのオン/オフ = 優先チェーン(チェーンこそがスイッチ)**:有効かどうかは 2 本の優先チェーンに含まれるかだけで決まります —— **未設定 = 無効**(自動ルーティングもフォールバックもしない)、**記載 = 有効**(チェーン先頭 = デフォルトプロバイダ)。単独の `flow.enabled` スイッチは不要(サポートも終了)。明示的な `provider="flow"` 呼び出しは常に合法で、環境が使えない場合は構造化された `[flow] S1xx` 事前チェックエラー(起動ガイド付き)を返します —— プロバイダの無言切り替えは決してしません。関連ノブ `"flow": { "toolDeadlineMs": 110000 }` は、Flow の長時間操作(画像ポーリング / 動画サブミット / ダウンロード)の上限で、スタール防止ルール(1 回 ≤120s)を遵守;タイムアウト時は `[flow] S410` を返します —— 底側の操作はキャンセルされず、後で `flow_status(mediaId)` で確認・保存できます。
 - **課金確認ゲート(二段階、デフォルト ON)**:動画が Flow にルーティング/明示指定された場合、最初の `create_video` は送信せず `{needConfirm:true, estimatedCost(ポイント見積り:動的 creditMapping 優先 / 静的テーブルで代替), confirmToken, expiresInSeconds}` を返します。同じ引数 + `confirmToken` で再呼び出しすると実際に送信。トークンは短命(デフォルト 10 分、`flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS` で調整可能)で「モデル+尺+見積り+プロンプト+入力参照(image/keyframes/images/videoMediaId)」にバインド —— 確認後にこれらを変えると新しいトークンが必要です。誤トークンは `[flow] S320`、期限切れは `[flow] S321`。無料操作(`veo_3_1_upsampler_1080p` など)と Flow 以外のプロバイダは本ゲートをトリガーしません。オフにするには `"flow": { "videoConfirm": false }`(デフォルト `true` —— 誤発火は往復 1 回の損、見逃しは実クレジット消費)。
 
-**Flow 資産管理(すべて 0 クレジット)**:`flow_status` はクレジット / メディア状態 / ダウンロードに加え、3 つの無料操作に対応 —— `shareMediaIds=[…]` は公開シェアリンクを作成(`labs.google/fx/tools/flow/shared/image/<id>` 形式、プロンプト付き)、`cancelMediaIds=[…]` は生成中の動画をキャンセル(注意:画像ジョブはキャンセル不可)、`deleteMediaIds=[…]` はメディアを一括削除。`flow_entity` ツールはキャラクターエンティティを作成し、30 種のプリセット音声をバインドします(先に `generate_image(provider="flow")` で外見を生成してから紐付け)。以降の生成でそのキャラクターを再利用できます。
+**Flow 資産管理(すべて 0 クレジット)**:`flow_status` はクレジット / メディア状態 / ダウンロードに加え、3 つの無料操作に対応 —— `shareMediaIds=[…]` は公開シェアリンクを作成(`labs.google/fx/tools/flow/shared/image/<id>` 形式、プロンプト付き)、`cancelMediaIds=[…]` は生成中の動画をキャンセル(注意:画像ジョブはキャンセル不可)、`deleteMediaIds=[…]` はメディアを一括削除。また、30 種のプリセット音声は `flow_status` スナップショットの `preset_voices` フィールドで参照できます。
 
 **設定ファイルの場所**:`~/.media-gen-mcp/config.json`(macOS / Linux)、または `%USERPROFILE%\.media-gen-mcp\config.json`(Windows)。
 

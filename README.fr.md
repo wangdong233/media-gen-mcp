@@ -3,9 +3,9 @@
 > Le « couteau suisse de l'image » pour Claude Code — créer des images, donner vie à vos idées, comprendre l'image, en une seule phrase, totalement gratuit.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.1-blue">
-  <img src="https://img.shields.io/badge/license-MIT-green">
-  <img src="https://img.shields.io/badge/MCP-compatible-purple">
+ <img src="https://img.shields.io/badge/version-0.13.1-blue">
+ <img src="https://img.shields.io/badge/license-MIT-green">
+ <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
 
 **Installez-le une fois dans Claude Code, et toutes vos tâches image se font en une phrase.** Designers qui produisent des visuels, développeurs qui dessinent des schémas d'architecture, équipes marketing qui créent des cartes de partage, financiers qui extraient les tableaux de factures — génération d'images / vidéos + reconnaissance + dessin / cartes / QR codes, tout est couvert, **100 % gratuit** (provider gratuit + moteur local, prêt à l'emploi dès l'installation).
@@ -91,39 +91,39 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 
 ```bash
 # ① Inscrivez-vous sur https://open.bigmodel.cn/console/apikey pour un compte gratuit + demandez api_key (format {id}.{secret})
-#    Attention : seules les clés standard open.bigmodel.cn sont acceptées ; la clé Code Plan (ZAI_API_KEY) n'est PAS utilisable —
-#    elle est liée à un point de terminaison Z.ai + une liste blanche de 9 outils (Claude Code / Cline / Cursor, etc., media-gen-mcp non inclus),
-#    tout appel abusif entraîne la fermeture du compte et l'abonnement non remboursé
+# Attention : seules les clés standard open.bigmodel.cn sont acceptées; la clé Code Plan (ZAI_API_KEY) n'est PAS utilisable —
+# elle est liée à un point de terminaison Z.ai + une liste blanche de 9 outils (Claude Code / Cline / Cursor, etc., media-gen-mcp non inclus),
+# tout appel abusif entraîne la fermeture du compte et l'abonnement non remboursé
 
 # ② Écrivez-la dans ~/.media-gen-mcp/config.json
 {
-  "providers": {
-    "glm-vision": { "apiKey": "votre-{id}.{secret}" }
-  }
+ "providers": {
+ "glm-vision": { "apiKey": "votre-{id}.{secret}" }
+ }
 }
 
 # ③ De retour dans Claude Code : « Reconnais le tableau de cette facture chinoise » / « Combien de personnes sur cette image ? Que font-elles ? »
-#    → OCR chinois SOTA + Q&R visuelle, enregistré / réponse directe
+# → OCR chinois SOTA + Q&R visuelle, enregistré / réponse directe
 ```
 
-> Une fois configurée, le MCP l'intègre automatiquement à la chaîne de repli : **paddle → glm-vision → vlm → tesseract** ; si un niveau tombe temporairement, dégradation automatique imperceptible. Voir [Configuration détaillée · Niveau 2](#configuration-détaillée).
+> Une fois configurée, le MCP l'intègre automatiquement à la chaîne de repli : **paddle → glm-vision → vlm → tesseract**; si un niveau tombe temporairement, dégradation automatique imperceptible. Voir [Configuration détaillée · Niveau 2](#configuration-détaillée).
 
 ### Vous voulez des images réalistes / vidéos IA ? Ajoutez une clé API gratuite (optionnel)
 
 ```bash
 # ① Obtenez une clé API gratuite (Agnes recommandé, provider par défaut)
-#    https://platform.agnes-ai.com/ → inscription → API Keys → copiez sk-xxx
-#    (cogview-3-flash / cogvideox-flash de Zhipu sont aussi gratuits à vie, au choix ou les deux)
+# https://platform.agnes-ai.com/ → inscription → API Keys → copiez sk-xxx
+# (cogview-3-flash / cogvideox-flash de Zhipu sont aussi gratuits à vie, au choix ou les deux)
 
 # ② Écrivez-la dans ~/.media-gen-mcp/config.json (un seul provider suffit)
 {
-  "providers": {
-    "agnes": { "apiKey": "sk-votre-clé-agnes" }
-  }
+ "providers": {
+ "agnes": { "apiKey": "sk-votre-clé-agnes" }
+ }
 }
 
 # ③ De retour dans Claude Code, dites : « Dessine un chat orange cyberpunk, style réaliste »
-#    → Image réaliste IA enregistrée. Pareil pour la vidéo : « Génère une vidéo de 5 s d'un coucher de soleil sur la mer »
+# → Image réaliste IA enregistrée. Pareil pour la vidéo : « Génère une vidéo de 5 s d'un coucher de soleil sur la mer »
 ```
 
 > Vous ne voulez pas utiliser npx ? L'installation globale fonctionne aussi : commencez par `npm i -g media-gen-mcp-server`, puis `claude mcp add media-gen-mcp -s user "$(which media-gen-mcp-server)"`.
@@ -142,7 +142,7 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 
 **Transformez une phrase ou une image en vidéo courte**
 > Vous : « Génère une vidéo de 5 s d'un coucher de soleil sur la mer »
-> Obtenu : vidéo MP4 (3–18 s ; les vidéos longues sont générées en arrière-plan, vous êtes notifié à la fin pour récupérer le clip)
+> Obtenu : vidéo MP4 (3–18 s; les vidéos longues sont générées en arrière-plan, vous êtes notifié à la fin pour récupérer le clip)
 
 **Récupérez une icône ou un logo de marque**
 > Vous : « Récupère un logo GitHub, 128 pixels »
@@ -150,7 +150,7 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 
 **Retrouver le prompt et les paramètres d'une image IA**
 > Vous : « Avec quel prompt et quels paramètres cette image a-t-elle été générée ? Reproductible ? »
-> Obtenu : paramètres structurés — prompt positif/négatif, modèle, pas d'échantillonnage, CFG, graine, taille (analysé localement depuis les métadonnées ComfyUI/A1111 embarquées dans le PNG ; les images Agnes portent tous les paramètres — récupérez le prompt et reproduisez avec generate_image en un clic)
+> Obtenu : paramètres structurés — prompt positif/négatif, modèle, pas d'échantillonnage, CFG, graine, taille (analysé localement depuis les métadonnées ComfyUI/A1111 embarquées dans le PNG; les images Agnes portent tous les paramètres — récupérez le prompt et reproduisez avec generate_image en un clic)
 
 ### Provider Google Flow (Veo 3.1 / Nano Banana — sans clé API, images 0 crédit)
 
@@ -161,41 +161,33 @@ Le moteur léger par défaut suffit pour l'anglais / les chiffres, mais sa préc
 ```bash
 lasso launch-chrome --port 9223 --mode visible
 # Pas encore lasso ? npm i -g lasso-mcp
-# Dans la fenêtre Chrome ouverte, allez sur https://labs.google/fx/tools/flow et connectez-vous ; gardez ensuite Chrome en marche
+# Dans la fenêtre Chrome ouverte, allez sur https://labs.google/fx/tools/flow et connectez-vous; gardez ensuite Chrome en marche
 ```
 
 Si Chrome ne tourne pas / n'est pas connecté, les outils renvoient un **code d'erreur structuré + guide** (S100 = Chrome injoignable, S101 = aucune page Flow ouverte) — suivez l'indication, lancez une fois, c'est tout. Jamais d'échec silencieux, jamais de changement de provider à votre insu.
 
 **Tout ceci est à 0 crédit (utilisez librement)** :
 
-- **Génération d'images** : Nano Banana Pro / Nano Banana 2 (défaut) / Nano Banana 2 Lite ; ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3 ; seeds reproductibles ; édition sur image de base + jusqu'à 10 images de référence
+- **Génération d'images** : Nano Banana Pro / Nano Banana 2 (défaut) / Nano Banana 2 Lite; ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reproductibles; édition sur image de base + jusqu'à 10 images de référence
 - **Suréchantillonnage** : image en 2K (model=`GEM_PIX_2_UPSAMPLE_2K`), vidéo en 1080p (model=`veo_3_1_upsampler_1080p`)
-- **Gestion des actifs** : téléverser des images, supprimer par lots, créer des liens publics de partage (`labs.google/fx/tools/flow/shared/…`), annuler des vidéos en cours, consulter crédits / statut des médias (`flow_status`) ; créer des entités de personnage et lier l'une des 30 voix prédéfinies (`flow_entity`)
-
-**La génération vidéo consomme des crédits (par clip — à savoir avant de soumettre)** :
-
-| Modèle | Exemples de keys | Crédits par clip |
-|---|---|---|
-| Omni Flash (abra) texte / image / référence | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15 (selon durée 4/6/8/10 s) |
-| Omni Flash édition vidéo (V2V) | `abra_edit` | 20 |
-| Veo 3.1 Lite (inclut prolongation, premier+dernier cadre) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
+- **Gestion des actifs** : téléverser des images, supprimer par lots, créer des liens publics de partage (`labs.google/fx/tools/flow/shared/…`), annuler des vidéos en cours, consulter crédits / statut des médias (`flow_status`); créer des entités de personnage et lier l'une des 30 voix prédéfinies (1 Lite (inclut prolongation, premier+dernier cadre) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
 | Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Suréchantillonnage vidéo 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniquement. Modes : texte-vers-vidéo (t2v), image-vers-vidéo (`image`, le téléversement est à 0 crédit), images-de-référence-vers-vidéo (`images`, 1–10), premier+dernier cadre (`keyframes`, exactement 2), prolongation (`videoMediaId`), édition (`videoMediaId` + une consigne de modification ; wire finalisé mais pas encore soumis en réel — la réponse porte un avertissement), suréchantillonnage (`videoMediaId`).
+Un clip par appel; durées 4 / 6 / 8 / 10 secondes; ratio 16:9 / 9:16 uniquement. Modes : texte-vers-vidéo (t2v), image-vers-vidéo (`image`, le téléversement est à 0 crédit), images-de-référence-vers-vidéo (`images`, 1–10), premier+dernier cadre (`keyframes`, exactement 2), prolongation (`videoMediaId`), édition (`videoMediaId` + une consigne de modification; wire finalisé mais pas encore soumis en réel — la réponse porte un avertissement), suréchantillonnage (`videoMediaId`).
 
 **Utilisation (`provider="flow"` explicite)** :
 
 ```
-« Dessine un chat cyberpunk via Flow, 3:4, seed 42 »        → generate_image(provider="flow", aspect="3:4", seed=42)
-« Génère via Flow une vidéo de 8 s d'une ville futuriste »  → create_video(provider="flow", model="abra_t2v_8s")   ← le premier appel renvoie seulement estimation de crédits + jeton de confirmation ; rappelle avec les MÊMES paramètres + confirmToken pour soumettre réellement
-« Mes crédits Flow / ce mediaId est-il terminé ? »          → flow_status() / flow_status(mediaId=…)
+« Dessine un chat cyberpunk via Flow, 3:4, seed 42 » → generate_image(provider="flow", aspect="3:4", seed=42)
+« Génère via Flow une vidéo de 8 s d'une ville futuriste » → create_video(provider="flow", model="abra_t2v_8s") ← le premier appel renvoie seulement estimation de crédits + jeton de confirmation; rappelle avec les MÊMES paramètres + confirmToken pour soumettre réellement
+« Mes crédits Flow / ce mediaId est-il terminé ? » → flow_status() / flow_status(mediaId=…)
 ```
 
-**L'outil d'introspection `flow_status` (0 crédit de bout en bout)** : sans argument, il renvoie un instantané complet — compte connecté, solde de crédits, catalogue de modèles en direct (avec durée de référence par key), 30 voix prédéfinies et liste des médias du projet ; avec un `mediaId`, il suit le statut d'un média et télécharge l'asset terminé (`thumbnail=true` récupère la miniature vidéo) ; `deleteMediaIds` supprime par lots, `shareMediaIds` crée des liens publics de partage, `cancelMediaIds` annule des vidéos en cours (les images ne sont pas annulables).
+**L'outil d'introspection `flow_status` (0 crédit de bout en bout)** : sans argument, il renvoie un instantané complet — compte connecté, solde de crédits, catalogue de modèles en direct (avec durée de référence par key), 30 voix prédéfinies et liste des médias du projet; avec un `mediaId`, il suit le statut d'un média et télécharge l'asset terminé (`thumbnail=true` récupère la miniature vidéo); `deleteMediaIds` supprime par lots, `shareMediaIds` crée des liens publics de partage, `cancelMediaIds` annule des vidéos en cours (les images ne sont pas annulables).
 
-> **Ligne rouge des crédits** : la vidéo Flow consomme des crédits et n'est **jamais routée automatiquement par défaut** — soit vous l'inscrivez explicitement dans `videoProviderPriority` (les crédits sont à votre charge ; un avertissement marqué s'affiche au démarrage), soit vous passez `provider="flow"` à chaque appel. Pour des images gratuites en automatique, mettez `flow` en tête de `imageProviderPriority` (voir Configuration ci-dessous).
+> **Ligne rouge des crédits** : la vidéo Flow consomme des crédits et n'est **jamais routée automatiquement par défaut** — soit vous l'inscrivez explicitement dans `videoProviderPriority` (les crédits sont à votre charge; un avertissement marqué s'affiche au démarrage), soit vous passez `provider="flow"` à chaque appel. Pour des images gratuites en automatique, mettez `flow` en tête de `imageProviderPriority` (voir Configuration ci-dessous).
 
 ### Comprendre une image / un PDF (transformer l'image et les documents en données)
 
@@ -217,7 +209,7 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 
 **Extraire tout le texte d'un PDF**
 > Vous : « Extrais tout le texte de ce rapport PDF de 20 pages, exporte en Markdown »
-> Obtenu : texte intégral / Markdown / JSON — un PDF numérique sort en secondes via la couche de texte, un PDF scanné passe automatiquement par OCR page par page ; plage de pages au choix (`3` / `1-10` / `odd` / `last`), zones filigrane / en-tête et pied de page ignorées, sortie multi-pages fusionnée ou paginée ; les documents longs tournent en arrière-plan, notification à la fin pour récupérer le résultat (factures / contrats / rapports financiers / articles / livres scannés, tout passe)
+> Obtenu : texte intégral / Markdown / JSON — un PDF numérique sort en secondes via la couche de texte, un PDF scanné passe automatiquement par OCR page par page; plage de pages au choix (`3` / `1-10` / `odd` / `last`), zones filigrane / en-tête et pied de page ignorées, sortie multi-pages fusionnée ou paginée; les documents longs tournent en arrière-plan, notification à la fin pour récupérer le résultat (factures / contrats / rapports financiers / articles / livres scannés, tout passe)
 
 **Rendre les résultats de reconnaissance / de lecture PDF plus propres et plus fluides**
 > Vous : « Extrais le texte de ce contrat scanné, **ignore le filigrane et les tampons rouges** » / « Fusionne cet article sur deux colonnes **selon l'ordre de lecture** en un seul bloc »
@@ -227,7 +219,7 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 
 **Demander d'abord « que peut faire mon service de reconnaissance ? »**
 > Vous : « Suis-je actuellement capable de reconnaître les tableaux ? Mon OCR chinois est-il configuré ? La reconnaissance de manuscrit fonctionne-t-elle ? »
-> Obtenu : la liste des capacités actuelles — quel niveau sur les quatre est configuré / lequel manque / lequel est en refroidissement ou en erreur, ainsi que la recommandation de routage « pour les tableaux passez par X, pour le manuscrit par Y » ; **demandez d'abord avant de lancer l'appel, pour éviter de tomber sur une erreur**
+> Obtenu : la liste des capacités actuelles — quel niveau sur les quatre est configuré / lequel manque / lequel est en refroidissement ou en erreur, ainsi que la recommandation de routage « pour les tableaux passez par X, pour le manuscrit par Y »; **demandez d'abord avant de lancer l'appel, pour éviter de tomber sur une erreur**
 
 ### Dessiner clairement vos idées (sans clé, prêt à l'emploi)
 
@@ -235,13 +227,13 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 > Vous : « Dessine un schéma d'architecture : client → passerelle API → service commande + service paiement → base de données »
 > Obtenu : schéma d'architecture vectoriel (prend aussi en charge organigrammes / diagrammes de séquence / diagrammes de classes / schémas ER / cartes mentales)
 
-**Dessiner un schéma HTML interactif** (ouvrez-le dans le navigateur pour interagir ; flux sur les arêtes + animation des nœuds ; le thème suit le clair/sombre du système)
+**Dessiner un schéma HTML interactif** (ouvrez-le dans le navigateur pour interagir; flux sur les arêtes + animation des nœuds; le thème suit le clair/sombre du système)
 > Vous : « Dessine un schéma d'architecture pour un README qui suit automatiquement les lecteurs clair/sombre »
-> Obtenu : un fichier HTML unique (palette double D2 + visionneuse ; pan / zoom / bascule de thème / export SVG)
+> Obtenu : un fichier HTML unique (palette double D2 + visionneuse; pan / zoom / bascule de thème / export SVG)
 
-**Dessiner un schéma d'architecture imbriqué / à exploration (drill-down)** (ouvrez dans le navigateur ; cliquez sur une couche pour entrer dans sa sous-architecture ; fil d'Ariane pour revenir à tout ancêtre)
+**Dessiner un schéma d'architecture imbriqué / à exploration (drill-down)** (ouvrez dans le navigateur; cliquez sur une couche pour entrer dans sa sous-architecture; fil d'Ariane pour revenir à tout ancêtre)
 > Vous : « Dessine ce système en architecture imbriquée : niveau supérieur 5 modules, cliquer sur ‹Service Commandes› pour entrer dans son interne, puis dans le diagramme de séquence de création de commande »
-> Obtenu : un fichier HTML unique (cliquer sur une couche → bascule vers l'architecture interne de cette couche ; imbrication arbitraire — chacune peut être architecture / séquence / classes / ER / flowchart ; fil d'Ariane ou Esc pour revenir à tout ancêtre ; le hash de l'URL fait un lien profond vers une couche ; le thème suit le clair/sombre du système)
+> Obtenu : un fichier HTML unique (cliquer sur une couche → bascule vers l'architecture interne de cette couche; imbrication arbitraire — chacune peut être architecture / séquence / classes / ER / flowchart; fil d'Ariane ou Esc pour revenir à tout ancêtre; le hash de l'URL fait un lien profond vers une couche; le thème suit le clair/sombre du système)
 
 **Transformer les données en graphiques**
 > Vous : « Mets ces données de vente en histogramme »
@@ -251,7 +243,7 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 
 **Carte de partage / image OG / carte de citation / couverture / poster**
 > Vous : « Fais une carte de partage sombre à dégradé, titre : Nouveautés de juillet 🚀 »
-> Obtenu : carte soigneusement composée (titre, sous-titre, dégradés, lueur, emoji colorés, logo intégré, tout automatique ; les caractères chinois et les kanji japonais ne s'affichent pas en caractères corrompus)
+> Obtenu : carte soigneusement composée (titre, sous-titre, dégradés, lueur, emoji colorés, logo intégré, tout automatique; les caractères chinois et les kanji japonais ne s'affichent pas en caractères corrompus)
 
 **Générer un QR code**
 > Vous : « Fais un QR code pointant vers github.com »
@@ -271,13 +263,13 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 > Vous : « Fais une animation d'intro produit de 3 s, dégradé + particules »
 > Obtenu : vidéo MP4 / GIF / WebM (intros produit / animations de marque / démos d'effet, rendu frame par frame, même entrée = toujours même sortie)
 
-> **Petit conseil** : création d'image / lecture d'image utilisent l'IA en ligne ; dessin / cartes / QR codes / animations sont des moteurs locaux — **prêts à l'emploi dès l'installation, vectoriels haute définition, une même entrée produit toujours la même sortie**.
+> **Petit conseil** : création d'image / lecture d'image utilisent l'IA en ligne; dessin / cartes / QR codes / animations sont des moteurs locaux — **prêts à l'emploi dès l'installation, vectoriels haute définition, une même entrée produit toujours la même sortie**.
 
 ---
 
 ## Configuration détaillée
 
-> En une phrase : **les capacités structurelles (dessin / graphiques / cartes / QR codes / formules) fonctionnent sans configuration ; la génération IA nécessite une seule ligne de clé API ; la reconnaissance d'image est zéro configuration par défaut, et seulement le SOTA chinois / les tableaux / les graphiques nécessitent un auto-hébergement.** Ce que vous voulez utiliser détermine ce qu'il faut configurer — pas besoin de tout mettre en place.
+> En une phrase : **les capacités structurelles (dessin / graphiques / cartes / QR codes / formules) fonctionnent sans configuration; la génération IA nécessite une seule ligne de clé API; la reconnaissance d'image est zéro configuration par défaut, et seulement le SOTA chinois / les tableaux / les graphiques nécessitent un auto-hébergement.** Ce que vous voulez utiliser détermine ce qu'il faut configurer — pas besoin de tout mettre en place.
 
 ### Rechercher la configuration par « ce que je veux faire »
 
@@ -285,10 +277,10 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 |---|---|---|
 | Dessiner des schémas d'architecture / graphiques de données / cartes / QR codes / formules | **Rien à configurer** | Moteur local, prêt après installation |
 | Images réalistes IA / vidéos IA (texte-vers-image, texte-vers-vidéo) | Configurer une clé API gratuite (Agnes ou Zhipu, au choix) | Génération en ligne, enregistrée dans `output/` |
-| Générer des images via Google Flow (0 crédit) / gérer les actifs Flow | **Aucune clé** : connectez-vous simplement à Flow dans le Chrome local (lancé via `lasso launch-chrome`) | Images / suréchantillonnage / téléversement / suppression / partage / annulation / requêtes à 0 crédit ; la vidéo consomme des crédits (7–100 par clip) |
+| Générer des images via Google Flow (0 crédit) / gérer les actifs Flow | **Aucune clé** : connectez-vous simplement à Flow dans le Chrome local (lancé via `lasso launch-chrome`) | Images / suréchantillonnage / téléversement / suppression / partage / annulation / requêtes à 0 crédit; la vidéo consomme des crédits (7–100 par clip) |
 | OCR (anglais / captcha / chiffres / documents simples) | **Rien à configurer** | Moteur léger in-process par défaut, prêt après installation |
-| OCR chinois / factures et tableaux / lecture de graphiques / Q&R visuelle / manuscrit / formules | **Configurer une clé GLM de Zhipu** (zéro déploiement, gratuit à vie dans le cloud) **ou** auto-héberger PaddleX / vLLM | Avec la clé GLM, prêt à l'emploi dès la configuration ; pour l'auto-hébergement, lancez le service puis renseignez une ligne baseUrl |
-| **Extraction de texte PDF** (numérique / scanné / multi-pages) | Installer deux dépendances `npm i pdfjs-dist @napi-rs/canvas` (à la première utilisation PDF) | PDF numérique en secondes ; PDF scanné suit les niveaux OCR ci-dessus (fonctionne aussi en zéro configuration par défaut) |
+| OCR chinois / factures et tableaux / lecture de graphiques / Q&R visuelle / manuscrit / formules | **Configurer une clé GLM de Zhipu** (zéro déploiement, gratuit à vie dans le cloud) **ou** auto-héberger PaddleX / vLLM | Avec la clé GLM, prêt à l'emploi dès la configuration; pour l'auto-hébergement, lancez le service puis renseignez une ligne baseUrl |
+| **Extraction de texte PDF** (numérique / scanné / multi-pages) | Installer deux dépendances `npm i pdfjs-dist @napi-rs/canvas` (à la première utilisation PDF) | PDF numérique en secondes; PDF scanné suit les niveaux OCR ci-dessus (fonctionne aussi en zéro configuration par défaut) |
 | **Suppression filigrane / tampons / en-tête et pied de page, restauration de l'ordre de lecture multi-colonnes** | **Rien à configurer** | Dites simplement « Claude, ignore le filigrane » ou « fusionne selon l'ordre de lecture » lors de l'appel, appliqué automatiquement |
 | **Vérifier les capacités de reconnaissance actuelles** (qui fonctionne / qui manque) | **Rien à configurer** | Posez directement la question, Claude renvoie une liste des capacités + la recommandation de routage |
 
@@ -302,12 +294,12 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 
 ```json
 {
-  "providers": {
-    "agnes": { "apiKey": "sk-votre-clé-agnes" },
-    "zhipu": { "apiKey": "votre-clé-zhipu" }
-  },
-  "defaultProvider": "agnes",
-  "outDir": "/chemin/absolu/vers/output"
+ "providers": {
+ "agnes": { "apiKey": "sk-votre-clé-agnes" },
+ "zhipu": { "apiKey": "votre-clé-zhipu" }
+ },
+ "defaultProvider": "agnes",
+ "outDir": "/chemin/absolu/vers/output"
 }
 ```
 
@@ -322,18 +314,18 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 
 ```json
 {
-  "imageProviderPriority": ["flow", "agnes", "zhipu"],
-  "videoProviderPriority": ["agnes", "zhipu"]
+ "imageProviderPriority": ["flow", "agnes", "zhipu"],
+ "videoProviderPriority": ["agnes", "zhipu"]
 }
 ```
 
-- **Images flow-first** : la génération d'images Flow est à 0 crédit ; si Chrome ne tourne pas / n'est pas connecté, retombée automatique vers agnes → zhipu (les sondes sont protégées par un disjoncteur de 60 secondes, pas de tempête de retries). Passer `provider=flow` épingle ce provider — l'erreur remonte sans fallback (l'épinglage ne s'applique qu'aux providers opt-in ; nommer explicitement un provider gratuit (agnes/zhipu) continue de retomber dans la chaîne avec un avertissement).
-- **La vidéo reste agnes-first par défaut** (gratuite) ; la vidéo Flow consomme des crédits et est **volontairement exclue du routage par défaut** — soit vous la listez explicitement dans `videoProviderPriority` (les crédits sont à votre charge), soit vous passez `provider="flow"` à chaque appel.
+- **Images flow-first** : la génération d'images Flow est à 0 crédit; si Chrome ne tourne pas / n'est pas connecté, retombée automatique vers agnes → zhipu (les sondes sont protégées par un disjoncteur de 60 secondes, pas de tempête de retries). Passer `provider=flow` épingle ce provider — l'erreur remonte sans fallback (l'épinglage ne s'applique qu'aux providers opt-in; nommer explicitement un provider gratuit (agnes/zhipu) continue de retomber dans la chaîne avec un avertissement).
+- **La vidéo reste agnes-first par défaut** (gratuite); la vidéo Flow consomme des crédits et est **volontairement exclue du routage par défaut** — soit vous la listez explicitement dans `videoProviderPriority` (les crédits sont à votre charge), soit vous passez `provider="flow"` à chaque appel.
 - Sans ces deux clés, le comportement actuel est conservé (provider par défaut + fallback mutuel du niveau gratuit agnes/zhipu), zéro impact. Équivalents env : `MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
-- **Canal ON/OFF = la chaîne de priorité (la chaîne EST l'interrupteur)** : savoir si un canal est activé dépend uniquement de sa présence dans les deux chaînes de priorité — **non configuré = non activé** (ni routage auto ni fallback), **listé = activé** (tête de chaîne = canal par défaut). Un interruptur `flow.enabled` séparé est inutile (et n'est plus pris en charge) ; un appel explicite `provider="flow"` reste toujours légitime — si l'environnement est indisponible, il renvoie une erreur structurée `[flow] S1xx` de préflight (avec guide de lancement), jamais un changement silencieux de provider. Réglage compagnon `"flow": { "toolDeadlineMs": 110000 }` : plafond des opérations longues de Flow (polling d'images / soumission vidéo / téléchargements) pour respecter la règle anti-blocage (≤120s par appel) ; au dépassement, renvoie `[flow] S410` — l'opération sous-jacente n'est PAS annulée ; revérifiez et téléchargez ensuite via `flow_status(mediaId)`.
-- **Porte de confirmation de facturation (deux phases, ACTIVE par défaut)** : quand une vidéo est routée vers / utilise explicitement Flow, le premier appel `create_video` NE soumet PAS — il renvoie `{needConfirm:true, estimatedCost (estimation de crédits : creditMapping dynamique d'abord, table statique en repli), confirmToken, expiresInSeconds}` ; rappelle avec les MÊMES paramètres plus `confirmToken` pour soumettre réellement. Les jetons sont éphémères (10 min par défaut, réglable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) et liés à modèle+durée+estimation+prompt+références d'entrée (image/keyframes/images/videoMediaId) — modifier l'un d'eux après confirmation exige un jeton neuf ; jeton erroné → `[flow] S320`, expiré → `[flow] S321`. Les opérations gratuites (ex. l'upscale `veo_3_1_upsampler_1080p`) et les providers non-Flow ne déclenchent JAMAIS la porte. Désactivation : `"flow": { "videoConfirm": false }` (défaut `true` — un faux déclenchement ne coûte qu'un aller-retour, un raté facture de vrais crédits).
+- **Canal ON/OFF = la chaîne de priorité (la chaîne EST l'interrupteur)** : savoir si un canal est activé dépend uniquement de sa présence dans les deux chaînes de priorité — **non configuré = non activé** (ni routage auto ni fallback), **listé = activé** (tête de chaîne = canal par défaut). Un interruptur `flow.enabled` séparé est inutile (et n'est plus pris en charge); un appel explicite `provider="flow"` reste toujours légitime — si l'environnement est indisponible, il renvoie une erreur structurée `[flow] S1xx` de préflight (avec guide de lancement), jamais un changement silencieux de provider. Réglage compagnon `"flow": { "toolDeadlineMs": 110000 }` : plafond des opérations longues de Flow (polling d'images / soumission vidéo / téléchargements) pour respecter la règle anti-blocage (≤120s par appel); au dépassement, renvoie `[flow] S410` — l'opération sous-jacente n'est PAS annulée; revérifiez et téléchargez ensuite via `flow_status(mediaId)`.
+- **Porte de confirmation de facturation (deux phases, ACTIVE par défaut)** : quand une vidéo est routée vers / utilise explicitement Flow, le premier appel `create_video` NE soumet PAS — il renvoie `{needConfirm:true, estimatedCost (estimation de crédits : creditMapping dynamique d'abord, table statique en repli), confirmToken, expiresInSeconds}`; rappelle avec les MÊMES paramètres plus `confirmToken` pour soumettre réellement. Les jetons sont éphémères (10 min par défaut, réglable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) et liés à modèle+durée+estimation+prompt+références d'entrée (image/keyframes/images/videoMediaId) — modifier l'un d'eux après confirmation exige un jeton neuf; jeton erroné → `[flow] S320`, expiré → `[flow] S321`. Les opérations gratuites (ex. l'upscale `veo_3_1_upsampler_1080p`) et les providers non-Flow ne déclenchent JAMAIS la porte. Désactivation : `"flow": { "videoConfirm": false }` (défaut `true` — un faux déclenchement ne coûte qu'un aller-retour, un raté facture de vrais crédits).
 
-**Gestion des actifs Flow (tout à 0 crédit)** : en plus des crédits / statut des médias / téléchargements, `flow_status` gère trois opérations gratuites — `shareMediaIds=[…]` crée des liens publics de partage (comme `labs.google/fx/tools/flow/shared/image/<id>`, prompt inclus), `cancelMediaIds=[…]` annule les générations de VIDÉO en cours (attention : les travaux d'image ne sont pas annulables) et `deleteMediaIds=[…]` supprime des médias par lots. L'outil `flow_entity` crée des entités de personnage et lie l'une des 30 voix prédéfinies (générez d'abord le visuel via `generate_image(provider="flow")`, puis attachez-le) pour le réutiliser dans les générations suivantes.
+**Gestion des actifs Flow (tout à 0 crédit)** : en plus des crédits / statut des médias / téléchargements, `flow_status` gère trois opérations gratuites — `shareMediaIds=[…]` crée des liens publics de partage (comme `labs.google/fx/tools/flow/shared/image/<id>`, prompt inclus), `cancelMediaIds=[…]` annule les générations de VIDÉO en cours (attention : les travaux d'image ne sont pas annulables) et `deleteMediaIds=[…]` supprime des médias par lots.
 
 **Emplacement du fichier de configuration** : `~/.media-gen-mcp/config.json` (macOS / Linux) ou `%USERPROFILE%\.media-gen-mcp\config.json` (Windows).
 
@@ -343,22 +335,22 @@ Un clip par appel ; durées 4 / 6 / 8 / 10 secondes ; ratio 16:9 / 9:16 uniqueme
 
 ### 2. Configuration de reconnaissance (image / OCR / tableaux / graphiques / vision)
 
-La reconnaissance est **organisée en quatre niveaux**, à choisir selon vos besoins ; le premier niveau fonctionne par défaut.
+La reconnaissance est **organisée en quatre niveaux**, à choisir selon vos besoins; le premier niveau fonctionne par défaut.
 
 #### Niveau 1 : moteur léger par défaut (zéro configuration, prêt à l'emploi)
 
 - **Ce qu'il sait faire** : OCR anglais / chiffres / captcha / documents simples
 - **Faut-il installer un service ?** : **Non**, empaqueté en WASM dans le processus MCP, charge le modèle de langue automatiquement au premier appel
 - **Besoins minimum en ressources** :
-  - CPU : au choix (CPU pur, aucune dépendance GPU)
-  - GPU : non requis
-  - Mémoire : environ 200–500 Mo (varie avec la taille de l'image)
-  - Disque : environ 30–50 Mo (moteur WASM + paquet de langue)
-  - Taille du modèle : incluse dans l'empreinte disque ci-dessus (paquet de langue anglais, de l'ordre de quelques Mo)
+ - CPU : au choix (CPU pur, aucune dépendance GPU)
+ - GPU : non requis
+ - Mémoire : environ 200–500 Mo (varie avec la taille de l'image)
+ - Disque : environ 30–50 Mo (moteur WASM + paquet de langue)
+ - Taille du modèle : incluse dans l'empreinte disque ci-dessus (paquet de langue anglais, de l'ordre de quelques Mo)
 - **Vitesse** : environ 3–5 secondes par image
 - **Pour qui** : 90 % des scénarios OCR légers, documents internationaux, reconnaissance de captcha
 
-> La plupart des utilisateurs s'arrêtent à ce niveau ; les trois suivants sont des renforcements optionnels.
+> La plupart des utilisateurs s'arrêtent à ce niveau; les trois suivants sont des renforcements optionnels.
 
 #### Niveau 2 : GLM-4.6V-Flash de Zhipu (cloud gratuit, zéro déploiement, SOTA chinois + VQA)
 
@@ -367,22 +359,22 @@ La reconnaissance est **organisée en quatre niveaux**, à choisir selon vos bes
 - **Besoins minimum en ressources** : **Zéro** (pur appel HTTP, pas de CPU / GPU / disque)
 - **Vitesse** : environ 1–3 secondes par image (cloud, aller-retour réseau inclus)
 - **Coût** : **GLM-4.6V-Flash gratuit à vie** (contexte 128K + sortie 32K), aligné sur la stratégie gratuite de GLM-4-Flash
-- **Pour qui** : utilisateurs voulant le SOTA chinois + VQA mais **ne voulant pas auto-héberger PaddleX / vLLM** ; complète parfaitement le seuil de déploiement des niveaux 3 / 4 auto-hébergés
+- **Pour qui** : utilisateurs voulant le SOTA chinois + VQA mais **ne voulant pas auto-héberger PaddleX / vLLM**; complète parfaitement le seuil de déploiement des niveaux 3 / 4 auto-hébergés
 - **Comment configurer** : inscrivez-vous sur [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) pour un compte gratuit + demandez api_key (format `{id}.{secret}`), puis ajoutez dans `config.json` :
 
-  ```json
-  {
-    "providers": {
-      "glm-vision": { "apiKey": "votre-{id}.{secret}" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "glm-vision": { "apiKey": "votre-{id}.{secret}" }
+ }
+ }
+ ```
 
-  Le modèle par défaut est `glm-4.6v-flash`, modifiable via `providers["glm-vision"].model` vers `glm-4v-flash` (léger gratuit) ou des modèles visuels payants (`glm-4.6v` / `glm-ocr`, etc.). Une fois configuré, le MCP l'intègre automatiquement à la chaîne de repli : **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
+ Le modèle par défaut est `glm-4.6v-flash`, modifiable via `providers["glm-vision"].model` vers `glm-4v-flash` (léger gratuit) ou des modèles visuels payants (`glm-4.6v` / `glm-ocr`, etc.). Une fois configuré, le MCP l'intègre automatiquement à la chaîne de repli : **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
 
 - ⚠️ **Conformité** (important) :
-  - Seules les **api_key standard open.bigmodel.cn** sont acceptées ; **la clé Code Plan (ZAI_API_KEY) n'est PAS utilisable** — elle est liée à un point de terminaison Z.ai dédié + limitée à 9 outils en liste blanche (Claude Code / Cline / Cursor, etc., media-gen-mcp non inclus), tout appel abusif entraîne la fermeture du compte après 3 fois et l'abonnement non remboursé
-  - La rotation multi-clés (`apiKeys: ["k1", "k2", ...]`) est techniquement prise en charge, mais **l'Accord Utilisateur Zhipu §2/§3 interdit les multi-comptes / le partage de compte** — la rotation multi-clés peut violer le contrat, la plateforme se réserve le droit de fermer le compte. Veuillez vous assurer que toutes les clés proviennent de vos propres comptes conformes
+ - Seules les **api_key standard open.bigmodel.cn** sont acceptées; **la clé Code Plan (ZAI_API_KEY) n'est PAS utilisable** — elle est liée à un point de terminaison Z.ai dédié + limitée à 9 outils en liste blanche (Claude Code / Cline / Cursor, etc., media-gen-mcp non inclus), tout appel abusif entraîne la fermeture du compte après 3 fois et l'abonnement non remboursé
+ - La rotation multi-clés (`apiKeys: ["k1", "k2", ...]`) est techniquement prise en charge, mais **l'Accord Utilisateur Zhipu §2/§3 interdit les multi-comptes / le partage de compte** — la rotation multi-clés peut violer le contrat, la plateforme se réserve le droit de fermer le compte. Veuillez vous assurer que toutes les clés proviennent de vos propres comptes conformes
 
 #### Niveau 3 : PaddleX / PP-StructureV3 (SOTA chinois + reconnaissance de tableaux)
 
@@ -390,30 +382,30 @@ La reconnaissance est **organisée en quatre niveaux**, à choisir selon vos bes
 - **Faut-il installer un service ?** : **Oui**, auto-héberger le service REST PaddleX, le MCP l'appelle via `baseUrl`
 - **Besoins minimum en ressources** (testés) :
 
-  | Mode | Seuil minimum | Recommandé | Remarques |
-  |---|---|---|---|
-  | Mode GPU | RTX 3060 12 Go VRAM | RTX 3060 12 Go / Tesla T4 | Chargement du modèle environ 2,4 Go, pic à environ 6 Go sur PDF complexe |
-  | Mode CPU | CPU 4 cœurs + 8 Go RAM | 8 cœurs + 16 Go RAM | Fonctionne (documents légers OK), mais 3–5× plus lent en batch / PDF complexe |
-  | Disque | environ 3 Go | environ 5 Go | paddlepaddle + paddlex + poids des modèles |
-  | Taille du modèle | environ 100–300 Mo (un seul pipeline) | — | S'additionne pour plusieurs pipelines |
+ | Mode | Seuil minimum | Recommandé | Remarques |
+ |---|---|---|---|
+ | Mode GPU | RTX 3060 12 Go VRAM | RTX 3060 12 Go / Tesla T4 | Chargement du modèle environ 2,4 Go, pic à environ 6 Go sur PDF complexe |
+ | Mode CPU | CPU 4 cœurs + 8 Go RAM | 8 cœurs + 16 Go RAM | Fonctionne (documents légers OK), mais 3–5× plus lent en batch / PDF complexe |
+ | Disque | environ 3 Go | environ 5 Go | paddlepaddle + paddlex + poids des modèles |
+ | Taille du modèle | environ 100–300 Mo (un seul pipeline) | — | S'additionne pour plusieurs pipelines |
 
-- **Exigences CUDA** : Compute Capability ≥ 7.0 (V100 / T4 / RTX série 20/30/40 ; série 50 pas encore pleinement prise en charge), nécessite CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 pour l'accélération GPU
+- **Exigences CUDA** : Compute Capability ≥ 7.0 (V100 / T4 / RTX série 20/30/40; série 50 pas encore pleinement prise en charge), nécessite CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 pour l'accélération GPU
 - **Comment installer** :
 
-  ```bash
-  pip install paddlex paddlepaddle          # Version GPU : paddlepaddle-gpu
-  paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
-  ```
+ ```bash
+ pip install paddlex paddlepaddle # Version GPU : paddlepaddle-gpu
+ paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
+ ```
 
-  Puis ajoutez une ligne dans `config.json` :
+ Puis ajoutez une ligne dans `config.json` :
 
-  ```json
-  {
-    "providers": {
-      "paddle": { "baseUrl": "http://127.0.0.1:8080" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "paddle": { "baseUrl": "http://127.0.0.1:8080" }
+ }
+ }
+ ```
 
 #### Niveau 4 : vLLM + Qwen2.5-VL (VLM de compréhension visuelle générale)
 
@@ -421,54 +413,54 @@ La reconnaissance est **organisée en quatre niveaux**, à choisir selon vos bes
 - **Faut-il installer un service ?** : **Oui**, monter votre propre service d'inférence vLLM
 - **Besoins minimum en ressources** (testés) :
 
-  | Mode | Seuil minimum | Recommandé | Remarques |
-  |---|---|---|---|
-  | GPU pleine précision 7B (FP16) | 16 Go VRAM | **24 Go VRAM** (RTX 3090 / 4090 / A5000) | Poids du modèle environ 15–16 Go + cache KV, vLLM occupe 90 % de la VRAM par défaut |
-  | GPU quantifié 7B (INT8/AWQ) | 10–12 Go VRAM | 16 Go VRAM | La version quantifiée tient dans une RTX 4080 / 4060 Ti 16 Go |
-  | GPU version légère 3B | 6–8 Go VRAM | GTX 1660 / 3060 6–8 Go | FP16 environ 6–8 Go, INT4 environ 3–4 Go, le sweet spot des développeurs individuels |
-  | Mode CPU | Non recommandé | — | Fonctionne mais 5–10× plus lent, utilisez du GPU en production |
-  | Mémoire | 16 Go | 16–32 Go | — |
-  | Disque | environ 14 Go (poids 7B) | — | 3B environ 6 Go |
-  | Exigence CUDA | Compute Capability ≥ 7.0 | — | À partir de Tesla T4 (7.5), V100 / A100 / RTX série 30/40 OK |
+ | Mode | Seuil minimum | Recommandé | Remarques |
+ |---|---|---|---|
+ | GPU pleine précision 7B (FP16) | 16 Go VRAM | **24 Go VRAM** (RTX 3090 / 4090 / A5000) | Poids du modèle environ 15–16 Go + cache KV, vLLM occupe 90 % de la VRAM par défaut |
+ | GPU quantifié 7B (INT8/AWQ) | 10–12 Go VRAM | 16 Go VRAM | La version quantifiée tient dans une RTX 4080 / 4060 Ti 16 Go |
+ | GPU version légère 3B | 6–8 Go VRAM | GTX 1660 / 3060 6–8 Go | FP16 environ 6–8 Go, INT4 environ 3–4 Go, le sweet spot des développeurs individuels |
+ | Mode CPU | Non recommandé | — | Fonctionne mais 5–10× plus lent, utilisez du GPU en production |
+ | Mémoire | 16 Go | 16–32 Go | — |
+ | Disque | environ 14 Go (poids 7B) | — | 3B environ 6 Go |
+ | Exigence CUDA | Compute Capability ≥ 7.0 | — | À partir de Tesla T4 (7.5), V100 / A100 / RTX série 30/40 OK |
 
 - **Comment installer** :
-  ```bash
-  pip install vllm
-  vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
-  # Voyez « Uvicorn running on http://0.0.0.0:8000 » = prêt
-  ```
-  Plus de paramètres (choix du GPU / version quantifiée / limite de concurrence) dans la [documentation officielle vLLM](https://docs.vllm.ai). Puis ajoutez dans `config.json` :
+ ```bash
+ pip install vllm
+ vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
+ # Voyez « Uvicorn running on http://0.0.0.0:8000 » = prêt
+ ```
+ Plus de paramètres (choix du GPU / version quantifiée / limite de concurrence) dans la [documentation officielle vLLM](https://docs.vllm.ai). Puis ajoutez dans `config.json` :
 
-  ```json
-  {
-    "providers": {
-      "vlm": { "baseUrl": "http://127.0.0.1:8000" }
-    }
-  }
-  ```
+ ```json
+ {
+ "providers": {
+ "vlm": { "baseUrl": "http://127.0.0.1:8000" }
+ }
+ }
+ ```
 
 ##### Avancé : parsing de documents longs Unlimited-OCR (SGLang/vLLM auto-hébergé)
 
-Le Qwen2.5-VL par défaut du niveau 4 est un VLM généraliste (fort en Q&R visuelle / description de scène). Si votre besoin est **l'OCR de documents longs / les tableaux complexes / le parsing d'un PDF multipages en une seule passe** (plusieurs milliers à plusieurs dizaines de milliers de caractères par image), passez à [baidu/Unlimited-OCR](https://github.com/baidu/Unlimited-OCR) (MIT, pousse la lignée Deepseek-OCR d'un cran plus loin). Il est **entraîné avec uniquement un prompt de 2 mots** `document parsing.` ; la sortie longue s'appuie sur `custom_logit_processor` (DeepseekOCRNoRepeatNGram) pour empêcher la dégénérescence — c'est un outil d'une catégorie différente de Qwen2.5-VL.
+Le Qwen2.5-VL par défaut du niveau 4 est un VLM généraliste (fort en Q&R visuelle / description de scène). Si votre besoin est **l'OCR de documents longs / les tableaux complexes / le parsing d'un PDF multipages en une seule passe** (plusieurs milliers à plusieurs dizaines de milliers de caractères par image), passez à [baidu/Unlimited-OCR](https://github.com/baidu/Unlimited-OCR) (MIT, pousse la lignée Deepseek-OCR d'un cran plus loin). Il est **entraîné avec uniquement un prompt de 2 mots** `document parsing.`; la sortie longue s'appuie sur `custom_logit_processor` (DeepseekOCRNoRepeatNGram) pour empêcher la dégénérescence — c'est un outil d'une catégorie différente de Qwen2.5-VL.
 
-**Quand Unlimited-OCR est configuré, le provider `vlm` active automatiquement les 4 tâches** (extract-text / extract-table / describe-image / analyze-chart), et `extract-text` / `extract-table` empruntent le prompt court du contrat image-unique du README ; `describe-image` (VQA) et `analyze-chart` (extraction JSON) conservent leur prompt long d'origine — vous n'avez pas à écrire de surcharge de prompt, le MCP choisit automatiquement selon le modèle.
+**Quand Unlimited-OCR est configuré, le provider `vlm` active automatiquement les 4 tâches** (extract-text / extract-table / describe-image / analyze-chart), et `extract-text` / `extract-table` empruntent le prompt court du contrat image-unique du README; `describe-image` (VQA) et `analyze-chart` (extraction JSON) conservent leur prompt long d'origine — vous n'avez pas à écrire de surcharge de prompt, le MCP choisit automatiquement selon le modèle.
 
 **Déploiement (SGLang, recommandé — prend en charge l'ensemble des fonctionnalités `custom_logit_processor`)** :
 
 ```bash
 # Récupérer l'image (voir le README Unlimited-OCR pour les détails)
-docker pull vllm/vllm-openai:unlimited-ocr          # CUDA 13.0 par défaut
+docker pull vllm/vllm-openai:unlimited-ocr # CUDA 13.0 par défaut
 # Pour les GPU Hopper, utilisez cu129 :
 # docker pull vllm/vllm-openai:unlimited-ocr-cu129
 
 # Démarrer le serveur SGLang (paramètres clés expliqués dans la section « SGLang » du README Unlimited-OCR)
 python -m sglang.launch_server \
-  --model baidu/Unlimited-OCR \
-  --served-model-name Unlimited-OCR \
-  --attention-backend fa3 --page-size 1 \
-  --mem-fraction-static 0.8 --context-length 32768 \
-  --enable-custom-logit-processor \
-  --host 0.0.0.0 --port 10000
+ --model baidu/Unlimited-OCR \
+ --served-model-name Unlimited-OCR \
+ --attention-backend fa3 --page-size 1 \
+ --mem-fraction-static 0.8 --context-length 32768 \
+ --enable-custom-logit-processor \
+ --host 0.0.0.0 --port 10000
 ```
 
 `custom_logit_processor` est le résultat stringifyé de `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` côté Python (un format de sérialisation privé SGLang, non synthétisable côté TS). **Exécutez-le une fois au moment du déploiement** et collez la chaîne dans `config.json` :
@@ -483,32 +475,32 @@ python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoR
 
 ```json
 {
-  "providers": {
-    "vlm": {
-      "baseUrl": "http://127.0.0.1:10000",
-      "models": { "default": "Unlimited-OCR" },
-      "extra_body": {
-        "images_config": { "image_mode": "gundam" },
-        "custom_params": { "ngram_size": 35, "window_size": 128 },
-        "custom_logit_processor": "<la chaîne affichée par python -c ci-dessus>",
-        "skip_special_tokens": false
-      }
-    }
-  }
+ "providers": {
+ "vlm": {
+ "baseUrl": "http://127.0.0.1:10000",
+ "models": { "default": "Unlimited-OCR" },
+ "extra_body": {
+ "images_config": { "image_mode": "gundam" },
+ "custom_params": { "ngram_size": 35, "window_size": 128 },
+ "custom_logit_processor": "<la chaîne affichée par python -c ci-dessus>",
+ "skip_special_tokens": false
+ }
+ }
+ }
 }
 ```
 
-Signification des champs (tous au niveau racine, acceptés par l'API compatible OpenAI de SGLang ; le MCP les « aplatit » via `Object.assign` dans le corps du fetch) :
+Signification des champs (tous au niveau racine, acceptés par l'API compatible OpenAI de SGLang; le MCP les « aplatit » via `Object.assign` dans le corps du fetch) :
 
 | Champ | Valeur | Remarques |
 |---|---|---|
-| `images_config.image_mode` | `gundam` / `base` | Haute précision image unique : `gundam` (base_size=1024, image_size=640, crop_mode=true) ; PDF multi-pages : `base` (image_size=1024, crop_mode=false). media-gen-mcp utilise un **contrat image unique**, `gundam` par défaut est optimal |
-| `custom_params.ngram_size` | `35` (recommandé) | Longueur NoRepeatNGram ; 35 est la valeur recommandée par le README |
-| `custom_params.window_size` | `128` (image unique) / `1024` (multi-pages) | Image unique : 128 ; le contrat image unique de media-gen-mcp recommande 128 |
-| `custom_logit_processor` | Sortie Python de `.to_str()` | Obligatoire (sans cela la sortie longue dégénère par répétition) ; non synthétisable côté TS — exécutez Python une fois pour obtenir la chaîne |
-| `skip_special_tokens` | `false` | Les tâches OCR doivent conserver les tokens spéciaux ; ne pas skip |
+| `images_config.image_mode` | `gundam` / `base` | Haute précision image unique : `gundam` (base_size=1024, image_size=640, crop_mode=true); PDF multi-pages : `base` (image_size=1024, crop_mode=false). media-gen-mcp utilise un **contrat image unique**, `gundam` par défaut est optimal |
+| `custom_params.ngram_size` | `35` (recommandé) | Longueur NoRepeatNGram; 35 est la valeur recommandée par le README |
+| `custom_params.window_size` | `128` (image unique) / `1024` (multi-pages) | Image unique : 128; le contrat image unique de media-gen-mcp recommande 128 |
+| `custom_logit_processor` | Sortie Python de `.to_str()` | Obligatoire (sans cela la sortie longue dégénère par répétition); non synthétisable côté TS — exécutez Python une fois pour obtenir la chaîne |
+| `skip_special_tokens` | `false` | Les tâches OCR doivent conserver les tokens spéciaux; ne pas skip |
 
-> ⚠️ **Gating par tâche (important)** : `extra_body` (incluant `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`) n'est appliqué au corps du fetch que sur `extract-text` / `extract-table` (le chemin OCR) — `describe-image` (VQA) et `analyze-chart` (extraction JSON) **ne portent pas ces champs**. Raison : NoRepeatNGram (ngram_size=35) supprime les répétitions légitimes de mots dans les descriptions VQA ; `skip_special_tokens:false` fait fuiter les tokens structurels OCR dans la description / corrompt le `JSON.parse` de `analyze-chart` ; `image_mode:gundam` (crop_mode=true) morcèle l'image entière et casse la compréhension holistique de la scène pour la VQA. C'est la contrepartie symétrique du gating à prompt court conscient du modèle (`promptForUnlimited`) — `describe-image` / `analyze-chart` conservent le prompt long d'origine ET un corps propre. Si vous devez forcer les champs d'extension sur `describe-image` / `analyze-chart`, utilisez le paramètre `extra` par appel (à passer via le paramètre `extra` des outils `extract_text` / `extract_table` / `describe_image` / `analyze_chart`) — il n'est pas soumis au gating par tâche.
+> ⚠️ **Gating par tâche (important)** : `extra_body` (incluant `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`) n'est appliqué au corps du fetch que sur `extract-text` / `extract-table` (le chemin OCR) — `describe-image` (VQA) et `analyze-chart` (extraction JSON) **ne portent pas ces champs**. Raison : NoRepeatNGram (ngram_size=35) supprime les répétitions légitimes de mots dans les descriptions VQA; `skip_special_tokens:false` fait fuiter les tokens structurels OCR dans la description / corrompt le `JSON.parse` de `analyze-chart`; `image_mode:gundam` (crop_mode=true) morcèle l'image entière et casse la compréhension holistique de la scène pour la VQA. C'est la contrepartie symétrique du gating à prompt court conscient du modèle (`promptForUnlimited`) — `describe-image` / `analyze-chart` conservent le prompt long d'origine ET un corps propre. Si vous devez forcer les champs d'extension sur `describe-image` / `analyze-chart`, utilisez le paramètre `extra` par appel (à passer via le paramètre `extra` des outils `extract_text` / `extract_table` / `describe_image` / `analyze_chart`) — il n'est pas soumis au gating par tâche.
 
 **Invocation** : passez `provider=vlm` explicitement à `extract_text` (sinon il ira vers defaultVisionProvider=tesseract) :
 
@@ -519,10 +511,10 @@ extract_text(image="data:image/png;base64,...", provider="vlm")
 **Limites importantes** :
 
 - **Mode non-stream** : media-gen-mcp utilise le `/v1/chat/completions` **non-stream** de vLLM/SGLang (JSON renvoyé en une fois), adapté aux documents court-moyens ou à page unique. Le `infer.py` d'Unlimited-OCR utilise `stream:true` par défaut — **ne copiez pas `stream:true` dans `extra_body`** — le MCP le détecte et rejette avec l'avertissement « remove extra.stream ». Pour les PDF très longs, commencez par [découper les pages avec PyMuPDF](https://github.com/baidu/Unlimited-OCR#transformers) (le README fournit un snippet `pdf_to_images`), puis appelez `extract_text` page par page — des requêtes indépendantes par page évitent naturellement les sorties trop longues.
-- **Timeout serveur** : les documents longs sont longs à générer ; si les 60 s par défaut de vLLM ne suffisent pas, augmentez `REQUEST_TIMEOUT` côté SGLang ou `--timeout-keepalive` côté vLLM.
-- **Seuil GPU** : 16–24 Go de VRAM (identique au niveau 4) ; si vous ne pouvez pas tenir ce seuil, continuez à utiliser la chaîne paddle(10)/glm-vision(9).
+- **Timeout serveur** : les documents longs sont longs à générer; si les 60 s par défaut de vLLM ne suffisent pas, augmentez `REQUEST_TIMEOUT` côté SGLang ou `--timeout-keepalive` côté vLLM.
+- **Seuil GPU** : 16–24 Go de VRAM (identique au niveau 4); si vous ne pouvez pas tenir ce seuil, continuez à utiliser la chaîne paddle(10)/glm-vision(9).
 
-**Licence** : [MIT](https://github.com/baidu/Unlimited-OCR/blob/main/LICENSE) (aligné avec la position purement gratuite ; même catégorie que Qwen Apache-2.0 ; usage commercial OK).
+**Licence** : [MIT](https://github.com/baidu/Unlimited-OCR/blob/main/LICENSE) (aligné avec la position purement gratuite; même catégorie que Qwen Apache-2.0; usage commercial OK).
 
 #### Comparaison rapide des quatre niveaux
 
@@ -539,7 +531,7 @@ extract_text(image="data:image/png;base64,...", provider="vlm")
 
 ### 3. Mécanisme de repli automatique (configurez, puis oubliez)
 
-- **Côté génération** : Agnes ↔ Zhipu, si l'un échoue, bascule automatique vers l'autre (en cas d'échecs consécutifs sous 60 secondes, bascule en douceur ; pas besoin de redémarrer ni de modifier la config)
+- **Côté génération** : Agnes ↔ Zhipu, si l'un échoue, bascule automatique vers l'autre (en cas d'échecs consécutifs sous 60 secondes, bascule en douceur; pas besoin de redémarrer ni de modifier la config)
 - **Côté reconnaissance** : moteur léger par défaut (repli in-process) → PaddleX → vLLM, dégradation automatique selon la capacité
 - **La seule exception** : lors du polling vidéo pour récupérer le clip, **pas de bascule** (pour éviter de récupérer un mauvais résultat)
 - Ce que vous avez à faire : configurez deux clés API de génération + installez optionnellement un niveau de service de reconnaissance, et laissez Claude gérer le reste
@@ -557,7 +549,7 @@ R : Oui. Installez le MCP et vous avez dessin / cartes / QR codes / formules / g
 R : Le moteur léger par défaut convient pour l'anglais / chiffres / documents simples, mais sa précision en chinois est moyenne. Pour le SOTA chinois, auto-hébergez PaddleX (GPU 12 Go ou CPU 4 cœurs 8 Go), voir la [configuration détaillée](#configuration-détaillée) ci-dessus.
 
 **Q : Combien de temps pour une vidéo IA ?**
-R : Environ 1–3 minutes pour une vidéo de 5 s, jusqu'à 5–10 minutes pour 18 s. Génération asynchrone en arrière-plan, notification automatique à la fin pour récupérer le clip ; les vidéos estimées ≤ 60 s sont attendues en mode synchrone.
+R : Environ 1–3 minutes pour une vidéo de 5 s, jusqu'à 5–10 minutes pour 18 s. Génération asynchrone en arrière-plan, notification automatique à la fin pour récupérer le clip; les vidéos estimées ≤ 60 s sont attendues en mode synchrone.
 
 **Q : Ma RTX 3060 peut-elle faire la reconnaissance de tableaux ?**
 R : Oui. Le mode GPU PaddleX demande au minimum 12 Go de VRAM (la RTX 3060 12 Go tombe juste), le mode CPU fonctionne aussi avec 4 cœurs + 8 Go de RAM (3–5× plus lent). Voir la [configuration détaillée](#configuration-détaillée).
@@ -591,10 +583,10 @@ R : Le routage de ces requêtes ambiguës a été affiné — « faire une carte
 - **Développeurs qui écrivent de la doc technique / des blogs** — qui ont régulièrement besoin de schémas d'architecture, diagrammes de séquence, schémas ER, graphiques de données, formules, sans vouloir quitter leur workflow.
 - **Indépendants / produits solo** — attentifs aux coûts (100 % gratuit) et à la maîtrise (même entrée = même sortie), sans vouloir monter un backend séparé pour les tâches image.
 - **Data / Finance / Juridique** — scénarios bidirectionnels : transformer les données en graphiques, et extraire les points de données à partir de captures / factures / **rapports PDF / contrats** (filigrane / tampons rouges ignorés, articles sur deux colonnes fusionnés selon l'ordre de lecture).
-- **Éducation / Académique** — étudiants : extraire le texte de captures de cours / polycopiés scannés / PDF d'articles, fusionner un article sur deux colonnes en texte continu, interroger les données lues dans un graphique ; enseignants : transformer des examens papier scannés en texte modifiable.
+- **Éducation / Académique** — étudiants : extraire le texte de captures de cours / polycopiés scannés / PDF d'articles, fusionner un article sur deux colonnes en texte continu, interroger les données lues dans un graphique; enseignants : transformer des examens papier scannés en texte modifiable.
 - **Marketing / créateurs de contenu / auteurs de blogs** — cartes de partage / images OG / posters / QR codes, chinois + emoji colorés + dégradés prêts à l'emploi.
 
-> **Pas vraiment adapté** : aux utilisateurs qui ne se servent pas de Claude Code ; aux équipes d'ingénierie qui n'ont besoin que d'une seule capacité et ont déjà leur pipeline en place ; aux scénarios nécessitant des modèles commerciaux payants / entraînement de fine-tuning / OCR vidéo en temps réel (au-delà du périmètre d'un MCP gratuit).
+> **Pas vraiment adapté** : aux utilisateurs qui ne se servent pas de Claude Code; aux équipes d'ingénierie qui n'ont besoin que d'une seule capacité et ont déjà leur pipeline en place; aux scénarios nécessitant des modèles commerciaux payants / entraînement de fine-tuning / OCR vidéo en temps réel (au-delà du périmètre d'un MCP gratuit).
 
 ---
 
@@ -625,6 +617,6 @@ La pile de dépendances de reconnaissance est intégralement **Apache 2.0** (tes
 > Détails techniques : providers et moteurs sont tous plug-and-play, les outils structurels ont une sortie déterministe (même entrée = même sortie) et peuvent être versionnés dans git, bascule automatique de provider en cas d'échec. Documentation complète dans le répertoire `doc/`.
 
 <p align="center">
-  <sub>Conçu pour tous ceux qui préfèrent <strong>le dire</strong> plutôt que <strong>le coder</strong>.</sub><br>
-  <sub>Un seul install, et toutes vos tâches image se font en une phrase.</sub>
+ <sub>Conçu pour tous ceux qui préfèrent <strong>le dire</strong> plutôt que <strong>le coder</strong>.</sub><br>
+ <sub>Un seul install, et toutes vos tâches image se font en une phrase.</sub>
 </p>

@@ -102,12 +102,12 @@ after(() => { if (proc) proc.kill(); });
 
 describe("flow 工具集成(真实 CDP;仅零消耗端点)", { skip: await (async () => !(await cdpAlive()))() }, () => {
 
-  test("tools/list:flow_status/flow_entity 注册在列(24 工具)", async () => {
+  test("tools/list:flow_status 注册在列(23 工具;flow_entity 已按用户裁决移除 2026-08-26)", async () => {
     const r = await send("tools/list", {});
     const names = r.result.tools.map((t) => t.name);
     assert.ok(names.includes("flow_status"), `flow_status 缺失:${names.join(",")}`);
-    assert.ok(names.includes("flow_entity"), `flow_entity 缺失:${names.join(",")}`);
-    assert.equal(names.length, 24);
+    assert.ok(!names.includes("flow_entity"), "flow_entity 应已移除");
+    assert.equal(names.length, 23);
   });
 
   test("flow_status 全量自省:登录邮箱/积分/动态目录/媒体列表", async () => {
@@ -121,15 +121,6 @@ describe("flow 工具集成(真实 CDP;仅零消耗端点)", { skip: await (asyn
     assert.ok(parsed.video_families.some((f) => f.usages.some((u) => u.key === "abra_t2v_8s")));
     assert.ok(parsed.media.some((m) => m.mediaId === MEDIA_A));
     assert.ok((parsed.preset_voices ?? []).length >= 30, "30 预设语音折入快照(§11.6)");
-  });
-
-  test("flow_entity voices:30 预设语音只读(路径 e.media.audio.generatedAudio,§11.6 纠偏)", async () => {
-    const { isError, parsed, text } = await callTool("flow_entity", { action: "voices" });
-    assert.equal(isError, false, text.slice(0, 200));
-    assert.equal(parsed.count, 30);
-    const v = parsed.voices[0];
-    assert.equal(typeof v.id, "string");
-    assert.equal(typeof v.displayName, "string");
   });
 
   test("flow_status 批量参数互斥校验(纯参数校验路径,零网络)", async () => {
