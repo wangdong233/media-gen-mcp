@@ -164,14 +164,14 @@ UNAVAILABLE = 当前 tier 不可用(4K/ultra 等)。
 
 | 模式 | apiPathname | requests[0] 专有字段 | 状态 |
 |---|---|---|---|
-| t2v | `batchAsyncGenerateVideoText` | —(纯 textInput) | 形状 404 探针 ✓(v1 已放行) |
+| t2v | `batchAsyncGenerateVideoText` | —(纯 textInput) | 形状 404 探针 ✓(v1 已放行;🔴 provider 路径从未 live 提交——§14.7 透明标注,t2v 是 5-live 之外的两个 shape-verified 之一) |
 | i2v | `batchAsyncGenerateVideoStartImage` | `startImage` | ✅ live 200(abra_i2v_4s,-7 点) |
 | 首尾帧 | `batchAsyncGenerateVideoStartAndEndImage` | `startImage`+`endImage` | ✅ live 200(veo_3_1_interpolation_lite,-10 点) |
-| r2v | `batchAsyncGenerateVideoReferenceImages` | `referenceImages[]` | 形状 404 探针 ✓(未提交验证,暂不开放) |
-| 延长 | `batchAsyncGenerateVideoExtendVideo` | `videoInput`(需视频上传) | 未实现 |
+| r2v | `batchAsyncGenerateVideoReferenceImages` | `referenceImages[]`(+`referenceAudio[]` §14.6) | ✅ live 200(abra_r2v_4s,-7 点,§10.6 台账;🔴 本行原记"未提交验证,暂不开放"有误——§10.6 台账已证明 r2v live,此处勘误) |
+| 延长 | `batchAsyncGenerateVideoExtendVideo` | `videoInput`(直接引用生成视频,§9.2 证伪上传前置) | ✅ live 200(§10.6,veo_3_1_extension_lite,-10 点;🔴 本行原记"未实现"未随 §10.6 刷新,勘误) |
 | 编辑 | `batchAsyncGenerateVideoEditVideo` | (EditVideo 不加 useV2ModelConfig) | 形状定型+假 key 404 ✓(§11.1;live 待授权) |
-| 重拍 | `batchAsyncGenerateVideoReshootVideo` | | 未实现 |
-| 超分 | `batchAsyncGenerateVideoUpsampleVideo` | 分辨率编码在 key(§9.1 证伪 outputSpec.videoUpsampleResolution) | ✅ 已实现+live(§10.7) |
+| 重拍 | `batchAsyncGenerateVideoReshootVideo` | | 未实现(无 wire 工作,如实) |
+| 超分 | `batchAsyncGenerateVideoUpsampleVideo` | 分辨率编码在 key(§9.1 证伪 outputSpec.videoUpsampleResolution;§14.3 补:upsample item 另有顶层 resolution 字段) | ✅ 已实现+live(§10.7) |
 | 物体插入/移除 | `...ObjectInsertion` / `...ObjectRemoval` | | 未实现 |
 
 **请求体(全端点同构;EditVideo 除外均带 `useV2ModelConfig: true`)**:
@@ -274,7 +274,7 @@ achernar(女·soft·high)/achird/algenib/algieba/alnilam/aoede/autonoe/callirrho
 
 ### 9.3 r2v 形状终验 + 音频参考证伪
 - `batchAsyncGenerateVideoReferenceImages` 全形状 404 ✓:**`referenceImages:[{aspectRatio, mediaId}]` entry 形状实证**(§7.3 只验了顶层的补齐)。
-- `audioInput` / `audioReferences` 均 Unknown name → **v2 wire 无音频参考字段**;§8.4 Agent 自述"R2V 含音频参考"不走该 wire(Agent 路径私有,维持红线 skip)。
+- `audioInput` / `audioReferences` 均 Unknown name → **v2 wire 无音频参考字段**;§8.4 Agent 自述"R2V 含音频参考"不走该 wire(Agent 路径私有,维持红线 skip)。【🔴 后被 §14.1/§14.6 修正:真实字段名是 `referenceAudio`(entry={mediaId})——探针证伪的只是 audioInput/audioReferences 两个候选名,不是音频能力本身】
 
 ### 9.4 batchDeleteAssets 字段名 ✅
 `POST /v1/flow:batchDeleteAssets` body 含 **`mediaIds`(数组)**;假 id → 404(形状验证通过且零删除)。
@@ -450,3 +450,69 @@ POST /v1/flow/upsampleImage
 ### 13.6 关联:lasso Chrome idle reaper(外部消费场景)
 
 CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome --port 9223 --idle-ms 0`(record 级禁用收割);默认 60s idle 后被 lasso server 常驻 reaper 树杀(详见 lasso 仓库 doc/BUG-chrome-idle-reaper-second-consumer.md)。README 的 `--mode visible` 档天然 kill 豁免,不受影响。
+
+## 14. 视频面板能力普查 wire 补遗(2026-08-27,A 子任务;积分 1050→1050 零消耗)
+
+> 方法:CDP 页面上下文**只读** projectInitialData(×3 次)+ 全量已加载 chunk(14 个,10.4MB,主战 `_app-3a63b3881d4dbe35.js` 5.2MB)明文 Zod key 检索。零提交、零 404/400 探针、零 reCAPTCHA 调用。快照产物:/tmp/flow-survey/flat-usages.json(77 usage 全字段)。
+
+### 14.1 音频能力全景(🔴 修正 §9.3 "v2 wire 无音频参考字段")
+
+- **§9.3 修正**:`audioInput`/`audioReferences` Unknown ≠ 无音频字段 —— 真实字段名是 **`referenceAudio`**(v2 item Zod 明文,多个 item schema 共有:`{…,'outputSpec','referenceAudio':array(entry),'referenceEntities':optional,'referenceImages':optional,…}`);entry = **`{mediaId}`** 单字段(与 referenceImages entry 同构,zod `_0x582858=Ik({'mediaId':…})`)。
+- 动态目录 `usages[].inputSpec` = **`{maxAudioReferences, maxCharacters, maxInputV2vVideoDuration}`**(bundle zod 另有 `minInputV2vVideoDuration`,本次快照未取值):abra_r2v_* maxAudioRef=**5**(maxImageInputs=7);abra_edit=**3**(maxImageInputs=5,maxCharacters=3,maxInputV2vVideoDuration=10);veo r2v(lite+fast+low_priority)=**1**(maxImageInputs=3,maxCharacters=3)。abra_edit requirements=`[[TEXT,REFERENCES,AUDIO_REFERENCE,CHARACTERS,VIDEO_EDIT]]`;veo_3_1_r2v_lite requirements 是**多组合矩阵**(`[TEXT,REFERENCES]` / `[TEXT,REFERENCES,AUDIO_REFERENCE,CHARACTERS]` / …—— 音频+角色是可选叠加)。
+- `usages[].outputsAudio`:**77/77 全 true**(四家族全部原生出音频)→ 页面模型列表喇叭图标 = 原生音频输出+音频参考支持的**模型能力标识**,不是独立配音入口;响应侧同族标记 `VIDEO_MODEL_CAPABILITY_AUDIO`(§10.6 CAPABILITY_EXTEND 先例)。
+- **`audioFailurePreference` 枚举全集(Zod 明文)**:`AUDIO_FAILURE_PREFERENCE_{UNSPECIFIED, BLOCK_SILENCED_VIDEOS, RETURN_SILENCED_VIDEOS}`。客户端构造逐字:`'mediaGenerationContext':{…(模型 outputsAudio)&&{'audioFailurePreference': userShouldReturnSilentVideos ? 'RETURN_SILENCED_VIDEOS' : 'BLOCK_SILENCED_VIDEOS'}, …sceneContext}` —— 仅当模型出音频才发该字段;`shouldReturnSilentVideos` 是 userSettings zod 字段(默认 false;特性门 `appConfig.isReturnSilentVideosEnabled`)。
+- 独立配音/TTS 是**另一条 wire**(非本面板):`modelConfig.audioModelKey="gemini_v4s_tts_flow"`(modelConfig 第 5 键);TTS requests = `[{dialog, voicePerformance, modelKey, voiceConfigs:[{speaker, voice}], generationType}]`(§10.1 `{mediaId, model, prompt, voiceConfigs}` 同族);action=AUDIO_GENERATION。
+- 音频参考 UI 事实(i18n 明文):"AUDIO INGREDIENTS ARE EXPERIMENTAL"(`pinhole_audio_feature_disclaimer_*`,One Speaker One Image / Match Voice to Visuals)、`pinhole_abra_max_audio_reached`、`pinhole_character_max_audio_reached`、`pinhole_audio_image_mode_not_supported`(图片模式不可用音频)、`pinhole_this_model_cannot_support_audio_reference`(模型不支持禁用态)、`pinhole_audio_failure_{generic,minor}`(安全过滤 `AUDIO_FILTER_MINOR_PRESENCE` 文案)、`pinhole_edit_video_sound_disclaimer`。
+
+### 14.2 x1-x4 = N 次独立 POST(§2.5 升级为构造器级实证)
+
+- 传输函数逐字(明文):`JSON.stringify({'mediaGenerationContext':{'batchId':…,…extra},'clientContext':{…,'recaptchaContext':{'token':await hw(action),'applicationType':'RECAPTCHA_APPLICATION_TYPE_WEB'}},'requests':[item],…('batchAsyncGenerateVideoEditVideo'!==apiPathname && {'useV2ModelConfig':true})})` —— **`requests` 恒为单元素数组字面量 `[item]`**;每次 POST 在提交函数内现取一个 recaptcha token(§7.4 token 单次有效的客户端侧根源)。缺 apiPathname → `"Video generation request is missing apiPathname"`。
+- 批量编排(紧邻代码):先 reduce 累计各 item 积分(`X9(modelKey)` 取价)→ `Promise[all/allSettled]` 并发逐条提交;`agentInfo.defaultGenerationSettings.{image,video}Defaults.outputCount`(zod `{aspectRatio, outputCount, videoModelFamilyKey}`,setter `setImage/VideoDefaultOutputCount`)是 x1-x4 的默认值持久化载体。
+- 工程结论:provider 单 POST 单 `requests[0]` 与客户端行为一致;xN 由工具层循环 N 次提交实现,**勿构造多元素 requests**(服务端 zod 收 array,但客户端从不发多元素,行为未实证)。
+
+### 14.3 分辨率真值(tier 锁 + 360P 新发现)
+
+- 枚举全集:`VIDEO_RESOLUTION_{UNSPECIFIED, 360P, 720P, 1080P, 4K}`。
+- **`modelConfig.tierDefaults`**:`SERVICE_TIER_ENTRY.defaultVideoResolution=VIDEO_RESOLUTION_360P`(**免费档默认 360P,新发现**)/ INTERMEDIATE / ADVANCED = 720P(defaultImageModelFamily: ENTRY=harbor_seal,余 narwhal_display;defaultVideoModelFamily 均 abra)。
+- 77 usage 的 supportedResolutions:**75 个生成 usage 全部仅 `["VIDEO_RESOLUTION_720P"]`(ADVANCED 亦然;ultra/quality/_4s/_6s 变体也是 720P)**;唯二例外 = upsampler(1080P / 4K)。生成侧不存在 1080p 选项(任何 tier);1080p 只能超分(`veo_3_1_upsampler_1080p`:ADVANCED/INTERMEDIATE 0 点,**ENTRY UNAVAILABLE**;4k=ADVANCED 50)。
+- upsample 端点分辨率字段(构造器明文):`_0x166b06=('batchAsyncGenerateVideoUpsampleVideo'===apiPathname)` → upsample 走 **requests[0] 顶层 `resolution`**(zod 枚举),其余端点走 `outputSpec.resolution` —— §9.1 "分辨率编码在 key" 补正:key 之外 upsample item 另有顶层 `resolution` 字段(客户端提供时发送)。
+
+### 14.4 creditMapping per-tier:"UNAVAILABLE" 字符串矩阵
+
+- cost 值可为整数或字符串 `"UNAVAILABLE"`(per SERVICE_TIER_*):`_fast_ultra`/`_fast_4s`/`_fast_6s`/`_quality_4s`/`_quality_6s`/`lite_4s`/`lite_6s` = **ADVANCED-only**(5 或 10 或 100 点);plain `_fast`(20 点)= **INTERMEDIATE/ENTRY-only**(ADVANCED 反 UNAVAILABLE);`low_priority` 家族 = ADVANCED 0 点;`upsampler_4k` = ADVANCED 50。
+- 工程含义:静态价表 estimateVideoCredits 在这些 key 上有偏差(如 `veo_3_1_t2v_fast_ultra` 静态估 20 vs 真实 ADVANCED-only 10 且本 tier UNAVAILABLE;`veo_3_1_t2v_fast` 在 ADVANCED 不可用)—— 提交前动态价(flow_status)更必要;静态表可加 per-tier 标注。
+
+### 14.5 目录 parity + 素材(Ingredients)tab 定性
+
+- **77/77 parity**:live 动态目录 usage key 全集与 `FLOW_VIDEO_MODELS` 静态表**零差集**(2026-08-27 快照);家族 = 4 UI 家族(Omni Flash 13 / Lite 11 / Fast 26 / Quality 14)+ "Veo 3.1 - Lite [Lower Priority]" 11 + upsampler 2(隐藏于主选择器)。
+- 素材 tab = **Ingredients**(`flow_prompt_box_ingredients_mode_button` i18n 原文:"Tab slider button text to switch to generating using **reference images**" → r2v):输入 = 参考图(abra r2v 7 张 / veo r2v 3 张)+ **音频 ingredient(实验期)**;`pinhole_prompt_box_r2v_placeholder_text`="…and ingredients…"。
+- **视频上传是独立路径**(素材 tab 本体不含视频):`upload_video_cta`="Upload video";scotty 客户端完整存在(`/api/upload-video?action=start|upload|query`、`scottyUpload`、`BEST_EFFORT` 策略、`scottyAgentUserId`/`scottyCustomerLog`);限制 i18n:`<1GB` / `≤{{maxSeconds}}s` / 一次 `≤{{max}} 条` / `free_tier_blocked` / 格式与超时错误;服务于 v2v edit(abra_edit `VIDEO_REQUIREMENT_VIDEO_EDIT`,maxInputV2vVideoDuration=10)、insert_into_video、extend(响应侧 `userUploadedVideo` zod 字段存在)。§7.6/§9.2 的 scotty 定位不变(引用既有生成视频不需要它)。
+- 模式 tab → 端点族映射补强:i18n 键族 `pinhole_prompt_box_{t2v,i2v,r2v,insert_into_video,extend,reshoot,jump_to,mask,reframe,remove_from_video,drawing,scene_builder}_placeholder_text` 与 §7.3 端点族一一对应。
+
+### 14.6 referenceAudio 落地实施 + 假 key 404 探针(2026-08-27,E 轮;积分 1050→1050 零消耗)
+
+- **探针(零积分零调度,§11.1 同法)**:POST `/v1/video:batchAsyncGenerateVideoReferenceImages`,`videoModelKey="abra_r2v_8s_nonexistent_probe_key"` + r2v 全量字段 + **`referenceAudio:[{mediaId:"achernar"}]`** + referenceImages → **404 NOT_FOUND**(形状全过;字段名若未知会是 400 Unknown name,§9 field-sieve 先例)。§14.1 的 bundle Zod 结论由此升级为探针实证。快照:/tmp/flow-survey/e-probe-reference-audio.json。
+- **预设语音 mediaId 形状(新 wire 事实)**:是 **slug 名非 UUID**——30 个全表(achernar/achird/algenib/algieba/alnilam/aoede/autonoe/callirrhoe/charon/despina/enceladus/erinome/fenrir/gacrux/iapetus/kore/laomedeia/leda/orus/puck/pulcherrima/rasalgethi/sadachbia/sadaltager/schedar/sulafat/umbriel/vindemiatrix/zephyr/zubenelgenubi),与 §8.1 实体 `audioReferences.presetVoiceId` 同命名空间(charon 双证)。工程含义:mediaId 形状启发(isFlowMediaIdLike)不适用,存在性/预设性校验必须走 projectInitialData 实查。
+- **实施(provider)**:`create_video` 新参 `audioMediaIds: string[]`。v1 收窄边界(D-3 裁决):① 仅 r2v key(edit 自身未 live,不叠加;requirements 矩阵里 AUDIO_REFERENCE 是 r2v/edit 的可选叠加项);② mediaId 必须是本项目 externalReferenceMedia 的预设语音(`isPresetAudioSample=true` 实查,非预设 → S301 带 voices 指路 hint);③ per-key 上限(动态 inputSpec.maxAudioReferences 优先/静态 abra=5、veo=1);④ wire = `requests[0].referenceAudio = [{mediaId}]`(r2v item 其余字段集不变);⑤ 恒发顶层 `audioFailurePreference=BLOCK_SILENCED_VIDEOS`(与客户端"仅当模型 outputsAudio 才发"的构造器存在差异——provider 全模型恒发,§2.5 live 形状先例已验可过;音频过滤命中时整条失败而非静默视频,实验期告警随响应返回)。
+- **用户自有音频上传 wire 仍缺**(scotty 仅视频、uploadImage 仅图片)—— v1 无用户音频路径,在 S301 hint 与工具描述诚实披露。
+- 确认门 digest 摘入 audioMediaIds(排序后入摘;集合语义,换序不失效、增删失效 —— S320)。
+
+### 14.7 per-tier 价矩阵落地:tier 门禁 + 双向静态标注(2026-08-27,E 轮;D-4)
+
+- **静态蒸馏表 `staticTierCosts`(flow.ts)与 2026-08-27 live 快照 77/77 key 全量一致**(逐 key 校验,/tmp/verify-matrix.mjs):abra 家族全 tier 同价;`lite_4s/6s`=ADV **5**/`fast` 变体(_ultra/_4s/_6s,含 portrait/landscape 叠加)=ADV 10/`quality_4s/6s`=ADV 100(均 INT/ENTRY UNAVAILABLE);plain lite=ADV 5 / INT 10 / ENTRY 10;**plain fast=INT/ENTRY 20 / ADV 反 UNAVAILABLE**;low_priority=ADV 0;upsampler_1080p=ADV 0/INT 0/ENTRY UNAV;upsampler_4k=ADV 50。
+- **`lookupVideoCost` 三级价源**:动态 creditMapping[当前档](cost 字符串 "UNAVAILABLE" 显式标出 —— 旧版 NaN 静默落回 tier 盲估算的 bug 于此修)→ `staticTierCosts[tier]` → tier 盲 `estimateVideoCredits`(仅 tier 不可得时;函数本身保持不变作最后兜底,文档注释声明地位)。
+- **门禁 `assertTierAvailable`(S303)双拦**:确认门(UNAVAILABLE key 不发令牌——注定失败的请求不进确认流程)+ 提交点(`noRefresh`:只用已缓存目录+credits+静态矩阵,**不因计费/tier 查找新增 projectInitialData 读**;音频预设校验与 videoMediaId 校验的既有合法读不受影响)。错误消息带完整 per-tier 矩阵 + 换 key/升级 hint(双向:不止拦本 tier,也告知其他档真实价)。
+- 生效示例:INTERMEDIATE 用户提交 `veo_3_1_t2v_fast_ultra` → 旧版确认门按盲估 20 发令牌、提交后上游碰壁;现在 S303 直拒并给出「ADVANCED=10 / INTERMEDIATE=UNAVAILABLE / ENTRY=UNAVAILABLE」。提交后预估提示与确认门预估均用 tier 真值(ADVANCED 档 fast_ultra 报 10 不再报 20)。
+- 文档锚同步:S300 消耗表 hint 补 per-tier 差异;工具描述(create_video model 字段)补 tier-locked 家族说明。
+
+### 14.8 r2v 输入上限落地(inputSpec 实施)+ 三处文档锚修正(2026-08-27,E 轮)
+
+- **动态**:`cacheDynamicCatalog` 增 `inputByKey`(`usage.maxImageInputs` 是 **usage 顶层字段**,`maxAudioReferences` 嵌 `usage.inputSpec` 内 —— 两者层级不同,wire 细节);确认门先行刷新后提交点共用缓存。
+- **静态兜底 `staticR2vCaps`**:abra_r2v=图 7/音 5;veo r2v=图 3/音 1;未知家族保守 10。**旧硬编码"最多 10"删除**——那是 §7.2 生图 base+refs 的上限,错锚到了视频 r2v(真值 7/3,超出会被上游拒)。
+- `flow_status` usage 透传 `inputSpec`/`maxImageInputs`/`outputsAudio`(动态上限与音频能力的自省入口)。
+- **三处文档锚修正(D 轮 D-in 三锚)**:① index.ts images 描述 "1-10"→per-key(abra 7/veo 3);② flow.ts r2v 报错文案"最多 10"/"1-10 张"→per-key 动态值;③ flow.ts resolution 丢弃告警中"更高分辨率请用 key 变体(如 fast_ultra)"**证伪并修正**——§14.3:75/75 生成 usage 仅 720P,ultra/quality 变体同 720P,唯一升分辨率路径 = 生成后超分(upsampler_1080p 0 点 / 4K ADVANCED 50)。
+
+### 14.9 等价性文档措辞修正(equivalent-doc;D-1/D-5)
+
+- **x1-x4 等价表述**(index.ts create_video 描述):UI 的 x1-x4 = N 次独立单元素 POST(§14.2 构造器实证),provider 单 POST 同构 —— 保留等价声明;**"each gets its own seed" 修正**为"seed 每次调用独立随机,**除非显式传 seed**(显式 seed 在 N 次调用间复用)"(flow.ts `req.seed ?? randomInt` 的诚实描述,D-5)。
+- **t2v 透明标注**(D-1):工具描述与 S303 hint 补"t2v wire 仅 404 形状探针验证,provider 路径从未 live 提交"(与 edit 的 EDIT_WIRE_WARNING 同款措辞;最终盘点 = 5 模式 live:i2v/首尾帧/r2v/extension/upsampler + 2 模式 shape-verified:t2v/edit)。

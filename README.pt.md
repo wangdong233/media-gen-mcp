@@ -182,7 +182,9 @@ Se o Chrome não estiver a correr / sem sessão, as ferramentas devolvem um **c�
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Upscale de vídeo 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Um clip por chamada; durações 4 / 6 / 8 / 10 segundos; apenas 16:9 / 9:16. Modos: texto-para-vídeo (t2v), imagem-para-vídeo (`image`, o upload é 0 créditos), imagens-de-referência-para-vídeo (`images`, 1–10), primeiro+último frame (`keyframes`, exatamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrução de edição; wire finalizado mas ainda sem submissão real verificada — a resposta traz um aviso), upscale (`videoMediaId`).
+Um clip por chamada; durações 4 / 6 / 8 / 10 segundos; apenas 16:9 / 9:16. Modos: texto-para-vídeo (t2v; wire verificada apenas em forma, nunca submetida em real por este provider), imagem-para-vídeo (`image`, o upload é 0 créditos), imagens-de-referência-para-vídeo (`images`, até 7 em chaves abra / 3 em chaves veo; em fase experimental pode somar `audioMediaIds` — amostras de voz predefinidas do flow_status), primeiro+último frame (`keyframes`, exatamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrução de edição; wire finalizado mas ainda sem submissão real verificada — a resposta traz um aviso), upscale (`videoMediaId`). Todas as chaves de geração produzem 720P fixo (variantes ultra/quality incluídas) — resolução maior só via upscale.
+
+> Algumas chaves são bloqueadas por nível (preços por tier medidos 2026-08): as variantes fast `ultra`/`4s`/`6s` e `low_priority` são só para ADVANCED (10 / 0 créditos); plain fast NÃO está disponível em ADVANCED; lite custa 5 em ADVANCED. Chaves indisponíveis no seu nível são rejeitadas ANTES da submissão com a matriz completa de preços por nível (nenhum crédito desperdiçado); preços ao vivo por chave estão no `flow_status`.
 
 **Utilização (explícito `provider="flow"`)**:
 

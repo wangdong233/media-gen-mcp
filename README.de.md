@@ -174,7 +174,9 @@ Läuft Chrome nicht / bist du nicht eingeloggt, liefern die Werkzeuge einen **st
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Video-Upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Ein Clip pro Aufruf; Dauern 4 / 6 / 8 / 10 Sekunden; nur 16:9 / 9:16. Modi: Text-zu-Video (t2v), Bild-zu-Video (`image`, Upload 0 Credits), Referenzbilder-zu-Video (`images`, 1–10), Anfangs+Endbild (`keyframes`, genau 2), Verlängern (`videoMediaId`), Editieren (`videoMediaId` + Editieranweisung; Wire finalisiert, aber noch nicht live eingereicht — die Antwort trägt eine Warnung), Upscale (`videoMediaId`).
+Ein Clip pro Aufruf; Dauern 4 / 6 / 8 / 10 Sekunden; nur 16:9 / 9:16. Modi: Text-zu-Video (t2v; Wire nur formverifiziert, nie live über diesen Provider eingereicht), Bild-zu-Video (`image`, Upload 0 Credits), Referenzbilder-zu-Video (`images`, maximal 7 bei abra-Keys / 3 bei veo-Keys; experimentell zusätzlich `audioMediaIds` — Preset-Stimmproben aus flow_status), Anfangs+Endbild (`keyframes`, genau 2), Verlängern (`videoMediaId`), Editieren (`videoMediaId` + Editieranweisung; Wire finalisiert, aber noch nicht live eingereicht — die Antwort trägt eine Warnung), Upscale (`videoMediaId`). Alle Generierungs-Keys liefern fest 720P (ultra/quality-Varianten ebenso) — höhere Auflösung nur per Upscale.
+
+> Manche Keys sind Tier-geschlossen (per-Tier-Preise, gemessen 2026-08): fast `ultra`/`4s`/`6s`-Varianten und `low_priority` nur für ADVANCED (10 / 0 Credits); plain fast ist auf ADVANCED gerade NICHT verfügbar; lite kostet auf ADVANCED 5. Tier-nicht verfügbare Keys werden VOR dem Einreichen abgelehnt, mit vollständiger Tier-Preistabelle (keine Credits verschwendet); aktuelle Preise pro Key liefert `flow_status`.
 
 **Nutzung (explizit `provider="flow"`)**:
 

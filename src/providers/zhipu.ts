@@ -367,6 +367,7 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
     if (req.negativePrompt) warnings.push("zhipu 不支持 negativePrompt,已忽略。");
     if (req.seed != null) warnings.push("zhipu 不支持 seed,已忽略。");
     if (req.images?.length) warnings.push("zhipu 不支持 images(参考图),已忽略。");
+    if (req.audioMediaIds?.length) warnings.push("zhipu 不支持 audioMediaIds(音频参考),已忽略。");
     if (req.videoMediaId) warnings.push("zhipu 不支持 videoMediaId(视频引用),已忽略。");
     if (!MODELS_WITH_DURATION.has(model) && (req.durationSeconds != null || req.numFrames != null)) {
       warnings.push(`duration 仅 cogvideox-3 支持,${model} 时长由模型固定,已忽略 durationSeconds/numFrames。`);

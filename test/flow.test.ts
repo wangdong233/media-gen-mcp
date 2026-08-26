@@ -40,6 +40,8 @@ const {
   resolveVideoModelKey,
   sizeToImageAspect,
   estimateVideoCredits,
+  staticTierCosts,
+  formatTierMatrix,
   isFlowMediaIdLike,
   EDIT_WIRE_WARNING,
   OPEN_VIDEO_MODES,
@@ -65,11 +67,13 @@ class StubTransport {
   downloadB64: string;
   downloadCt: string;
   modelConfig: any;
+  creditsBody: any;
   constructor(opts: any = {}) {
     this.media = opts.media ?? [];
     this.submitMedia = opts.submitMedia ?? [{ name: "media-new-1", mediaStatus: "MEDIA_GENERATION_STATUS_SCHEDULED" }];
     this.openError = opts.openError ?? null;
     this.sessionBody = opts.sessionBody ?? { user: { email: "tester@example.com" }, access_token: "ya29.stub-token" };
+    this.creditsBody = opts.creditsBody ?? { credits: 868, serviceTier: "SERVICE_TIER_INTERMEDIATE" };
     // 默认下载体精确等于 doneMedia 的 mediaBlobSize(2351072)—— getVideo 有字节完整性校验(finding-18)
     const fake = Buffer.from("fake-mp4-bytes");
     this.downloadB64 = opts.downloadB64 ?? Buffer.concat([fake, Buffer.alloc(2351072 - fake.length)]).toString("base64");
@@ -88,7 +92,7 @@ class StubTransport {
       this.sessionCount++;
       return this.json(this.sessionBody);
     }
-    if (args.url.includes("credits?key=")) return this.json({ credits: 868, serviceTier: "SERVICE_TIER_INTERMEDIATE" });
+    if (args.url.includes("credits?key=")) return this.json(this.creditsBody);
     if (args.url.includes("flow.projectInitialData")) {
       return this.json({ result: { data: { json: { projectContents: { media: this.media, workflows: this.workflows, externalReferenceMedia: this.externalRef }, modelConfig: this.modelConfig } } } });
     }
@@ -969,8 +973,8 @@ describe("E 轮:r2v/extension/upsampler 视频 wire(stub 隔离,零真实消耗)
     await assert.rejects(() => newProvider().p.createVideo({ prompt: "x", model: "abra_i2v_4s", image: PNG_1PX, images: [PNG_1PX_B] }), (e: any) => e.code === "S301" && /互斥/.test(e.message));
     const { p: p7 } = newProvider({ media: [doneMedia("vid-src-1")] });
     await assert.rejects(() => p7.createVideo({ prompt: "x", model: "veo_3_1_extension_lite", videoMediaId: "vid-src-1", image: PNG_1PX }), (e: any) => e.code === "S301" && /互斥/.test(e.message));
-    // r2v 参考图超 10
-    await assert.rejects(() => newProvider().p.createVideo({ prompt: "x", model: "abra_r2v_4s", images: Array(11).fill(PNG_1PX) }), (e: any) => e.code === "S301" && /最多 10/.test(e.message));
+    // r2v 参考图超上限(§14.1 per-key:abra 7;旧版 tier 盲硬编码 10 是错的)
+    await assert.rejects(() => newProvider().p.createVideo({ prompt: "x", model: "abra_r2v_4s", images: Array(11).fill(PNG_1PX) }), (e: any) => e.code === "S301" && /超上限\(该 key 7/.test(e.message));
   });
   test("estimateVideoCredits:E 轮新开放模式(upsampler_1080p=0 / extension_lite=10 / r2v 按时长)", () => {
     assert.equal(estimateVideoCredits("veo_3_1_upsampler_1080p"), 0);
@@ -1200,5 +1204,218 @@ describe("预设语音(契约 §8.8;原 flow_entity 工具 2026-08-26 用户裁�
     assert.equal(voices[0].displayName, "Achernar");
     assert.equal(voices[0].description, "Female, soft, high pitch");
     assert.match(voices[0].sampleUrl ?? "", /Achernar\.wav$/);
+  });
+});
+
+// ═══ 14. per-tier 价矩阵 + tier 门禁(契约 §14.4;D-4 双向修正;StubTransport 零真实消耗) ═══
+
+describe("staticTierCosts per-tier 静态矩阵(§14.4;2026-08-27 live 快照蒸馏)", () => {
+  test("abra 家族全 tier 同价(时长表)", () => {
+    assert.deepEqual(staticTierCosts("abra_t2v_8s"), { SERVICE_TIER_ADVANCED: 12, SERVICE_TIER_INTERMEDIATE: 12, SERVICE_TIER_ENTRY: 12 });
+    assert.deepEqual(staticTierCosts("abra_r2v_4s"), { SERVICE_TIER_ADVANCED: 7, SERVICE_TIER_INTERMEDIATE: 7, SERVICE_TIER_ENTRY: 7 });
+    assert.deepEqual(staticTierCosts("abra_edit"), { SERVICE_TIER_ADVANCED: 20, SERVICE_TIER_INTERMEDIATE: 20, SERVICE_TIER_ENTRY: 20 });
+  });
+  test("双向方向一:ADVANCED-only 家族(fast_ultra/_4s/_6s/lite_4s/quality_4s)", () => {
+    for (const k of ["veo_3_1_t2v_fast_ultra", "veo_3_1_t2v_fast_4s", "veo_3_1_t2v_fast_6s", "veo_3_1_r2v_fast_portrait_ultra", "veo_3_1_extend_fast_landscape_ultra", "veo_3_1_t2v_quality_4s", "veo_3_1_t2v_lite_4s", "veo_3_1_i2v_s_lite_6s_fl"]) {
+      const m = staticTierCosts(k)!;
+      const want = k.includes("_quality") ? 100 : k.includes("_lite") ? 5 : 10; // lite_4s/6s=5、fast 变体=10、quality 变体=100(live 快照逐字)
+      assert.equal(m.SERVICE_TIER_ADVANCED, want, `${k} ADVANCED`);
+      assert.equal(m.SERVICE_TIER_INTERMEDIATE, "UNAVAILABLE", `${k} INTERMEDIATE`);
+      assert.equal(m.SERVICE_TIER_ENTRY, "UNAVAILABLE", `${k} ENTRY`);
+    }
+  });
+  test("双向方向二:plain fast 在 ADVANCED 反 UNAVAILABLE(lite ADVANCED=5 价差)", () => {
+    const fast = staticTierCosts("veo_3_1_t2v_fast")!;
+    assert.equal(fast.SERVICE_TIER_ADVANCED, "UNAVAILABLE", "静态盲估 20 会在 ADVANCED 踩坑");
+    assert.equal(fast.SERVICE_TIER_INTERMEDIATE, 20);
+    assert.equal(fast.SERVICE_TIER_ENTRY, 20);
+    const lite = staticTierCosts("veo_3_1_t2v_lite")!;
+    assert.equal(lite.SERVICE_TIER_ADVANCED, 5, "lite ADVANCED=5(静态盲估 10 高估一倍)");
+    assert.equal(lite.SERVICE_TIER_INTERMEDIATE, 10);
+    const lp = staticTierCosts("veo_3_1_t2v_lite_low_priority")!;
+    assert.equal(lp.SERVICE_TIER_ADVANCED, 0, "low_priority ADVANCED=0(静态盲估 10 是错的)");
+    assert.equal(lp.SERVICE_TIER_INTERMEDIATE, "UNAVAILABLE");
+  });
+  test("upsampler 双档 + 未知家族", () => {
+    assert.deepEqual(staticTierCosts("veo_3_1_upsampler_1080p"), { SERVICE_TIER_ADVANCED: 0, SERVICE_TIER_INTERMEDIATE: 0, SERVICE_TIER_ENTRY: "UNAVAILABLE" });
+    assert.deepEqual(staticTierCosts("veo_3_1_upsampler_4k"), { SERVICE_TIER_ADVANCED: 50, SERVICE_TIER_INTERMEDIATE: "UNAVAILABLE", SERVICE_TIER_ENTRY: "UNAVAILABLE" });
+    assert.equal(staticTierCosts("future_family_x"), undefined);
+  });
+  test("formatTierMatrix 人类可读串(门禁消息用)", () => {
+    assert.equal(formatTierMatrix(staticTierCosts("veo_3_1_t2v_fast_ultra")), "ADVANCED=10 / INTERMEDIATE=UNAVAILABLE / ENTRY=UNAVAILABLE");
+    assert.equal(formatTierMatrix(undefined), "");
+  });
+});
+
+describe("tier 门禁(§14.4 UNAVAILABLE;提交点与确认门双拦;零提交)", () => {
+  test("静态矩阵:INTERMEDIATE 档提交 fast_ultra → S303 带 per-tier 矩阵,零 POST", async () => {
+    const { t, p } = newProvider(); // credits stub = INTERMEDIATE,目录空 → staticTierCosts 兜底
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
+      (e: any) => e.code === "S303" && /UNAVAILABLE/.test(e.message) && /ADVANCED=10 \/ INTERMEDIATE=UNAVAILABLE \/ ENTRY=UNAVAILABLE/.test(e.message),
+    );
+    assert.ok(!t.calls.some((c: any) => c.method === "POST" && c.url.includes("/video:")), "拒绝路径不得有提交");
+  });
+  test("静态矩阵路径:目录未暖时 creditMapping[当前档]=UNAVAILABLE → S303(走 static-tier 价源)", async () => {
+    // 注:此用例不经确认门预暖目录,提交点 noRefresh 只见静态矩阵 —— 断言走 static 路径。
+    // 动态路径(真实 creditMapping 实时 UNAVAILABLE)由下一条「动态目录暖后」用例覆盖(mutation:禁用
+    // lookupVideoCost 动态 UNAVAILABLE 分支后该用例必败)。
+    const modelConfig = { videoModelFamilies: [{ usages: [{ key: "veo_3_1_t2v_fast_ultra", creditMapping: { SERVICE_TIER_ADVANCED: { cost: 10 }, SERVICE_TIER_INTERMEDIATE: { cost: "UNAVAILABLE" }, SERVICE_TIER_ENTRY: { cost: "UNAVAILABLE" } } }] }], imageModelFamilies: [] };
+    const { t, p } = newProvider({ modelConfig });
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
+      (e: any) => e.code === "S303" && e.message.includes("动态目录实时值") === false && /UNAVAILABLE/.test(e.message),
+    );
+    assert.ok(!t.calls.some((c: any) => c.method === "POST" && c.url.includes("/video:")), "零提交");
+  });
+  test("动态目录暖后:creditMapping[当前档] 实时 UNAVAILABLE → S303(来源=动态目录实时值)", async () => {
+    // 经 beginSubmissionConfirm 预暖目录(refreshCatalogIfStale)→ 提交点 lookupVideoCost 命中
+    // 动态 creditMapping 的 UNAVAILABLE 分支(source:"dynamic")—— 独立于静态矩阵的第一道防线
+    // (上游目录价漂移时仍正确拦截;mutation:禁用该分支则本用例退化为静态价源而失败)。
+    const modelConfig = { videoModelFamilies: [{ usages: [{ key: "veo_3_1_t2v_fast_ultra", creditMapping: { SERVICE_TIER_ADVANCED: { cost: 10 }, SERVICE_TIER_INTERMEDIATE: { cost: "UNAVAILABLE" }, SERVICE_TIER_ENTRY: { cost: "UNAVAILABLE" } } }] }], imageModelFamilies: [] };
+    const { t, p } = newProvider({ modelConfig });
+    // 未知 key 在静态矩阵里无 per-tier 价,但动态目录有 → 确认门自身即应 S303(不发令牌)
+    await assert.rejects(
+      () => p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
+      (e: any) => e.code === "S303" && e.message.includes("动态目录实时值") === true,
+      "确认门暖目录后,UNAVAILABLE 必须以动态价源拦截",
+    );
+    assert.ok(!t.calls.some((c: any) => c.method === "POST" && c.url.includes("/video:")), "零提交");
+  });
+  test("ADVANCED 档:fast_ultra 放行 + 提交后预估用 per-tier 真值 10(不再盲估 20)", async () => {
+    const { t, p } = newProvider({ creditsBody: { credits: 500, serviceTier: "SERVICE_TIER_ADVANCED" } });
+    const r = await p.createVideo({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" });
+    assert.equal(r.taskId, "media-new-1");
+    assert.ok(t.calls.some((c: any) => c.method === "POST" && c.url.includes("/video:")), "ADVANCED 档应放行提交(stub)");
+    assert.ok((r.warnings ?? []).some((w: string) => w.includes("预计消耗 10 积分")), "提交后预估 = per-tier 真值 10");
+  });
+  test("确认门:UNAVAILABLE key 不发令牌(注定失败的请求不进入确认流程)", async () => {
+    const { p } = newProvider(); // INTERMEDIATE
+    await assert.rejects(
+      () => p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
+      (e: any) => e.code === "S303",
+    );
+  });
+  test("确认门预估:tier 已知时用 static-tier 价(lite 在 INTERMEDIATE=10;全 tier 同价 key 不变)", async () => {
+    const { p } = newProvider();
+    const c = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
+    assert.equal(c!.estimatedCost, 10, "INTERMEDIATE lite=10");
+    assert.equal(c!.costSource, "static-tier");
+    const { p: pAdv } = newProvider({ creditsBody: { credits: 500, serviceTier: "SERVICE_TIER_ADVANCED" } });
+    const cAdv = await pAdv.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
+    assert.equal(cAdv!.estimatedCost, 5, "ADVANCED lite=5(per-tier 真值,盲估 10 是高估)");
+  });
+  test("动态价优先级不变:creditMapping 有本档价 → dynamic(lite ADVANCED 动态 6 覆盖静态 5)", async () => {
+    const modelConfig = { videoModelFamilies: [{ usages: [{ key: "veo_3_1_t2v_lite", creditMapping: { SERVICE_TIER_ADVANCED: { cost: 6 }, SERVICE_TIER_INTERMEDIATE: { cost: 10 }, SERVICE_TIER_ENTRY: { cost: 10 } } }] }], imageModelFamilies: [] };
+    const { p } = newProvider({ modelConfig, creditsBody: { credits: 500, serviceTier: "SERVICE_TIER_ADVANCED" } });
+    const c = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
+    assert.equal(c!.estimatedCost, 6);
+    assert.equal(c!.costSource, "dynamic");
+  });
+});
+
+// ═══ 15. r2v 输入上限(§14.1 inputSpec;动态优先/静态兜底) ═══
+
+describe("r2v per-key 输入上限(§14.1;旧版 tier 盲硬编码 10 是错的)", () => {
+  test("静态兜底:veo r2v 4 张 → S301(该 key 3)", async () => {
+    const { t, p } = newProvider();
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "veo_3_1_r2v_lite", images: Array(4).fill(PNG_1PX) }),
+      (e: any) => e.code === "S301" && /超上限\(该 key 3/.test(e.message),
+    );
+    assert.ok(!t.calls.some((c: any) => c.method === "POST"), "零提交零上传");
+  });
+  test("动态目录 inputSpec 优先:maxImageInputs=2 覆盖静态 7(经确认门暖目录后生效)", async () => {
+    const modelConfig = { videoModelFamilies: [{ usages: [{ key: "abra_r2v_8s", inputSpec: { maxAudioReferences: 1 }, maxImageInputs: 2 }] }], imageModelFamilies: [] };
+    const { t, p } = newProvider({ modelConfig });
+    // 直呼 createVideo 不刷目录(提交路径不拉项目数据的不变量);确认门先行刷新 → 动态 inputSpec 生效
+    await assert.rejects(
+      () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: Array(3).fill(PNG_1PX) }),
+      (e: any) => e.code === "S301" && /该 key 2.*目录 inputSpec/.test(e.message),
+    );
+    assert.ok(!t.calls.some((c: any) => c.method === "POST"), "零提交");
+  });
+  test("上限内放行:abra_r2v_8s 7 张照常提交(referenceImages 7 项)", async () => {
+    const { t, p } = newProvider();
+    await p.createVideo({ prompt: "x", model: "abra_r2v_8s", images: Array(7).fill(PNG_1PX) });
+    const post = t.calls.find((c: any) => c.method === "POST" && c.url.includes("/video:"));
+    const body = JSON.parse(Buffer.from(post.bodyB64, "base64").toString("utf8"));
+    assert.equal(body.requests[0].referenceImages.length, 7);
+  });
+});
+
+// ═══ 16. referenceAudio 音频参考(§14.6;r2v 专属叠加,预设语音 mediaId;零真实提交) ═══
+
+describe("referenceAudio(§14.6 假 key 404 探针定型;v1 收窄 = r2v + 预设语音)", () => {
+  const VOICES = [
+    { mediaId: "achernar", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Achernar", isPresetAudioSample: true } } } },
+    { mediaId: "charon", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Charon", isPresetAudioSample: true } } } },
+  ];
+  test("r2v + audioMediaIds → 提交体 referenceAudio:[{mediaId}](wire 形状)+ 实验期告警", async () => {
+    const { t, p } = newProvider({ externalRef: VOICES });
+    const r = await p.createVideo({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: ["achernar", "charon"] });
+    const post = t.calls.find((c: any) => c.method === "POST" && c.url.includes("/video:"));
+    const body = JSON.parse(Buffer.from(post.bodyB64, "base64").toString("utf8"));
+    assert.ok(post.url.includes("batchAsyncGenerateVideoReferenceImages"), "r2v 端点");
+    assert.deepEqual(body.requests[0].referenceAudio, [{ mediaId: "achernar" }, { mediaId: "charon" }], "entry = {mediaId} 单字段(§14.1)");
+    assert.equal(body.mediaGenerationContext.audioFailurePreference, "BLOCK_SILENCED_VIDEOS");
+    assert.ok((r.warnings ?? []).some((w: string) => w.includes("实验期")), "实验期 disclaimer 告警");
+  });
+  test("非 r2v key + audioMediaIds → S301 指路(t2v 无 AUDIO_REFERENCE requirement)", async () => {
+    const { t, p } = newProvider({ externalRef: VOICES });
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "abra_t2v_8s", audioMediaIds: ["achernar"] }),
+      (e: any) => e.code === "S301" && /audioMediaIds/.test(e.message) && /r2v/.test(e.message),
+    );
+    assert.ok(!t.calls.some((c: any) => c.method === "POST"), "零提交");
+  });
+  test("超 per-key 上限:veo r2v(1)挂 2 个 → S301;abra r2v(5)挂 6 个 → S301", async () => {
+    const { p } = newProvider({ externalRef: VOICES });
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "veo_3_1_r2v_lite", images: [PNG_1PX], audioMediaIds: ["achernar", "charon"] }),
+      (e: any) => e.code === "S301" && /audioMediaIds 数量 2 超上限\(该 key 1/.test(e.message),
+    );
+    const six = ["a", "b", "c", "d", "e", "f"];
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: six }),
+      (e: any) => e.code === "S301" && /该 key 5/.test(e.message),
+    );
+  });
+  test("非预设语音 mediaId → S301 结构化拒绝(网络侧存在性校验;mediaId 是 slug 非 UUID)", async () => {
+    const { t, p } = newProvider({ externalRef: VOICES });
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: ["not-a-voice"] }),
+      (e: any) => e.code === "S301" && /非预设语音样本/.test(e.message) && /voices/.test(e.message),
+    );
+    assert.ok(!t.calls.some((c: any) => c.method === "POST" && c.url.includes("/video:")), "校验失败零提交");
+  });
+  test("r2v 无 images 只挂 audio → S301(audio 是 images 的叠加输入)", async () => {
+    const { p } = newProvider({ externalRef: VOICES });
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x", model: "abra_r2v_8s", audioMediaIds: ["achernar"] }),
+      (e: any) => e.code === "S301" && /须同时传 images/.test(e.message),
+    );
+  });
+  test("digest 绑定:确认后换 audioMediaIds → S320;同集合换序 → 仍有效(集合语义)", async () => {
+    const { p } = newProvider({ externalRef: VOICES });
+    const req0 = { prompt: "x", model: "abra_r2v_8s", images: ["https://e.com/a.png"], audioMediaIds: ["achernar", "charon"] };
+    const c1 = await p.beginSubmissionConfirm(req0);
+    // 先做 mismatch 断言(令牌尚未消费,拒绝只能由 digest 不匹配产生 —— mutation:从 confirmDigest
+    // 删除 audioMediaIds 摘入后本断言必败);成功校验会消费令牌,故有效断言必须放最后。
+    await assert.rejects(
+      p.beginSubmissionConfirm({ ...req0, audioMediaIds: ["achernar"] }, c1!.confirmToken!),
+      (e: any) => e.code === "S320",
+      "确认后换音频样本必须使令牌失效(此时尚未消费,S320 只能来自 digest 不匹配)",
+    );
+    const pass = await p.beginSubmissionConfirm({ ...req0, audioMediaIds: ["charon", "achernar"] }, c1!.confirmToken!);
+    assert.equal(pass, undefined, "集合换序语义等价,令牌仍有效(本次校验消费令牌)");
+  });
+  test("上限来源动态优先:inputSpec.maxAudioReferences=1 覆盖静态 5(abra;经确认门暖目录)", async () => {
+    const modelConfig = { videoModelFamilies: [{ usages: [{ key: "abra_r2v_8s", inputSpec: { maxAudioReferences: 1 }, maxImageInputs: 7 }] }], imageModelFamilies: [] };
+    const { p } = newProvider({ modelConfig, externalRef: VOICES });
+    await assert.rejects(
+      () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: ["achernar", "charon"] }),
+      (e: any) => e.code === "S301" && /该 key 1.*目录 inputSpec/.test(e.message),
+    );
   });
 });

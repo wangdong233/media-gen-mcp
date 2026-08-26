@@ -78,8 +78,8 @@ describe("计费确认门:两段式(无 token 返挑战 → 带 token 放行)", 
     assert.equal(c.needConfirm, true);
     assert.equal(c.provider, "flow");
     assert.equal(c.model, "abra_t2v_8s");
-    assert.equal(c.estimatedCost, 12, "静态契约表:abra 8s = 12 点");
-    assert.equal(c.costSource, "static", "无动态 creditMapping → 静态兜底");
+    assert.equal(c.estimatedCost, 12, "静态 per-tier 矩阵:abra 8s = 12 点(全 tier 同价)");
+    assert.equal(c.costSource, "static-tier", "无动态 creditMapping → 静态 per-tier 矩阵兜底(§14.4;tier 盲 'static' 仅在矩阵无该 key 时出现)");
     assert.equal(c.currentBalance, 868, "附带当前余额(0 点只读 credits)");
     assert.equal(c.estimatedBalanceAfter, 856);
     assert.match(c.confirmToken, /^fvc1\.[0-9a-z]+\.[0-9a-z]+\.[0-9a-f]{32}$/);

@@ -71,6 +71,12 @@ export interface VideoRequest {
   keyframes?: string[];
   /** 参考图:多图 URL 数组(flow r2v 模式;上传后作 referenceImages 引用)。 */
   images?: string[];
+  /**
+   * 音频参考:预设语音 mediaId 数组(flow r2v 模式专属叠加,实验期;契约 §14.6)。
+   * 唯一合法来源 = flow_status(action=voices) 的 30 预设语音(mediaId 是 "achernar" 等 slug 非 UUID);
+   * 用户自有音频上传 wire 未逆向,暂不支持。上限 per-key(abra r2v=5 / veo r2v=1,目录 inputSpec)。
+   */
+  audioMediaIds?: string[];
   /** 视频源 mediaId(flow extension/upsampler 模式:项目内已有视频的引用,无需上传)。 */
   videoMediaId?: string;
   resolution?: Resolution;

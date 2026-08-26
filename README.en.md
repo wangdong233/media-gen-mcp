@@ -174,7 +174,9 @@ If Chrome isn't running / not logged in, the tools return a **structured error c
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Video upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Modes: text-to-video (t2v), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, 1–10), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction; wire is finalized but not yet live-submitted — the response carries a warning), upscale (`videoMediaId`).
+One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Modes: text-to-video (t2v; wire shape-verified only, never live-submitted through this provider), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, up to 7 for abra keys / 3 for veo keys; may also carry `audioMediaIds` — preset voice samples from flow_status, experimental), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction; wire is finalized but not yet live-submitted — the response carries a warning), upscale (`videoMediaId`). All generation keys output 720P (ultra/quality variants too) — higher resolution is upscale-only.
+
+> Some keys are tier-locked (per-tier prices measured 2026-08): fast `ultra`/`4s`/`6s` variants and `low_priority` are ADVANCED-only (10 / 0 credits); plain fast is NOT available on ADVANCED; lite costs 5 on ADVANCED. Tier-unavailable keys are rejected BEFORE submission with the full per-tier matrix (no credits wasted); live per-key prices are in `flow_status`.
 
 **Usage (explicit `provider="flow"`)**:
 

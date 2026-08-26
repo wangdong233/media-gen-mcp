@@ -304,9 +304,10 @@ export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoPro
 
     if (req.extra) Object.assign(body, req.extra);
 
-    // 丢弃参数告警(images 参考图 / videoMediaId 视频引用为渠道专属输入,agnes 不消费 —— 执行点内聚)
+    // 丢弃参数告警(images 参考图 / audioMediaIds 音频参考 / videoMediaId 视频引用为渠道专属输入,agnes 不消费 —— 执行点内聚)
     const warnings: string[] = [];
     if (req.images?.length) warnings.push("agnes 不支持 images(参考图),已忽略。");
+    if (req.audioMediaIds?.length) warnings.push("agnes 不支持 audioMediaIds(音频参考),已忽略。");
     if (req.videoMediaId) warnings.push("agnes 不支持 videoMediaId(视频引用),已忽略。");
 
     await this.enqueueSubmit(model);

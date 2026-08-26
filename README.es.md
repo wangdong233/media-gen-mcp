@@ -183,7 +183,9 @@ Si Chrome no está abierto / sin sesión, las herramientas devuelven un **códig
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Escalado de vídeo 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Un clip por llamada; duraciones 4 / 6 / 8 / 10 segundos; solo 16:9 / 9:16. Modos: texto a vídeo (t2v), imagen a vídeo (`image`, subir cuesta 0 créditos), imágenes de referencia a vídeo (`images`, 1–10), primer y último fotograma (`keyframes`, exactamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrucción de edición; wire finalizado pero aún sin envío real verificado — la respuesta incluye un aviso), escalado (`videoMediaId`).
+Un clip por llamada; duraciones 4 / 6 / 8 / 10 segundos; solo 16:9 / 9:16. Modos: texto a vídeo (t2v; wire verificada solo en forma, nunca enviada en real por este provider), imagen a vídeo (`image`, subir cuesta 0 créditos), imágenes de referencia a vídeo (`images`, hasta 7 en claves abra / 3 en claves veo; en fase experimental puede añadirse `audioMediaIds` — muestras de voz predefinidas de flow_status), primer y último fotograma (`keyframes`, exactamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrucción de edición; wire finalizado pero aún sin envío real verificado — la respuesta incluye un aviso), escalado (`videoMediaId`). Todas las claves de generación producen 720P fijo (también las variantes ultra/quality); más resolución solo vía escalado.
+
+> Algunas claves están bloqueadas por nivel (precios por tier medidos 2026-08): las variantes fast `ultra`/`4s`/`6s` y `low_priority` son solo ADVANCED (10 / 0 créditos); plain fast NO está disponible en ADVANCED; lite cuesta 5 en ADVANCED. Las claves no disponibles en tu nivel se rechazan ANTES del envío con la tabla completa de precios por nivel (sin gastar créditos); los precios en vivo por clave están en `flow_status`.
 
 **Uso (explícito `provider="flow"`)**:
 

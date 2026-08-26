@@ -175,7 +175,9 @@ Si Chrome ne tourne pas / n'est pas connecté, les outils renvoient un **code d'
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Suréchantillonnage vidéo 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Un clip par appel; durées 4 / 6 / 8 / 10 secondes; ratio 16:9 / 9:16 uniquement. Modes : texte-vers-vidéo (t2v), image-vers-vidéo (`image`, le téléversement est à 0 crédit), images-de-référence-vers-vidéo (`images`, 1–10), premier+dernier cadre (`keyframes`, exactement 2), prolongation (`videoMediaId`), édition (`videoMediaId` + une consigne de modification; wire finalisé mais pas encore soumis en réel — la réponse porte un avertissement), suréchantillonnage (`videoMediaId`).
+Un clip par appel; durées 4 / 6 / 8 / 10 secondes; ratio 16:9 / 9:16 uniquement. Modes : texte-vers-vidéo (t2v ; wire vérifiée en forme seulement, jamais soumise en réel via ce provider), image-vers-vidéo (`image`, le téléversement est à 0 crédit), images-de-référence-vers-vidéo (`images`, jusqu'à 7 pour les clés abra / 3 pour les clés veo ; en expérimental, `audioMediaIds` permet d'attacher des échantillons de voix prédéfinis issus de flow_status), premier+dernier cadre (`keyframes`, exactement 2), prolongation (`videoMediaId`), édition (`videoMediaId` + une consigne de modification; wire finalisé mais pas encore soumis en réel — la réponse porte un avertissement), suréchantillonnage (`videoMediaId`). Toutes les clés de génération produisent du 720P fixe (variantes ultra/quality comprises) — plus haute résolution uniquement par suréchantillonnage.
+
+> Certaines clés sont verrouillées par palier (prix par tier mesurés 2026-08) : les variantes fast `ultra`/`4s`/`6s` et `low_priority` sont réservées à ADVANCED (10 / 0 crédits) ; plain fast n'est PAS disponible en ADVANCED ; lite coûte 5 en ADVANCED. Les clés indisponibles sur votre palier sont rejetées AVANT soumission avec la matrice complète des prix par palier (aucun crédit gaspillé) ; les prix en direct par clé sont dans `flow_status`.
 
 **Utilisation (`provider="flow"` explicite)** :
 

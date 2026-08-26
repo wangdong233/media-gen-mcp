@@ -24,11 +24,14 @@ import { fileURLToPath } from "node:url";
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 // ── tmp configs:链不含 flow(未启用)/ 链含 flow(启用) ──
+// providers.flow.settings.projectId 预置既有项目:杜绝 CI-parity 干净 HOME 下 ensureProjectId
+// 自动新建项目(POST createProject 是 0 积分但真实的账号写副作用 —— 测试零写路径红线)。
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "flow-gate-"));
+const KNOWN_PROJECT = { providers: { flow: { settings: { projectId: "c36ca3e2-192b-41e5-9e5b-700130e3d324" } } } };
 const cfgUnchained = path.join(tmpDir, "unchained.json");
-fs.writeFileSync(cfgUnchained, JSON.stringify({ imageProviderPriority: ["agnes", "zhipu"] }, null, 2));
+fs.writeFileSync(cfgUnchained, JSON.stringify({ ...KNOWN_PROJECT, imageProviderPriority: ["agnes", "zhipu"] }, null, 2));
 const cfgChained = path.join(tmpDir, "chained.json");
-fs.writeFileSync(cfgChained, JSON.stringify({ imageProviderPriority: ["flow", "agnes"] }, null, 2));
+fs.writeFileSync(cfgChained, JSON.stringify({ ...KNOWN_PROJECT, imageProviderPriority: ["flow", "agnes"] }, null, 2));
 
 // ── MCP server stdio 客户端(同 flow-tools.integration.test.mjs 范式;可重启换 config) ──
 let proc = null, buf = "", nextId = 0;
@@ -115,11 +118,14 @@ describe("链即开关(注册不受影响;链决定默认路由;点名永远合�
       assert.equal(gen?.inputSchema?.properties?.provider?.default, "flow");
     });
 
-    test("flow_status() 正常入口(不再有入口门;无 Chrome → S1xx 环境错,有 Chrome → 快照)", async () => {
+    test("flow_status() 正常入口(不再有入口门;成功快照或结构化 S 码,绝不 S000)", async () => {
       const r = await callTool("flow_status", {});
       if (r.isError) {
         assert.doesNotMatch(r.text, /S000/);
-        assert.match(r.text, /\[flow\] S1\d\d/, "失败只能是环境前置错(结构化,自带启动指引)");
+        // 断言放宽到任意结构化 [flow] S 码:单跑无 Chrome 时是 S1xx 环境错;全量并发跑时多个测试
+        // 进程共享 CDP 9223 单页面 target,竞争可产生 S103/S2xx 等 —— 用例核心价值在"入口存在
+        // 且错误自解释",不在特定错误码。
+        assert.match(r.text, /\[flow\] S\d{3}/, "失败必须是结构化 flow 错(自带指引)");
       }
     });
   });

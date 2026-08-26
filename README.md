@@ -181,7 +181,9 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | 视频超分 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-视频一次一条,时长 4 / 6 / 8 / 10 秒,比例仅 16:9 / 9:16;模式:文生视频(t2v)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images` 1–10 张)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令;wire 已定型,真实提交尚未线上验证,响应会带警示)/ 超分(`videoMediaId`)。
+视频一次一条,时长 4 / 6 / 8 / 10 秒,比例仅 16:9 / 9:16;模式:文生视频(t2v;wire 仅形状验证,provider 路径未 live 提交)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images`,abra 键最多 7 张 / veo 键 3 张;实验期可叠加 `audioMediaIds` 挂 30 预设语音做声音参考)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令;wire 已定型,真实提交尚未线上验证,响应会带警示)/ 超分(`videoMediaId`)。所有生成 key 固定 720P(ultra/quality 变体同),更高分辨率只能生成后超分。
+
+> 部分 key 有会员档锁定(2026-08 实测 per-tier 价):fast 的 `ultra`/`4s`/`6s` 变体与 `low_priority` 仅 ADVANCED 可用(10 / 0 点);plain fast 在 ADVANCED 反而不可用;lite 在 ADVANCED 是 5 点。当前档不可用的 key 会在**提交前**被拒并附完整各档价目(不误扣积分);各 key 实时价目可查 `flow_status`。
 
 **用法(显式 `provider="flow"`)**:
 
@@ -329,7 +331,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 - **视频默认仍 agnes 优先**(免费);Flow 视频消耗积分,**刻意不进默认链**——要么在 `videoProviderPriority` 里显式写入(自担积分),要么每次显式 `provider="flow"`。
 - 不配置这两项 = 现行为(默认渠道 + agnes/智谱免费层自动互备),零影响。环境变量等价:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
 - **渠道启停 = 优先级链(链即开关)**:渠道是否启用由两条优先级链是否包含它决定 —— **不配置 = 不启用**(不自动路由、不进 fallback),**列出 = 启用**(链头即默认渠道)。不需要(也不再支持)单独的 `flow.enabled` 开关;显式 `provider="flow"` 点名永远合法,环境不可用时返回结构化 `[flow] S1xx` 前置错(自带启动指引),绝不静默换渠道。配套 `"flow": { "toolDeadlineMs": 110000 }` = Flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,防卡死(单次调用 ≤120s),超时转 `[flow] S410` —— 底层操作不取消,稍后经 `flow_status(mediaId)` 复查落盘。
-- **计费确认门(两段式,默认开)**:视频路由到/显式用 Flow 时,`create_video` 第一次调用**不提交**,返回 `{needConfirm:true, estimatedCost(积分预估,动态 creditMapping 优先/静态表兜底), confirmToken, expiresInSeconds}`;用**原参数 + confirmToken** 重新调用才真提交。令牌短时效(默认 10 分钟,`flow.confirmTtlMs` 可调,env `FLOW_CONFIRM_TTL_MS`)且与「模型+时长+预估+prompt+输入引用(image/keyframes/images/videoMediaId)」绑定 —— 确认后改任一项需重新获取;错误令牌返回 `[flow] S320`、过期返回 `[flow] S321`。0 积分操作(如 `veo_3_1_upsampler_1080p` 超分)与非 Flow 渠道**不触发**本门。关闭:`"flow": { "videoConfirm": false }`(默认 `true` —— 误门只多一次往返,漏门会真扣积分,故默认开)。
+- **计费确认门(两段式,默认开)**:视频路由到/显式用 Flow 时,`create_video` 第一次调用**不提交**,返回 `{needConfirm:true, estimatedCost(积分预估,动态 creditMapping 优先 / per-tier 静态矩阵 / tier 盲静态表逐级兜底), confirmToken, expiresInSeconds}`;用**原参数 + confirmToken** 重新调用才真提交。令牌短时效(默认 10 分钟,`flow.confirmTtlMs` 可调,env `FLOW_CONFIRM_TTL_MS`)且与「模型+时长+预估+prompt+输入引用(image/keyframes/images/videoMediaId/audioMediaIds)」绑定 —— 确认后改任一项需重新获取;错误令牌返回 `[flow] S320`、过期返回 `[flow] S321`。当前会员档不可用的 key(如 INTERMEDIATE 档的 fast ultra 变体)**不发放令牌**,直接 `[flow] S303` 拒绝并附各档价目。0 积分操作(如 `veo_3_1_upsampler_1080p` 超分)与非 Flow 渠道**不触发**本门。关闭:`"flow": { "videoConfirm": false }`(默认 `true` —— 误门只多一次往返,漏门会真扣积分,故默认开)。
 
 **Flow 资产管理(全 0 积分)**:`flow_status` 除了查积分 / 查媒体状态 / 下载,还支持三件零消耗操作——`shareMediaIds=[…]` 生成公开分享链接(形如 `labs.google/fx/tools/flow/shared/image/<id>`,含提示词)、`cancelMediaIds=[…]` 取消生成中的视频(注意:图片生成不可取消)、`deleteMediaIds=[…]` 批量删除。
 
