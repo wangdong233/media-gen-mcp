@@ -214,6 +214,25 @@ describe("计费确认门:校验同源早失败", () => {
       (e: any) => e.code === "S301" && e.message.includes("abra_i2v_8s"),
     );
   });
+  test("ratio 非 16:9/9:16(generation key)→ S301 先于挑战(审计 A-02:不让用户确认注定失败的请求)", async () => {
+    const { p } = newProvider();
+    for (const bad of ["1:1", "4:3", "3:4"]) {
+      await assert.rejects(
+        () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s", ratio: bad }),
+        (e: any) => e.code === "S301" && e.message.includes("16:9 / 9:16"),
+        `ratio=${bad} 应在确认门第一段即 S301`,
+      );
+    }
+    // 合法值仍返挑战(门不被新校验误伤)
+    const ok = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s", ratio: "9:16" });
+    assert.equal(ok?.needConfirm, true, "ratio=9:16 应正常返回确认挑战");
+  });
+  test("ratio 校验豁免 extension/upsampler(方向继承源视频)", async () => {
+    const { p } = newProvider();
+    // upsampler 0 积分不触发门(undefined),但不该因 ratio=1:1 抛 S301
+    const r = await p.beginSubmissionConfirm({ prompt: "placeholder", model: "veo_3_1_upsampler_1080p", videoMediaId: "01234567-89ab-cdef-89ab-cdef01234567", ratio: "1:1" });
+    assert.equal(r, undefined, "upsampler(0 积分)即使 ratio=1:1 也不应被 ratio 校验拦截");
+  });
 });
 
 // ═══ B2-high 回归:单次消费(防重放) + digest 绑 prompt ═══

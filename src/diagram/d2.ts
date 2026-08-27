@@ -51,14 +51,21 @@ async function resolveD2Icons(svg: string): Promise<string> {
 
 // D2 主题名 → themeID(d2 WASM RenderOptions 仅接受 themeID: number;名映射免"传 dark 实际无效"的试错)
 const D2_THEME_NAME_TO_ID: Record<string, number> = { default: 0, neutral: 1 };
+/** 数字 themeID 合法范围(d2 --themes 实测目录 0-300;越界会在 WASM 深处炸出不可读错误,前置拦)。 */
+const D2_THEME_ID_MAX = 300;
 function resolveD2Theme(theme?: string): number | null {
   if (theme == null || theme.trim() === "") return null;
   const t = theme.trim();
   const num = Number(t);
-  if (Number.isFinite(num)) return num;
+  if (Number.isFinite(num)) {
+    if (!Number.isInteger(num) || num < 0 || num > D2_THEME_ID_MAX) {
+      throw new Error(`D2 themeID 须为 0-${D2_THEME_ID_MAX} 的整数(收到 "${t}")。已知名: ${Object.keys(D2_THEME_NAME_TO_ID).join("/")};完整目录见 d2 --themes。`);
+    }
+    return num;
+  }
   const id = D2_THEME_NAME_TO_ID[t.toLowerCase()];
   if (id != null) return id;
-  throw new Error(`unknown D2 theme "${t}". 已知名: ${Object.keys(D2_THEME_NAME_TO_ID).join("/")}; 或传数字 themeID(见 d2 --themes)。`);
+  throw new Error(`unknown D2 theme "${t}". 已知名: ${Object.keys(D2_THEME_NAME_TO_ID).join("/")}; 或传数字 themeID(0-${D2_THEME_ID_MAX},见 d2 --themes)。`);
 }
 // D2 PNG box-bounded zoom(防大架构图产出超大 PNG),与 graphviz 配置对齐(白底 + 中文字体兜底)
 const D2_MAX_W = 2000, D2_MAX_H = 2000;

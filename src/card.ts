@@ -77,12 +77,12 @@ async function loadFont(
       res = await fetch(url);
     } catch (e: any) {
       throw new Error(
-        `default font fetch failed (card tool needs network for default font): ${e?.message ?? String(e)}. Provide fontPath for offline use.`,
+        `fontFamily fetch failed (non-default @fontsource fontFamily needs network; offline: pass fontPath): ${e?.message ?? String(e)}.`,
       );
     }
     if (!res.ok) {
       throw new Error(
-        `default font "${family}" weight ${weight} unavailable (${res.status}). Try a different fontFamily or pass fontPath.`,
+        `fontFamily "${family}" fetch failed (HTTP ${res.status}) — pass the @fontsource package slug exactly (lowercase with hyphens, e.g. "open-sans"), or use fontPath for a local font file.`,
       );
     }
     buf = Buffer.from(await res.arrayBuffer());

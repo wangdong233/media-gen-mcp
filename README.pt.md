@@ -43,7 +43,7 @@ Cansado de produzir imagens algumas vezes por semana e lidar com N ferramentas e
 | «Renderize E=mc² como fórmula em alta resolução» | Uma fórmula vetorial |
 | «Crie um card de partilha com gradiente escuro, título: Novidades de Julho 🚀» | Um card de partilha impecável (chinês + emoji automáticos) |
 | «Reconheça a tabela nesta captura de fatura» | Uma tabela HTML/Markdown colável |
-| «Leia este gráfico de barras como pontos de dados» | Dados estruturados em CSV/JSON |
+| «Leia este gráfico de barras como pontos de dados» | Dados estruturados em JSON |
 | «Descreva o que está nesta imagem» | Uma resposta em linguagem natural |
 | «Extraia todo o texto deste relatório PDF de 20 páginas» | Texto integral / Markdown / JSON (PDFs digitais saem num instante, digitalizações fazem OCR página a página automaticamente) |
 | «Extraia texto deste contrato digitalizado, ignorando marcas d'água e carimbos vermelhos» | Texto limpo (remove automaticamente marcas d'água / carimbos vermelhos / cabeçalhos e rodapés) |
@@ -167,7 +167,7 @@ Se o Chrome não estiver a correr / sem sessão, as ferramentas devolvem um **c�
 
 **Tudo isto custa 0 créditos (use à vontade)**:
 
-- **Geração de imagens**: Nano Banana Pro / Nano Banana 2 (padrão) / Nano Banana 2 Lite; proporções 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reprodutíveis; edição com imagem base + até 10 imagens de referência
+- **Geração de imagens**: Nano Banana Pro / Nano Banana 2 (padrão) / Nano Banana 2 Lite; proporções 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reprodutíveis; edição com imagem base + imagens de referência (base + referências: no máximo 10 no total)
 - **Upscale**: imagem em 2K (model=`GEM_PIX_2_UPSAMPLE_2K`), vídeo em 1080p (model=`veo_3_1_upsampler_1080p`)
 - **Gestão de ativos**: carregar imagens, apagar em lote, criar links públicos de partilha (`labs.google/fx/tools/flow/shared/…`), cancelar vídeos em geração, consultar créditos / estado dos média (`flow_status`))
 
@@ -182,7 +182,7 @@ Se o Chrome não estiver a correr / sem sessão, as ferramentas devolvem um **c�
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Upscale de vídeo 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Um clip por chamada; durações 4 / 6 / 8 / 10 segundos; apenas 16:9 / 9:16. Modos: texto-para-vídeo (t2v; wire verificada apenas em forma, nunca submetida em real por este provider), imagem-para-vídeo (`image`, o upload é 0 créditos), imagens-de-referência-para-vídeo (`images`, até 7 em chaves abra / 3 em chaves veo; em fase experimental pode somar `audioMediaIds` — amostras de voz predefinidas do flow_status), primeiro+último frame (`keyframes`, exatamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrução de edição; wire finalizado mas ainda sem submissão real verificada — a resposta traz um aviso), upscale (`videoMediaId`). Todas as chaves de geração produzem 720P fixo (variantes ultra/quality incluídas) — resolução maior só via upscale.
+Um clip por chamada; durações 4 / 6 / 8 / 10 segundos (a família veo NÃO tem 10s — apenas 4/6/8s ou a duração embutida na chave; chave com sufixo `_Ns` + durationSeconds diferente → S301); apenas 16:9 / 9:16. Modos: texto-para-vídeo (t2v; wire verificada apenas em forma, nunca submetida em real por este provider), imagem-para-vídeo (`image`, o upload é 0 créditos), imagens-de-referência-para-vídeo (`images`, até 7 em chaves abra / 3 em chaves veo; em fase experimental pode somar `audioMediaIds` — amostras de voz predefinidas do flow_status), primeiro+último frame (`keyframes`, exatamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrução de edição; wire finalizado mas ainda sem submissão real verificada — a resposta traz um aviso), upscale (`videoMediaId`). Todas as chaves de geração produzem 720P fixo (variantes ultra/quality incluídas) — resolução maior só via upscale.
 
 > Algumas chaves são bloqueadas por nível (preços por tier medidos 2026-08): as variantes fast `ultra`/`4s`/`6s` e `low_priority` são só para ADVANCED (10 / 0 créditos); plain fast NÃO está disponível em ADVANCED; lite custa 5 em ADVANCED. Chaves indisponíveis no seu nível são rejeitadas ANTES da submissão com a matriz completa de preços por nível (nenhum crédito desperdiçado); preços ao vivo por chave estão no `flow_status`.
 
@@ -210,7 +210,7 @@ Um clip por chamada; durações 4 / 6 / 8 / 10 segundos; apenas 16:9 / 9:16. Mod
 
 **Reconstruir dados originais a partir de um gráfico**
 > Você: «Leia este gráfico de barras como dados»
-> Recebe: dados estruturados em CSV / JSON (barras / linhas / pizza, todos funcionam)
+> Recebe: dados estruturados em JSON (barras / linhas / pizza, todos funcionam)
 
 **Pedir para explicar a imagem em linguagem simples**
 > Você: «Quantas pessoas há nesta imagem? O que estão a fazer?»

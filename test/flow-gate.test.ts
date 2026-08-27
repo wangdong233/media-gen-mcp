@@ -10,7 +10,7 @@
  *      详测;此处钉契约要点)+ 显式 provider=flow 点名永远合法(原 S000 拦截的反向断言)
  *   3. 防 stall 截止:长操作超 toolDeadlineMs → [flow] S410 结构化错(底层不取消);
  *      缺省截止不小于默认量级(不立即误抛);0 点工具入口(flowStatus/mediaStatus/deleteAssets/
- *      shareMedia/cancelGenerations/listPresetVoices)逐一同样受保护(三审 finding-5)
+ *      shareMedia/cancelGenerations)逐一同样受保护(三审 finding-5;listPresetVoices 已随角色域移除删)
  *
  * 导入方式:与 provider-priority.test.ts 同范式(createRequire 引编译产物 dist/;
  * npm test 先 build 再 build:tests,顺序保证存在)。
@@ -166,7 +166,7 @@ describe("toolDeadlineMs(长操作截止 → [flow] S410)", () => {
   });
 
   // 三审 finding-5:0 点只读/管理工具路径(flowStatus/mediaStatus/deleteAssets/shareMedia/
-  // cancelGenerations/listPresetVoices)曾缺工具级截止 —— 单次
+  // cancelGenerations)曾缺工具级截止 —— 单次(listPresetVoices 已删)
   // pageFetch 有 45s eval 超时,但多步链(逐 id 循环 + 前后 projectData)可叠加远超 120s 红线。
   // 每个入口都必须在 toolDeadlineMs 处转 [flow] S410(mutant:去掉任一包裹 → 该用例超时失败)。
   test("0 点工具入口全部受截止保护:悬挂 CDP → S410(逐一覆盖,缺包裹即败)", async () => {
@@ -187,6 +187,5 @@ describe("toolDeadlineMs(长操作截止 → [flow] S410)", () => {
     await expectS410("deleteAssets(ids)", () => mk().deleteAssets(["media-x-1"]));
     await expectS410("shareMedia(ids)", () => mk().shareMedia(["media-x-1"]));
     await expectS410("cancelGenerations(ids)", () => mk().cancelGenerations(["media-x-1"]));
-    await expectS410("listPresetVoices()", () => mk().listPresetVoices());
   });
 });

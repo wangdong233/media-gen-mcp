@@ -5,7 +5,7 @@ import { TesseractProvider } from "./tesseract.js";
 import { PaddleocrProvider } from "./paddle.js";
 import { VlmProvider } from "./vlm.js";
 import { GlmVisionProvider } from "./glm-vision.js";
-import { FlowProvider } from "./flow.js";
+import { FlowProvider, FLOW_MNEMONIC_RE } from "./flow.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -191,18 +191,11 @@ export type FallbackReq = { images?: string[]; image?: string; mode?: string; ke
  * C 任务:未显式指定 provider 且配置了 <modality>ProviderPriority 时,链头 = 优先级链上
  * 首个「具备该模态能力且不在 60s 熔断窗口」的成员(惰性:不主动探测,只读本地 health);
  * 链全熔断/全无能力 → 落回 legacy 默认(defaultXxxProvider)。未配置 priority = 现行为零漂移。
+ *
+ * 注:原 S000 硬门(disabledReason 拦截显式点名)已于 2026-08-26 删除 —— 链即开关:
+ * 不配置进链 = 不自动路由;显式点名永远合法,环境不可用由 provider 前置检测结构化报告。
  */
 export function resolveProvider(
-  name: string | undefined,
-  model: string | undefined,
-  modality: Modality,
-): { provider: MediaProvider; autoRouted: boolean; routedFrom?: string } {
-  // 注:原 S000 硬门(disabledReason 拦截显式点名)已于 2026-08-26 删除 —— 链即开关:
-  // 不配置进链 = 不自动路由;显式点名永远合法,环境不可用由 provider 前置检测结构化报告。
-  return resolveProviderUngated(name, model, modality);
-}
-
-function resolveProviderUngated(
   name: string | undefined,
   model: string | undefined,
   modality: Modality,
@@ -215,7 +208,11 @@ function resolveProviderUngated(
     modality === "image" ? (p.listImageModels?.() ?? [])
     : modality === "video" ? (p.listVideoModels?.() ?? [])
     : (p.listVisionModels?.() ?? []);
-  const owns = (p: MediaProvider) => modelsOf(p).includes(model);
+  // flow 助记视频 key(abra_t2v + durationSeconds → flow.ts resolveVideoModelKey 解析完整 key)
+  // 归 flow 命名空间:归属校验不得在到达助记解析之前把文档化的调用形态拦下(schema model 描述
+  // 承诺 "or mnemonic+durationSeconds (abra_t2v + 8)")。正则与 resolveVideoModelKey 同一约定。
+  const isFlowMnemonic = modality === "video" && FLOW_MNEMONIC_RE.test(model); // 同 flow.ts resolveVideoModelKey 真源
+  const owns = (p: MediaProvider) => modelsOf(p).includes(model) || (isFlowMnemonic && p.name === "flow");
 
   if (owns(target)) return { provider: target, autoRouted: false };
 

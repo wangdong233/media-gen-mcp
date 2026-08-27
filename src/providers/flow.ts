@@ -67,6 +67,11 @@ const RECAPTCHA_ACTION_IMAGE = "IMAGE_GENERATION";
 const RECAPTCHA_ACTION_VIDEO = "VIDEO_GENERATION";
 /** Flow 工具内部名(契约 §1)。 */
 const TOOL_INTERNAL_NAME = "PINHOLE";
+/**
+ * wire 字段 clientContext.sessionId 的魔数格式:前导分号 + 毫秒时间戳 —— 外部系统约定
+ * (契约 doc/flow-api-contract.md §1),非本仓库发明;命名常量防 4 处副本漂移(R-INT-08/R-CI-08)。
+ */
+const wireSessionId = () => `;${Date.now()}`;
 /** 前置检测结果缓存 TTL:30s(硬约束:避免每次工具调用都探测 CDP)。 */
 const DEFAULT_PREFLIGHT_TTL_MS = 30_000;
 /** 单次页面 fetch(经 Runtime.evaluate)超时:状态/目录快;媒体下载大,单独放宽。 */
@@ -513,6 +518,9 @@ const NOT_OPEN_REASONS: Readonly<Record<string, string>> = {
 };
 
 /** edit 模式固定警示(E 轮 parity:wire 探针定型但 live 未验证,首次使用异常请回报契约 §11.1)。 */
+/** flow 助记模型正则(abra_t2v / abra_i2v / abra_r2v)—— key 解析与 provider 归属校验共用单一真源(H-nit)。 */
+export const FLOW_MNEMONIC_RE = /^(abra)_(t2v|i2v|r2v)$/;
+
 export const EDIT_WIRE_WARNING = "edit 模式 wire 已探针定型(bundle Zod + 假 key 404,契约 §11.1)但真实提交未 live 验证(abra_edit 20 点);首次使用若报 4xx/5xx 请回报契约文档。";
 
 /** 视频 usage key 的模式段 → 中文标签(S303/S301 报错用)。 */
@@ -606,7 +614,7 @@ export function resolveVideoModelKey(
     throw new FlowError("S301", `durationSeconds=${durationSeconds} 非法(视频时长仅 ${FLOW_VIDEO_DURATIONS.join("/")}s)`);
   }
   const duration = snapDuration(durationSeconds);
-  const m = /^(abra)_(t2v|i2v|r2v)$/.exec(model);
+  const m = FLOW_MNEMONIC_RE.exec(model); // m[1]=家族 m[2]=模式(与 registry isFlowMnemonic 同一真源)
   if (m) {
     const key = `${model}_${duration}s`;
     if (!allowedKeys.includes(key)) {
@@ -621,7 +629,7 @@ export function resolveVideoModelKey(
   if (embedded) {
     const keyDur = Number(embedded[1]);
     if (durationSeconds != null && keyDur !== durationSeconds) {
-      throw new FlowError("S301", `模型 "${model}" 自带 ${keyDur}s 时长,与 durationSeconds=${durationSeconds} 冲突(二选一)`);
+      throw new FlowError("S301", `模型 "${model}" 自带 ${keyDur}s 时长,与 durationSeconds=${durationSeconds} 冲突(若你传的是 numFrames,该 durationSeconds 由 numFrames÷frameRate 推导而来;二选一:换不带时长的 key,或改 numFrames/durationSeconds 与 key 一致)`);
     }
     return { key: model, duration: keyDur, warnings };
   }
@@ -1087,7 +1095,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
         recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
         projectId: pid,
         tool: TOOL_INTERNAL_NAME,
-        sessionId: `;${Date.now()}`,
+        sessionId: wireSessionId(),
       },
       mediaId,
       requestContext: {},
@@ -1270,33 +1278,6 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * AUDIO 条目,路径 entry.media.audio.generatedAudio —— §11.4 live 纠偏:audio 嵌在 entry.media 下,
    * 非条目顶层;30 条恒在,0 点)。
    */
-  async listPresetVoices(): Promise<Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }>> {
-    // 三审 finding-5:voices 读取路径受工具级截止封顶(防 stall 红线;原 flow_entity 工具已删,flow_status voices 消费)
-    return this.withToolDeadline(this.listPresetVoicesUnbounded(), "flow 预设语音清单");
-  }
-  private async listPresetVoicesUnbounded(): Promise<Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }>> {
-    await this.ensureReady();
-    const ext = (await this.getProjectData()).projectContents?.externalReferenceMedia ?? [];
-    const voices: Array<{ id: string; displayName: string; description?: string; sampleUrl?: string }> = [];
-    for (const e of ext) {
-      const g = e?.media?.audio?.generatedAudio;
-      if (g?.isPresetAudioSample !== true) continue;
-      voices.push({
-        id: typeof e?.mediaId === "string" ? e.mediaId : String(g?.name ?? "").toLowerCase(),
-        displayName: String(g?.name ?? e?.mediaId ?? ""),
-        ...(typeof g?.description === "string" ? { description: g.description } : {}),
-        ...(typeof g?.audioSamplePath === "string" ? { sampleUrl: g.audioSamplePath } : {}),
-      });
-    }
-    return voices;
-  }
-
-  /**
-
-
-  /**
-
-
   /** flow_status 工具主入口:全量自省(零消耗)。 */
   async flowStatus(): Promise<Record<string, unknown>> {
     // 三审 finding-5:ensureReady + credits + 全量 projectInitialData 的只读快照同样受工具级截止
@@ -1346,8 +1327,11 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       .filter((e: any) => e?.media?.audio?.generatedAudio?.isPresetAudioSample === true)
       .map((e: any) => {
         const g = e.media.audio.generatedAudio;
+        // id/mediaId 同值(mediaId = audioMediaIds 词表;id 兼容别名,见 listPresetVoices)
+        const id = typeof e?.mediaId === "string" ? e.mediaId : String(g?.name ?? "").toLowerCase();
         return {
-          id: typeof e?.mediaId === "string" ? e.mediaId : String(g?.name ?? "").toLowerCase(),
+          id,
+          mediaId: id,
           displayName: g?.name,
           ...(typeof g?.description === "string" ? { description: g.description } : {}),
         };
@@ -1364,7 +1348,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       video_families: videoFamilies,
       ...(voices.length ? { preset_voices: voices } : {}),
       media,
-      hint: "提交视频消耗积分(tier 盲估算:abra t2v/i2v/r2v 7-15/abra_edit 20/veo lite 10/fast 20/quality 100 每条;upsampler_1080p 0 点;🔴 per-tier 真值见各 key creditMapping —— lite ADVANCED=5、fast ultra/_4s/_6s 仅 ADVANCED=10、plain fast 在 ADVANCED UNAVAILABLE、low_priority 仅 ADVANCED=0)。create_video(provider=flow)已开放:t2v(wire 仅形状验证)/ i2v(image)/ 参考图(r2v + images,可叠加 audioMediaIds 挂预设语音,实验期)/ 首尾帧(keyframes 2 张)/ 延长(extension + videoMediaId)/ 编辑(edit + videoMediaId + prompt,abra_edit,wire 定型未 live)/ 视频超分(veo_3_1_upsampler_1080p + videoMediaId,0 点);generate_image(provider=flow)支持 images(底图+参考)与 GEM_PIX_2_UPSAMPLE_2K 放大;flow_status(deleteMediaIds) 删媒体 / (shareMediaIds) 生成公开分享链接 / (cancelMediaIds) 取消生成中任务;flow_status(action=voices) 列 30 预设语音(全 0 点,mediaId 亦作 r2v audioMediaIds 输入)。",
+      hint: "提交视频消耗积分(tier 盲估算:abra t2v/i2v/r2v 7-15/abra_edit 20/veo lite 10/fast 20/quality 100 每条;upsampler_1080p 0 点;🔴 per-tier 真值见各 key creditMapping —— lite ADVANCED=5、fast ultra/_4s/_6s 仅 ADVANCED=10、plain fast 在 ADVANCED UNAVAILABLE、low_priority 仅 ADVANCED=0)。create_video(provider=flow)已开放:t2v(wire 仅形状验证)/ i2v(image)/ 参考图(r2v + images,可叠加 audioMediaIds 挂预设语音,实验期)/ 首尾帧(keyframes 2 张)/ 延长(extension + videoMediaId)/ 编辑(edit + videoMediaId + prompt,abra_edit,wire 定型未 live)/ 视频超分(veo_3_1_upsampler_1080p + videoMediaId,0 点);generate_image(provider=flow)支持 images(底图+参考)与 GEM_PIX_2_UPSAMPLE_2K 放大;flow_status(deleteMediaIds) 删媒体 / (shareMediaIds) 生成公开分享链接 / (cancelMediaIds) 取消生成中任务;无参 flow_status() 快照的 preset_voices 字段列 30 预设语音(全 0 点,mediaId 亦作 r2v audioMediaIds 输入)。",
     };
   }
 
@@ -1383,7 +1367,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const pid = await this.ensureProjectId();
     const token = await this.getAccessToken();
     const body = {
-      clientContext: { projectId: pid, tool: TOOL_INTERNAL_NAME, sessionId: `;${Date.now()}` },
+      clientContext: { projectId: pid, tool: TOOL_INTERNAL_NAME, sessionId: wireSessionId() },
       cropCoordinates: {},
       ...(opts.fileName ?? img.fileName ? { fileName: opts.fileName ?? img.fileName } : {}),
       imageBytes: img.bytes.toString("base64"),
@@ -1523,7 +1507,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
       projectId: pid,
       tool: TOOL_INTERNAL_NAME,
-      sessionId: `;${Date.now()}`,
+      sessionId: wireSessionId(),
     };
     const body = {
       clientContext,
@@ -1632,6 +1616,13 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   } {
     const warnings: string[] = [];
     assertModeOpen(key, mode);
+    // ratio 前置校验(与提交点 videoAspectRatioFor 同源文案):generation 类 key 仅 16:9/9:16 ——
+    // 确认门不让用户确认一个注定 S301 的请求(不变量:S300/S301 早失败)。extension/upsampler/edit
+    // 的方向继承源视频(videoAspectOfSource),不检。
+    if (req.ratio && mode !== "extension" && mode !== "upsampler" && mode !== "edit"
+      && req.ratio !== "16:9" && req.ratio !== "9:16") {
+      throw new FlowError("S301", `视频比例仅支持 16:9 / 9:16(收到 "${req.ratio}";图片比例才支持 1:1/4:3/3:4)`);
+    }
     const ratioWarn = videoRatioKeyWarning(req.ratio, key);
     if (ratioWarn) warnings.push(ratioWarn);
     const hasImage = Boolean(req.image);
@@ -1651,7 +1642,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       // v1 收窄(D-3):音频参考只随 r2v 开放 —— edit 自身未 live 不叠加;requirements 矩阵里
       // AUDIO_REFERENCE 是 r2v/edit 的可选叠加项(§14.1),其余模式(纯 t2v/i2v/首尾帧)无该 requirement。
       if (mode != null && mode !== "r2v") {
-        throw new FlowError("S301", `audioMediaIds 音频参考需 r2v 模式 key(如 abra_r2v_8s,实验期 Match Voice to Visuals),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`, { hint: "音频 mediaId 清源 = flow_status(action=voices) 的 30 预设语音(0 点);用户自有音频上传 wire 未逆向,暂不支持" });
+        throw new FlowError("S301", `audioMediaIds 音频参考需 r2v 模式 key(如 abra_r2v_8s,实验期 Match Voice to Visuals),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`, { hint: "音频 mediaId 清源 = 无参 flow_status() 快照的 preset_voices 字段(30 预设语音,0 点);用户自有音频上传 wire 未逆向,暂不支持" });
       }
       if (mode == null) warnings.push(`模型 "${key}" 模式未知,音频参考已随参考图(ReferenceImages)端点提交。`);
       if (audioIds.length > caps.audio) {
@@ -1954,7 +1945,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       }
       const bad = (req.audioMediaIds ?? []).filter((id) => !preset.has(id));
       if (bad.length) {
-        throw new FlowError("S301", `audioMediaIds 含非预设语音样本:${bad.join(", ")}(音频参考只接受本项目 30 预设语音的 mediaId)`, { hint: "调 flow_status(action=voices) 列全部预设语音 mediaId(0 点);用户自有音频上传暂不支持(wire 未逆向,契约 §14.6)" });
+        throw new FlowError("S301", `audioMediaIds 含非预设语音样本:${bad.join(", ")}(音频参考只接受本项目 30 预设语音的 mediaId)`, { hint: "调无参 flow_status() 看快照 preset_voices 字段,列全部预设语音 mediaId(0 点);用户自有音频上传暂不支持(wire 未逆向,契约 §14.6)" });
       }
       referenceAudio = (req.audioMediaIds ?? []).map((id) => ({ mediaId: id }));
       warnings.push(`音频参考是实验期能力(客户端 UI 同款 disclaimer,契约 §14.6):提交带 audioFailurePreference=BLOCK_SILENCED_VIDEOS —— 音频安全过滤命中时整条生成失败(而非返回静默视频)。本次挂 ${shape.audioCount} 个预设语音(上限 ${shape.audioCap})。`);
@@ -1986,7 +1977,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
       projectId: pid,
       tool: TOOL_INTERNAL_NAME,
-      sessionId: `;${Date.now()}`,
+      sessionId: wireSessionId(),
     };
     // v2 请求体(契约 §7.3/§9/§11.1/§14.6,live 实证 + bundle Zod;各端点字段集不同):
     //   t2v/i2v/interpolation/r2v:全量 {aspectRatio, metadata, outputSpec, promptExpansionInput, seed, textInput, videoModelKey}

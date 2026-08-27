@@ -43,7 +43,7 @@ Fatigué de produire des images plusieurs fois par semaine et d'installer N outi
 | « Génère la formule E=mc² en haute définition » | Formule vectorielle |
 | « Fais une carte de partage sombre à dégradé, titre : Nouveautés de juillet 🚀 » | Carte de partage composée (chinois + emoji automatique) |
 | « Reconnais le tableau dans cette capture de facture » | Tableau HTML/Markdown collable |
-| « Lis cet histogramme en points de données » | Données structurées CSV/JSON |
+| « Lis cet histogramme en points de données » | Données structurées en JSON |
 | « Décris ce qu'il y a sur cette image » | Réponse en langage naturel |
 | « Extrais tout le texte de ce rapport PDF de 20 pages » | Texte intégral / Markdown / JSON (PDF numérique en secondes, PDF scanné OCR page par page automatique) |
 | « Extrais le texte de ce contrat scanné en ignorant filigrane et tampons rouges » | Texte propre (suppression automatique des zones filigrane / tampons / en-tête et pied de page) |
@@ -168,14 +168,14 @@ Si Chrome ne tourne pas / n'est pas connecté, les outils renvoient un **code d'
 
 **Tout ceci est à 0 crédit (utilisez librement)** :
 
-- **Génération d'images** : Nano Banana Pro / Nano Banana 2 (défaut) / Nano Banana 2 Lite; ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reproductibles; édition sur image de base + jusqu'à 10 images de référence
+- **Génération d'images** : Nano Banana Pro / Nano Banana 2 (défaut) / Nano Banana 2 Lite; ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reproductibles; édition sur image de base + images de référence (base + références : 10 au maximum au total)
 - **Suréchantillonnage** : image en 2K (model=`GEM_PIX_2_UPSAMPLE_2K`), vidéo en 1080p (model=`veo_3_1_upsampler_1080p`)
 - **Gestion des actifs** : téléverser des images, supprimer par lots, créer des liens publics de partage (`labs.google/fx/tools/flow/shared/…`), annuler des vidéos en cours, consulter crédits / statut des médias (`flow_status`); créer des entités de personnage et lier l'une des 30 voix prédéfinies (1 Lite (inclut prolongation, premier+dernier cadre) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
 | Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Suréchantillonnage vidéo 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Un clip par appel; durées 4 / 6 / 8 / 10 secondes; ratio 16:9 / 9:16 uniquement. Modes : texte-vers-vidéo (t2v ; wire vérifiée en forme seulement, jamais soumise en réel via ce provider), image-vers-vidéo (`image`, le téléversement est à 0 crédit), images-de-référence-vers-vidéo (`images`, jusqu'à 7 pour les clés abra / 3 pour les clés veo ; en expérimental, `audioMediaIds` permet d'attacher des échantillons de voix prédéfinis issus de flow_status), premier+dernier cadre (`keyframes`, exactement 2), prolongation (`videoMediaId`), édition (`videoMediaId` + une consigne de modification; wire finalisé mais pas encore soumis en réel — la réponse porte un avertissement), suréchantillonnage (`videoMediaId`). Toutes les clés de génération produisent du 720P fixe (variantes ultra/quality comprises) — plus haute résolution uniquement par suréchantillonnage.
+Un clip par appel; durées 4 / 6 / 8 / 10 secondes (la famille veo n’a PAS de 10s — uniquement 4/6/8s ou la durée embarquée dans la clé; clé avec suffixe `_Ns` + durationSeconds différent → S301); ratio 16:9 / 9:16 uniquement. Modes : texte-vers-vidéo (t2v ; wire vérifiée en forme seulement, jamais soumise en réel via ce provider), image-vers-vidéo (`image`, le téléversement est à 0 crédit), images-de-référence-vers-vidéo (`images`, jusqu'à 7 pour les clés abra / 3 pour les clés veo ; en expérimental, `audioMediaIds` permet d'attacher des échantillons de voix prédéfinis issus de flow_status), premier+dernier cadre (`keyframes`, exactement 2), prolongation (`videoMediaId`), édition (`videoMediaId` + une consigne de modification; wire finalisé mais pas encore soumis en réel — la réponse porte un avertissement), suréchantillonnage (`videoMediaId`). Toutes les clés de génération produisent du 720P fixe (variantes ultra/quality comprises) — plus haute résolution uniquement par suréchantillonnage.
 
 > Certaines clés sont verrouillées par palier (prix par tier mesurés 2026-08) : les variantes fast `ultra`/`4s`/`6s` et `low_priority` sont réservées à ADVANCED (10 / 0 crédits) ; plain fast n'est PAS disponible en ADVANCED ; lite coûte 5 en ADVANCED. Les clés indisponibles sur votre palier sont rejetées AVANT soumission avec la matrice complète des prix par palier (aucun crédit gaspillé) ; les prix en direct par clé sont dans `flow_status`.
 
@@ -203,7 +203,7 @@ Un clip par appel; durées 4 / 6 / 8 / 10 secondes; ratio 16:9 / 9:16 uniquement
 
 **Retrouver les données d'origine à partir d'un graphique**
 > Vous : « Lis cet histogramme en données »
-> Obtenu : données structurées CSV / JSON (histogrammes / courbes / camemberts, tout fonctionne)
+> Obtenu : données structurées en JSON (histogrammes / courbes / camemberts, tout fonctionne)
 
 **Laissez-le expliquer l'image en mots simples**
 > Vous : « Combien de personnes sur cette image ? Que font-elles ? »

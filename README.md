@@ -43,7 +43,7 @@
 | "把 E=mc² 渲染成高清公式" | 矢量公式 |
 | "做张深色渐变分享卡,标题 7 月新品 🚀" | 排版好的分享卡(中文 + emoji 自动) |
 | "识别这张发票截图里的表格" | 可粘贴的 HTML/Markdown 表格 |
-| "把这张柱状图读成数据点" | 结构化 CSV/JSON 数据 |
+| "把这张柱状图读成数据点" | 结构化 JSON 数据 |
 | "描述一下这张图里有什么" | 自然语言回答 |
 | "把这份 20 页 PDF 报告的文字全抠出来" | 整篇文本 / Markdown / JSON(数字版秒出,扫描件自动逐页 OCR) |
 | "把这份合同扫描件提文字,水印和红章忽略掉" | 干净文本(自动剔除水印 / 红章 / 页眉页脚区域) |
@@ -56,7 +56,7 @@
 
 ## 60 秒上手
 
-核心思路:**画图 / 卡片 / 二维码 / 公式是本地引擎,识图(OCR 文字识别)也默认进程内兜底——全部不调 AI、不连网,装上即用**。只有 AI 写实图 / 视频才需要免费 API Key —— 把"第一张图"和"第一次读图"都提前到注册之前。
+核心思路:**画图 / 卡片 / 二维码 / 公式是本地引擎,识图(OCR 文字识别)也默认进程内兜底——默认路径不调 AI、不连网,装上即用**(例外:卡片非默认字体 / 彩色 emoji、架构图 `icon:` 图标首次会从 CDN 取资源;离线自动降级 —— emoji 变纯文本、图标省略、字体可经 fontPath 本地化)。只有 AI 写实图 / 视频才需要免费 API Key —— 把"第一张图"和"第一次读图"都提前到注册之前。
 
 ### 30 秒｜一行接入(零 Key)
 
@@ -166,7 +166,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 **这些全部 0 积分(放心用)**:
 
-- **生图**:Nano Banana Pro / Nano Banana 2(默认)/ Nano Banana 2 Lite;比例 16:9 / 9:16 / 1:1 / 3:4 / 4:3;seed 可复现;支持底图改图 + 最多 10 张参考图
+- **生图**:Nano Banana Pro / Nano Banana 2(默认)/ Nano Banana 2 Lite;比例 16:9 / 9:16 / 1:1 / 3:4 / 4:3;seed 可复现;支持底图改图 + 参考图(底图+参考图合计最多 10 张)
 - **放大**:图片 2K 放大(model=`GEM_PIX_2_UPSAMPLE_2K`)、视频 1080p 超分(model=`veo_3_1_upsampler_1080p`)
 - **资产管理**:上传图片、批量删除、生成公开分享链接(`labs.
 
@@ -181,7 +181,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | 视频超分 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-视频一次一条,时长 4 / 6 / 8 / 10 秒,比例仅 16:9 / 9:16;模式:文生视频(t2v;wire 仅形状验证,provider 路径未 live 提交)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images`,abra 键最多 7 张 / veo 键 3 张;实验期可叠加 `audioMediaIds` 挂 30 预设语音做声音参考)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令;wire 已定型,真实提交尚未线上验证,响应会带警示)/ 超分(`videoMediaId`)。所有生成 key 固定 720P(ultra/quality 变体同),更高分辨率只能生成后超分。
+视频一次一条,时长 4 / 6 / 8 / 10 秒(veo 家族无 10s —— 仅 4/6/8s 或 key 自带时长;key 自带 `_Ns` 后缀时不可再传不同的 durationSeconds,否则 S301),比例仅 16:9 / 9:16;模式:文生视频(t2v;wire 仅形状验证,provider 路径未 live 提交)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images`,abra 键最多 7 张 / veo 键 3 张;实验期可叠加 `audioMediaIds` 挂 30 预设语音做声音参考)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令;wire 已定型,真实提交尚未线上验证,响应会带警示)/ 超分(`videoMediaId`)。所有生成 key 固定 720P(ultra/quality 变体同),更高分辨率只能生成后超分。
 
 > 部分 key 有会员档锁定(2026-08 实测 per-tier 价):fast 的 `ultra`/`4s`/`6s` 变体与 `low_priority` 仅 ADVANCED 可用(10 / 0 点);plain fast 在 ADVANCED 反而不可用;lite 在 ADVANCED 是 5 点。当前档不可用的 key 会在**提交前**被拒并附完整各档价目(不误扣积分);各 key 实时价目可查 `flow_status`。
 
@@ -193,7 +193,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 "查一下 Flow 积分余额 / 这个 mediaId 生成完没" → flow_status() / flow_status(mediaId=…)
 ```
 
-**`flow_status` 自省工具(全程 0 积分)**:不带参数返回全景 —— 登录账号、积分余额、动态模型目录(含每个 key 的参考耗时)、30 种预设语音、项目媒体列表;带 `mediaId` 查单个媒体状态并下载成品(`thumbnail=true` 取视频缩略图);`deleteMediaIds` 批量删除、`shareMediaIds` 生成公开分享链接、`cancelMediaIds` 取消生成中的视频(图片不可取消)。
+**`flow_status` 自省工具(全程 0 积分)**:不带参数返回全景 —— 登录账号、积分余额、动态模型目录(含每个 key 的参考耗时)、30 种预设语音(`preset_voices` 字段)、项目媒体列表;带 `mediaId` 查单个媒体状态并下载成品(`thumbnail=true` 取媒体缩略图,视频/图片均适用);`deleteMediaIds` 批量删除、`shareMediaIds` 生成公开分享链接、`cancelMediaIds` 取消生成中的视频(图片不可取消)。
 
 > **积分红线**:Flow 视频消耗积分,**默认绝不自动路由** —— 要么在 `videoProviderPriority` 显式列入(自担积分,启动时有强提示),要么每次显式 `provider="flow"`;生图想全自动白嫖,把 `flow` 配成 `imageProviderPriority` 链头即可(见下方「配置详解」)。
 
@@ -209,7 +209,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 **从图表反推原始数据点**
 > 你:"把这张柱状图读成数据"
-> 得到:CSV / JSON 结构化数据(柱状 / 折线 / 饼图都行)
+> 得到:JSON 结构化数据(柱状 / 折线 / 饼图都行;glm-vision/vlm 走 prompt 抽取,paddle 的 chart 字段是占位、真实数据在 markdown 描述里)
 
 **让它用大白话讲讲这张图**
 > 你:"这张图里一共有几个人?在做什么?"
@@ -221,13 +221,13 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 **让识图 / 读 PDF 结果更干净、更顺读**
 > 你:「把这份合同扫描件提文字,**水印和红章忽略掉**」「这份双栏论文**按阅读顺序合并**成一段」
-> 得到:干净、连续的文本 —— 两个开关在所有识图 / PDF 提取里都能用:
+> 得到:干净、连续的文本 —— 两个开关在识图 / PDF 提取里可用(**tesseract 完整支持;glm-vision/vlm 不返回 blocks,两开关会被跳过并提示;paddle 的块无坐标,忽略区域仅告警级**):
 > - **忽略区域**:圈出水印 / 红章 / 页眉页脚 / 表头区域,识别结果自动剔除,合同 / 证书 / 扫描件不再被水印糊住
 > - **多栏阅读序**:论文 / 报刊 / 简历 / 双栏 / 三栏排版,自动按人类阅读顺序合并成单栏连续文本,不再串行错位
 
 **先问一句"我装的识别服务都能干啥"**
 > 你:"我现在能识别表格吗?中文 OCR 配好了吗?手写识别能用吗?"
-> 得到:当前能力清单 —— 三档识别服务哪个已配置 / 哪个没配 / 哪个正在冷却或出错,以及"要做表格识别该走哪个、手写识别该走哪个"的路由建议;**先问一句再动手,避免直接调用才发现报错**
+> 得到:当前能力清单 —— 四档识别服务哪个已配置 / 哪个没配 / 哪个正在冷却或出错,以及"要做表格识别该走哪个、手写识别该走哪个"的路由建议;**先问一句再动手,避免直接调用才发现报错**
 
 ### 把想法画清楚(免 Key,装上就能用)
 
@@ -508,7 +508,7 @@ python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoR
 | `custom_logit_processor` | Python 端 `.to_str()` 输出 | 必填(否则长输出会重复退化);TS 无法合成,须 Python 跑一次取串 |
 | `skip_special_tokens` | `false` | OCR 任务须保留特殊 token,不要 skip |
 
-> ⚠️ **task 门控(重要)**:`extra_body`(含 `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`)只在 `extract-text` / `extract-table`(OCR 路径)上摊入 fetch body —— `describe-image`(VQA)和 `analyze-chart`(JSON 抽取)**不带这些字段**。原因:NoRepeatNGram(ngram_size=35)会压制 VQA 描述里合理重复词;`skip_special_tokens:false` 会把 OCR 结构 token 泄漏进 description / 污染 `analyze-chart` 的 `JSON.parse`;`image_mode:gundam`(crop_mode=true)切片整图会破坏场景级 VQA 整体理解。这是 model-aware 短 prompt 门控(`promptForUnlimited`)的对称设计 —— `describe-image` / `analyze-chart` 仍走原长 prompt,也仍走干净 body。若你需要对 `describe-image` / `analyze-chart` 强制传扩展字段,用 per-call `extra`(在 `extract_text` / `extract_table` / `describe_image` / `analyze_chart` 工具的 `extra` 参数里传),它不受 task 门控约束。
+> ⚠️ **task 门控(重要)**:`extra_body`(含 `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`)只在 `extract-text` / `extract-table`(OCR 路径)上摊入 fetch body —— `describe-image`(VQA)和 `analyze-chart`(JSON 抽取)**不带这些字段**。原因:NoRepeatNGram(ngram_size=35)会压制 VQA 描述里合理重复词;`skip_special_tokens:false` 会把 OCR 结构 token 泄漏进 description / 污染 `analyze-chart` 的 `JSON.parse`;`image_mode:gundam`(crop_mode=true)切片整图会破坏场景级 VQA 整体理解。这是 model-aware 短 prompt 门控(`promptForUnlimited`)的对称设计 —— `describe-image` / `analyze-chart` 仍走原长 prompt,也仍走干净 body。若你需要对 `describe-image` / `analyze-chart` 强制传扩展字段,只能在 config 的 `providers.vlm.extra_body` 配置(且仅 OCR 任务生效)—— 工具层暂未暴露 per-call `extra` 参数(schema 中没有该参数,传了会被忽略)。
 
 **调用**:`extract_text` 工具显式传 `provider=vlm`(否则走 defaultVisionProvider=tesseract):
 
@@ -540,7 +540,7 @@ extract_text(image="data:image/png;base64,...", provider="vlm")
 ### 三、自动兜底机制(配了就不用管)
 
 - **生成侧**:Agnes ↔ 智谱,任一家失败自动切另一家(60 秒内连续失败触发软切换,你不用重启、不用改配置)
-- **识别侧**:默认轻量引擎(进程内兜底)→ PaddleX → vLLM,按能力自动降级
+- **识别侧**:默认轻量引擎(进程内兜底)→ 按能力自动降级(fallback 按 tier 序:paddle(10)→ glm-vision(9)→ vlm(8);tesseract 是默认头兼最后兜底)
 - **唯一例外**:视频轮询取片时**不切换**(避免拿到错的结果)
 - 你要做的:配两家生成 API Key + 可选装一档识别服务,剩下的交给 Claude
 

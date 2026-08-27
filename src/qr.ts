@@ -37,9 +37,12 @@ export async function renderQR(req: QRRequest): Promise<QRRenderOutput> {
   // dark/light 对比度防御:对比太低扫码器无法识别
   const cr = contrastRatio(darkColor, lightColor);
   if (cr != null && cr < 2.0) warnings.push(`前景/背景对比度 ${cr.toFixed(1)}:1 过低,扫码器可能无法识别,建议加深 dark 或换浅 light。`);
-  // margin < 4 低于 ISO 18004 推荐静默区
+  // margin < 4 低于 ISO 18004 推荐静默区 —— 仅对「显式传入且 <4」告警:
+  // 默认 2 是屏幕内嵌用途的紧凑取值,默认调用不该收到自己没造成的警告(审计 C-2)。
   const margin = req.margin ?? 2;
-  if (margin < 4) warnings.push(`静默区 ${margin} 模块低于 ISO 18004 推荐的 4,边角定位图样可能被遮挡;打印/嵌入版面时建议 margin≥4。`);
+  if (req.margin != null && margin < 4) {
+    warnings.push(`静默区 ${margin} 模块低于 ISO 18004 推荐的 4,边角定位图样可能被遮挡;打印/嵌入版面时建议 margin≥4。`);
+  }
   const opts: QRCode.QRCodeRenderersOptions = {
     margin: req.margin ?? 2,
     errorCorrectionLevel: req.errorCorrectionLevel ?? "M",

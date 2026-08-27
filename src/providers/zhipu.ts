@@ -365,7 +365,8 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
     const warnings: string[] = [];
     if (req.ratio) warnings.push("zhipu 不支持 ratio,已忽略(用 extra.size 控制比例)。");
     if (req.negativePrompt) warnings.push("zhipu 不支持 negativePrompt,已忽略。");
-    if (req.seed != null) warnings.push("zhipu 不支持 seed,已忽略。");
+    if (req.seed != null) warnings.push("zhipu 不支持 seed,已忽略。")
+    if (mode === "text-to-video" && req.image) warnings.push("显式 mode=text-to-video + image:zhipu 丢弃 image(要图生视频改 mode=image-to-video)。");
     if (req.images?.length) warnings.push("zhipu 不支持 images(参考图),已忽略。");
     if (req.audioMediaIds?.length) warnings.push("zhipu 不支持 audioMediaIds(音频参考),已忽略。");
     if (req.videoMediaId) warnings.push("zhipu 不支持 videoMediaId(视频引用),已忽略。");

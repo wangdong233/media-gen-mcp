@@ -43,7 +43,7 @@ Satt, mehrmals pro Woche Bilder zu erstellen und N Tools mit N Parametersätzen 
 | «Rendere E=mc² als hochauflösende Formel» | Eine Vektor-Formel |
 | «Erstelle eine dunkle Share-Karte mit Verlauf, Titel: Juli-Neuheiten 🚀» | Eine sauber gesetzte Share-Karte (Chinesisch + Emoji automatisch) |
 | «Erkenne die Tabelle in diesem Rechnungs-Screenshot» | Eine einfügbare HTML-/Markdown-Tabelle |
-| «Lies dieses Balkendiagramm in Datenpunkte ein» | Strukturierte CSV-/JSON-Daten |
+| «Lies dieses Balkendiagramm in Datenpunkte ein» | Strukturierte JSON-Daten |
 | «Beschreibe, was in diesem Bild zu sehen ist» | Eine Antwort in natürlicher Sprache |
 | «Extrahiere den gesamten Text aus diesem 20-Seiten-PDF-Bericht» | Vollständiger Text / Markdown / JSON (digitale PDFs in Sekunden, gescannte automatisch Seite für Seite per OCR) |
 | «Erkenne den Text aus diesem gescannten Vertrag, Wasserzeichen und rote Stempel ignorieren» | Sauberer Text (Wasserzeichen-/Stempel-/Kopf-/Fußzeilen-Bereiche werden automatisch entfernt) |
@@ -167,14 +167,14 @@ Läuft Chrome nicht / bist du nicht eingeloggt, liefern die Werkzeuge einen **st
 
 **All das kostet 0 Credits (bedenkenlos nutzbar)**:
 
-- **Bilderzeugung**: Nano Banana Pro / Nano Banana 2 (Standard) / Nano Banana 2 Lite; Seitenverhältnisse 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproduzierbare Seeds; Basisbild-Bearbeitung + bis zu 10 Referenzbilder
+- **Bilderzeugung**: Nano Banana Pro / Nano Banana 2 (Standard) / Nano Banana 2 Lite; Seitenverhältnisse 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproduzierbare Seeds; Basisbild-Bearbeitung + Referenzbilder (Basis + Referenzen: maximal 10 insgesamt)
 - **Hochskalieren**: 2K-Bild-Upscale (model=`GEM_PIX_2_UPSAMPLE_2K`), 1080p-Video-Upscale (model=`veo_3_1_upsampler_1080p`)
 - **Asset-Verwaltung**: Bilder hochladen, stapelweise löschen, öffentliche Share-Links erzeugen (`labs.google/fx/tools/flow/shared/…`), laufende Videos abbrechen, Credits / Medienstatus abfragen (`flow_status`); Charakter-Entitäten anlegen und eine von 30 Preset-Stimmen binden (1 Lite (inkl. Verlängern, Anfang+Endbild) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
 | Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Video-Upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Ein Clip pro Aufruf; Dauern 4 / 6 / 8 / 10 Sekunden; nur 16:9 / 9:16. Modi: Text-zu-Video (t2v; Wire nur formverifiziert, nie live über diesen Provider eingereicht), Bild-zu-Video (`image`, Upload 0 Credits), Referenzbilder-zu-Video (`images`, maximal 7 bei abra-Keys / 3 bei veo-Keys; experimentell zusätzlich `audioMediaIds` — Preset-Stimmproben aus flow_status), Anfangs+Endbild (`keyframes`, genau 2), Verlängern (`videoMediaId`), Editieren (`videoMediaId` + Editieranweisung; Wire finalisiert, aber noch nicht live eingereicht — die Antwort trägt eine Warnung), Upscale (`videoMediaId`). Alle Generierungs-Keys liefern fest 720P (ultra/quality-Varianten ebenso) — höhere Auflösung nur per Upscale.
+Ein Clip pro Aufruf; Dauern 4 / 6 / 8 / 10 Sekunden (die veo-Familie hat KEINE 10s — nur 4/6/8s oder die im Key eingebettete Dauer; Key mit `_Ns`-Suffix + abweichende durationSeconds → S301); nur 16:9 / 9:16. Modi: Text-zu-Video (t2v; Wire nur formverifiziert, nie live über diesen Provider eingereicht), Bild-zu-Video (`image`, Upload 0 Credits), Referenzbilder-zu-Video (`images`, maximal 7 bei abra-Keys / 3 bei veo-Keys; experimentell zusätzlich `audioMediaIds` — Preset-Stimmproben aus flow_status), Anfangs+Endbild (`keyframes`, genau 2), Verlängern (`videoMediaId`), Editieren (`videoMediaId` + Editieranweisung; Wire finalisiert, aber noch nicht live eingereicht — die Antwort trägt eine Warnung), Upscale (`videoMediaId`). Alle Generierungs-Keys liefern fest 720P (ultra/quality-Varianten ebenso) — höhere Auflösung nur per Upscale.
 
 > Manche Keys sind Tier-geschlossen (per-Tier-Preise, gemessen 2026-08): fast `ultra`/`4s`/`6s`-Varianten und `low_priority` nur für ADVANCED (10 / 0 Credits); plain fast ist auf ADVANCED gerade NICHT verfügbar; lite kostet auf ADVANCED 5. Tier-nicht verfügbare Keys werden VOR dem Einreichen abgelehnt, mit vollständiger Tier-Preistabelle (keine Credits verschwendet); aktuelle Preise pro Key liefert `flow_status`.
 
@@ -202,7 +202,7 @@ Ein Clip pro Aufruf; Dauern 4 / 6 / 8 / 10 Sekunden; nur 16:9 / 9:16. Modi: Text
 
 **Aus einem Chart die Rohdaten zurückgewinnen**
 > Du: «Lies dieses Balkendiagramm als Daten ein»
-> Erhalten: strukturierte CSV-/JSON-Daten (Balken / Linie / Torte – alles unterstützt)
+> Erhalten: strukturierte JSON-Daten (Balken / Linie / Torte – alles unterstützt)
 
 **Das Bild in klaren Worten erklären lassen**
 > Du: «Wie viele Menschen sind auf diesem Bild? Was tun sie?»

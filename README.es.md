@@ -43,7 +43,7 @@
 | «Renderiza E=mc² como una fórmula en alta resolución» | Fórmula vectorial |
 | «Haz una tarjeta para compartir con gradiente oscuro, título "Novedades de julio 🚀"» | Tarjeta maquetada con esmero (chino + emoji automáticos) |
 | «Reconoce la tabla en esta captura de factura» | Tabla HTML/Markdown pegable |
-| «Lee este gráfico de barras como puntos de datos» | Datos estructurados CSV/JSON |
+| «Lee este gráfico de barras como puntos de datos» | Datos estructurados en JSON |
 | «Describe qué hay en esta imagen» | Respuesta en lenguaje natural |
 | «Extrae todo el texto de este PDF de 20 páginas» | Texto completo / Markdown / JSON (PDF digital en segundos, escaneado se procesa página a página con OCR) |
 | «Extrae el texto de este contrato escaneado, ignora la marca de agua y el sello rojo» | Texto limpio (elimina automáticamente marca de agua / sello rojo / encabezado / pie de página) |
@@ -168,7 +168,7 @@ Si Chrome no está abierto / sin sesión, las herramientas devuelven un **códig
 
 **Todo esto cuesta 0 créditos (úsalo sin miedo)**:
 
-- **Generación de imágenes**: Nano Banana Pro / Nano Banana 2 (por defecto) / Nano Banana 2 Lite; proporciones 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reproducibles; edición con imagen base + hasta 10 imágenes de referencia
+- **Generación de imágenes**: Nano Banana Pro / Nano Banana 2 (por defecto) / Nano Banana 2 Lite; proporciones 16:9 / 9:16 / 1:1 / 3:4 / 4:3; seeds reproducibles; edición con imagen base + imágenes de referencia (base + referencias: máximo 10 en total)
 - **Escalado**: ampliación de imagen a 2K (model=`GEM_PIX_2_UPSAMPLE_2K`), escalado de vídeo a 1080p (model=`veo_3_1_upsampler_1080p`)
 - **Gestión de activos**: subir imágenes, borrar por lotes, crear enlaces públicos para compartir (`labs.google/fx/tools/flow/shared/…`), cancelar vídeos en generación, consultar créditos / estado de medios (`flow_status`); crear)
 
@@ -183,7 +183,7 @@ Si Chrome no está abierto / sin sesión, las herramientas devuelven un **códig
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Escalado de vídeo 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-Un clip por llamada; duraciones 4 / 6 / 8 / 10 segundos; solo 16:9 / 9:16. Modos: texto a vídeo (t2v; wire verificada solo en forma, nunca enviada en real por este provider), imagen a vídeo (`image`, subir cuesta 0 créditos), imágenes de referencia a vídeo (`images`, hasta 7 en claves abra / 3 en claves veo; en fase experimental puede añadirse `audioMediaIds` — muestras de voz predefinidas de flow_status), primer y último fotograma (`keyframes`, exactamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrucción de edición; wire finalizado pero aún sin envío real verificado — la respuesta incluye un aviso), escalado (`videoMediaId`). Todas las claves de generación producen 720P fijo (también las variantes ultra/quality); más resolución solo vía escalado.
+Un clip por llamada; duraciones 4 / 6 / 8 / 10 segundos (la familia veo NO tiene 10s — solo 4/6/8s o la duración incrustada en la clave; clave con sufijo `_Ns` + durationSeconds distinto → S301); solo 16:9 / 9:16. Modos: texto a vídeo (t2v; wire verificada solo en forma, nunca enviada en real por este provider), imagen a vídeo (`image`, subir cuesta 0 créditos), imágenes de referencia a vídeo (`images`, hasta 7 en claves abra / 3 en claves veo; en fase experimental puede añadirse `audioMediaIds` — muestras de voz predefinidas de flow_status), primer y último fotograma (`keyframes`, exactamente 2), prolongar (`videoMediaId`), editar (`videoMediaId` + instrucción de edición; wire finalizado pero aún sin envío real verificado — la respuesta incluye un aviso), escalado (`videoMediaId`). Todas las claves de generación producen 720P fijo (también las variantes ultra/quality); más resolución solo vía escalado.
 
 > Algunas claves están bloqueadas por nivel (precios por tier medidos 2026-08): las variantes fast `ultra`/`4s`/`6s` y `low_priority` son solo ADVANCED (10 / 0 créditos); plain fast NO está disponible en ADVANCED; lite cuesta 5 en ADVANCED. Las claves no disponibles en tu nivel se rechazan ANTES del envío con la tabla completa de precios por nivel (sin gastar créditos); los precios en vivo por clave están en `flow_status`.
 
@@ -211,7 +211,7 @@ Un clip por llamada; duraciones 4 / 6 / 8 / 10 segundos; solo 16:9 / 9:16. Modos
 
 **Reconstruye los datos originales desde un gráfico**
 > Tú: «Lee este gráfico de barras como datos»
-> Obtienes: datos estructurados CSV / JSON (barras / líneas / circulares, todos valen)
+> Obtienes: datos estructurados en JSON (barras / líneas / circulares, todos valen)
 
 **Pídele que te explique la imagen en lenguaje sencillo**
 > Tú: «¿Cuántas personas hay en esta imagen? ¿Qué están haciendo?»

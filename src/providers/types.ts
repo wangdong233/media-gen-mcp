@@ -73,7 +73,7 @@ export interface VideoRequest {
   images?: string[];
   /**
    * 音频参考:预设语音 mediaId 数组(flow r2v 模式专属叠加,实验期;契约 §14.6)。
-   * 唯一合法来源 = flow_status(action=voices) 的 30 预设语音(mediaId 是 "achernar" 等 slug 非 UUID);
+   * 唯一合法来源 = 无参 flow_status() 快照 preset_voices 字段的 30 预设语音(mediaId 是 "achernar" 等 slug 非 UUID);
    * 用户自有音频上传 wire 未逆向,暂不支持。上限 per-key(abra r2v=5 / veo r2v=1,目录 inputSpec)。
    */
   audioMediaIds?: string[];

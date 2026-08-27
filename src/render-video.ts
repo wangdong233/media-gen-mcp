@@ -113,8 +113,11 @@ async function seekToTime(page: PageLike, timeSec: number): Promise<void> {
       let anims: any[] = [];
       try { anims = getAnims.call(el); } catch { continue; }
       for (const anim of anims) {
-        try { anim.currentTime = ms; } catch { /* swallow */ }
+        // 先 pause 再设 currentTime(与 GSAP 分支同序):运行中的动画先赋 currentTime 后 pause,
+        // pause 要到下一动画帧才提交,冻结瞬间会落回墙钟 → 两次渲染帧不一致(非确定)。
+        // 先 pause(commit pending)再赋值,currentTime 固定在指定时刻 → 确定性渲染。
         try { anim.pause(); } catch { /* swallow */ }
+        try { anim.currentTime = ms; } catch { /* swallow */ }
       }
     }
     // ④ 无动画:页面静态,无需任何操作

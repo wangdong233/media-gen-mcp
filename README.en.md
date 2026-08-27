@@ -43,7 +43,7 @@ Tired of producing images a few times a week and juggling N tools with N sets of
 | "Render E=mc² as a high-res formula" | A vector formula |
 | "Make a dark-gradient share card with the title 'July New Releases 🚀'" | A polished share card (CJK + emoji auto-supported) |
 | "Recognize the table in this invoice screenshot" | A paste-able HTML/Markdown table |
-| "Read this bar chart into data points" | Structured CSV/JSON data |
+| "Read this bar chart into data points" | Structured JSON data |
 | "Describe what's in this image" | A natural-language answer |
 | "Extract all the text from this 20-page PDF report" | Full text / Markdown / JSON (digital PDFs instant; scanned PDFs auto-OCR'd page by page) |
 | "Extract text from this scanned contract, ignoring the watermark and red stamps" | Clean text (auto-strips watermark / red-stamp / header-footer regions) |
@@ -167,14 +167,14 @@ If Chrome isn't running / not logged in, the tools return a **structured error c
 
 **All of this is 0-credit (use freely)**:
 
-- **Image generation**: Nano Banana Pro / Nano Banana 2 (default) / Nano Banana 2 Lite; aspect ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproducible seeds; base-image edits + up to 10 reference images
+- **Image generation**: Nano Banana Pro / Nano Banana 2 (default) / Nano Banana 2 Lite; aspect ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproducible seeds; base-image edits + reference images (base + references cap: 10 total)
 - **Upscaling**: 2K image upscale (model=`GEM_PIX_2_UPSAMPLE_2K`), 1080p video upscale (model=`veo_3_1_upsampler_1080p`)
 - **Asset management**: upload images, batch-delete, create public share links (`labs.google/fx/tools/flow/shared/…`), cancel in-flight videos, check credits / media status (`flow_status`); create character entities and bind one of 30 preset voices (1 Lite (incl. extend, first+last frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
 | Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Video upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Modes: text-to-video (t2v; wire shape-verified only, never live-submitted through this provider), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, up to 7 for abra keys / 3 for veo keys; may also carry `audioMediaIds` — preset voice samples from flow_status, experimental), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction; wire is finalized but not yet live-submitted — the response carries a warning), upscale (`videoMediaId`). All generation keys output 720P (ultra/quality variants too) — higher resolution is upscale-only.
+One clip per call; durations 4 / 6 / 8 / 10 seconds (the veo family has NO 10s — 4/6/8s or the key-embedded duration only; a key with an embedded `_Ns` suffix plus a different durationSeconds → S301); ratio 16:9 / 9:16 only. Modes: text-to-video (t2v; wire shape-verified only, never live-submitted through this provider), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, up to 7 for abra keys / 3 for veo keys; may also carry `audioMediaIds` — preset voice samples from flow_status, experimental), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction; wire is finalized but not yet live-submitted — the response carries a warning), upscale (`videoMediaId`). All generation keys output 720P (ultra/quality variants too) — higher resolution is upscale-only.
 
 > Some keys are tier-locked (per-tier prices measured 2026-08): fast `ultra`/`4s`/`6s` variants and `low_priority` are ADVANCED-only (10 / 0 credits); plain fast is NOT available on ADVANCED; lite costs 5 on ADVANCED. Tier-unavailable keys are rejected BEFORE submission with the full per-tier matrix (no credits wasted); live per-key prices are in `flow_status`.
 
@@ -186,7 +186,7 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 "Check my Flow credits / is this mediaId done?" → flow_status() / flow_status(mediaId=…)
 ```
 
-**The `flow_status` introspection tool (0-credit throughout)**: with no arguments it returns a full snapshot — logged-in account, credit balance, the live model catalog (with per-key reference durations), 30 preset voices, and the project media list; with a `mediaId` it tracks one media and downloads the finished asset (`thumbnail=true` fetches the video thumbnail); `deleteMediaIds` batch-deletes, `shareMediaIds` creates public share links, `cancelMediaIds` cancels in-flight videos (images are not cancelable).
+**The `flow_status` introspection tool (0-credit throughout)**: with no arguments it returns a full snapshot — logged-in account, credit balance, the live model catalog (with per-key reference durations), 30 preset voices, and the project media list; with a `mediaId` it tracks one media and downloads the finished asset (`thumbnail=true` fetches the media thumbnail — video or image); `deleteMediaIds` batch-deletes, `shareMediaIds` creates public share links, `cancelMediaIds` cancels in-flight videos (images are not cancelable).
 
 > **Credit red line**: Flow video bills credits and is **never auto-routed by default** — either list it explicitly in `videoProviderPriority` (you own the credits; a loud warning fires at startup) or pass `provider="flow"` per call. For free automatic image generation, put `flow` at the head of `imageProviderPriority` (see Configuration below).
 
@@ -202,7 +202,7 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 
 **Reverse-Engineer Raw Data Points From a Chart**
 > You: "Read this bar chart into data"
-> Get: structured CSV / JSON data (bar / line / pie all supported)
+> Get: structured JSON data (bar / line / pie all supported; glm-vision/vlm via prompt extraction — with paddle the chart field is a placeholder and the real data lives in the markdown description)
 
 **Have It Explain the Image in Plain Language**
 > You: "How many people are in this image? What are they doing?"
@@ -214,7 +214,7 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 
 **Make Recognition / PDF Results Cleaner and More Sequential**
 > You: "Extract text from this scanned contract, **ignoring the watermark and red stamps**" / "Merge this **two-column paper into reading order** as one paragraph"
-> Get: clean, continuous text — two switches available across all recognition / PDF extraction tools:
+> Get: clean, continuous text — two switches available in recognition / PDF extraction (**fully supported by tesseract; glm-vision/vlm return no blocks so both switches are skipped with a warning; paddle blocks lack coordinates, so ignore-areas is advisory only**):
 > - **Ignore regions**: circle watermark / red-stamp / header-footer / table-header regions and they're auto-stripped from the result — contracts / certificates / scanned documents are no longer corrupted by overlapping marks
 > - **Multi-column reading order**: papers / newspapers / resumes / two- or three-column layouts are auto-merged into single-column continuous text following human reading order, with no more scrambled serialization
 
@@ -324,7 +324,7 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds; ratio 16:9 / 9:16 only. Mod
 - **Video stays agnes-first** (free) by default; Flow video bills credits and is **deliberately excluded from default routing** — either list it in `videoProviderPriority` explicitly (you own the credits), or pass `provider="flow"` per call.
 - Omitting both keys keeps current behavior (default provider + agnes/zhipu free-tier mutual fallback), zero impact. Env equivalents: `MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
 - **Channel on/off = the priority chain (the chain IS the switch)**: whether a channel is enabled is decided solely by whether it appears in the two priority chains — **not configured = not enabled** (no auto-routing, no fallback), **listed = enabled** (chain head = default channel). A separate `flow.enabled` switch is not needed (and no longer supported); an explicit `provider="flow"` call is always allowed — when the environment is unavailable it returns a structured `[flow] S1xx` preflight error (with launch guidance), never a silent provider swap. Companion knob `"flow": { "toolDeadlineMs": 110000 }` caps Flow's long operations (image polling / video submission / asset downloads) to satisfy the no-stall rule (≤120s per call): on timeout it returns `[flow] S410` — the underlying operation is NOT cancelled; re-check and download later via `flow_status(mediaId)`.
-- **Billing confirm gate (two-phase, ON by default)**: when a video routes to / explicitly uses Flow, the first `create_video` call does NOT submit — it returns `{needConfirm:true, estimatedCost (credit estimate: dynamic creditMapping first, static table fallback), confirmToken, expiresInSeconds}`; re-call with the SAME parameters plus `confirmToken` to actually submit. Tokens are short-lived (default 10 min, tunable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId) — changing any of them after confirming requires a fresh token; a wrong token returns `[flow] S320`, an expired one `[flow] S321`. Free operations (e.g. the `veo_3_1_upsampler_1080p` upscale) and non-Flow providers NEVER trigger the gate. Turn off with `"flow": { "videoConfirm": false }` (default `true` — a false trigger only costs one extra round trip, a missed one bills real credits).
+- **Billing confirm gate (two-phase, ON by default)**: when a video routes to / explicitly uses Flow, the first `create_video` call does NOT submit — it returns `{needConfirm:true, estimatedCost (credit estimate: dynamic creditMapping first, static table fallback), confirmToken, expiresInSeconds}`; re-call with the SAME parameters plus `confirmToken` to actually submit. Tokens are short-lived (default 10 min, tunable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds) — changing any of them after confirming requires a fresh token; a wrong token returns `[flow] S320`, an expired one `[flow] S321`. Free operations (e.g. the `veo_3_1_upsampler_1080p` upscale) and non-Flow providers NEVER trigger the gate. Turn off with `"flow": { "videoConfirm": false }` (default `true` — a false trigger only costs one extra round trip, a missed one bills real credits).
 
 **Flow asset management (all 0-credit)**: besides credits / media status / downloads, `flow_status` supports three zero-cost operations — `shareMediaIds=[…]` creates public share links (like `labs.google/fx/tools/flow/shared/image/<id>`, prompt included), `cancelMediaIds=[…]` cancels in-flight VIDEO generations (note: image jobs are not cancelable), and `deleteMediaIds=[…]` batch-deletes media.
 
@@ -501,7 +501,7 @@ Field meaning (all top-level, accepted by the SGLang OpenAI-compatible API; MCP 
 | `custom_logit_processor` | Python-side `.to_str()` output | Required (without it long output degenerates by repetition); TS cannot synthesize — must run Python once to get the string |
 | `skip_special_tokens` | `false` | OCR tasks must keep special tokens; do not skip |
 
-> ⚠️ **Task gating (important)**: `extra_body` (incl. `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`) is only applied to fetch body on `extract-text` / `extract-table` (the OCR path) — `describe-image` (VQA) and `analyze-chart` (JSON extraction) **do NOT carry these fields**. Reason: NoRepeatNGram (ngram_size=35) suppresses legitimate repeated words in VQA descriptions; `skip_special_tokens:false` leaks OCR structural tokens into description / corrupts `analyze-chart`'s `JSON.parse`; `image_mode:gundam` (crop_mode=true) slices the whole image and breaks scene-level VQA holistic understanding. This is the symmetric counterpart of the model-aware short-prompt gating (`promptForUnlimited`) — `describe-image` / `analyze-chart` keep the original long prompt AND a clean body. If you must force extension fields through on `describe-image` / `analyze-chart`, use the per-call `extra` (pass it via the `extra` parameter of the `extract_text` / `extract_table` / `describe_image` / `analyze_chart` tools) — it is NOT subject to the task gating.
+> ⚠️ **Task gating (important)**: `extra_body` (incl. `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`) is only applied to fetch body on `extract-text` / `extract-table` (the OCR path) — `describe-image` (VQA) and `analyze-chart` (JSON extraction) **do NOT carry these fields**. Reason: NoRepeatNGram (ngram_size=35) suppresses legitimate repeated words in VQA descriptions; `skip_special_tokens:false` leaks OCR structural tokens into description / corrupts `analyze-chart`'s `JSON.parse`; `image_mode:gundam` (crop_mode=true) slices the whole image and breaks scene-level VQA holistic understanding. This is the symmetric counterpart of the model-aware short-prompt gating (`promptForUnlimited`) — `describe-image` / `analyze-chart` keep the original long prompt AND a clean body. To force extension fields through on `describe-image` / `analyze-chart`, configure `providers.vlm.extra_body` in config (effective on OCR tasks only) — there is currently NO per-call `extra` parameter at the tool layer (not in the schema; passing one is ignored).
 
 **Invocation**: pass `provider=vlm` explicitly to `extract_text` (otherwise it goes to defaultVisionProvider=tesseract):
 
@@ -544,7 +544,7 @@ extract_text(image="data:image/png;base64,...", provider="vlm")
 ## FAQ
 
 **Q: Does it work without installing anything?**
-A: Yes. Once the MCP is installed, you have drawing / cards / QR codes / formulas / data charts + English / captcha OCR, all running locally with zero network access.
+A: Yes. Once the MCP is installed, you have drawing / cards / QR codes / formulas / data charts + English / captcha OCR, all running locally with zero network access by default (exception: card non-default fonts / color emoji and diagram `icon:` icons fetch from a CDN on first use; offline they degrade gracefully — emoji falls back to plain text, icons are omitted, fonts can be localized via fontPath).
 
 **Q: Does Chinese recognition produce garbled text?**
 A: The default lightweight engine is fine for English / digits / simple documents, but Chinese accuracy is mediocre. For Chinese SOTA, self-host PaddleX (GPU 12GB or CPU 4-core 8GB). See [Configuration Deep Dive](#configuration-deep-dive) above.

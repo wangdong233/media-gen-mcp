@@ -52,7 +52,7 @@ import {
 } from "./pdf/pipeline.js";
 import { getPdfPageCount } from "./pdf/render.js";
 import { parsePageRange } from "./pdf/page-range.js";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync as fsSyncExists } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // 版本从 package.json 读,杜绝发版时 serverInfo.version 漏改(dist/index.js → ../package.json)
@@ -64,6 +64,19 @@ const ASYNC_THRESHOLD_SECONDS = 60;
 // mode/resolution 共享常量:schema enum + handler 白名单同源,消除多处字面量漂移(审查 medium)
 const VIDEO_MODES = ["text-to-video", "image-to-video", "keyframes"] as const;
 const RESOLUTIONS = ["480p", "720p", "1080p"] as const;
+
+/**
+ * 视频链头名(buildTools 的 videoHead 同一表达式,运行时复用):getProviderPriority("video")[0]
+ * → 无 video 能力/未配置回落 legacy 默认。取件侧(get_video)与 hint 侧(create_video)共用,
+ * 消除 schema 默认/handler 缺省/async hint 三处两种真源(审计 A-07)。
+ */
+/** D2 theme 输入错(用户输入,非维护者问题)直抛判定 —— generate_diagram/interactive/nested 三 case 的 catch 共用(H-finding:C-07 只落了一处)。 */
+const D2_THEME_INPUT_ERROR = /^(unknown D2 theme|D2 themeID)/;
+
+function videoChainHeadName(): string {
+  const head = getProviderPriority("video")?.[0] ?? config.defaultVideoProvider;
+  try { return asVideoProvider(getProvider(head)).name; } catch { return config.defaultVideoProvider; }
+}
 
 const server = new Server(
   { name: "media-gen-mcp", version: PKG_VERSION },
@@ -95,10 +108,21 @@ async function runVisionTask(
   if (!isImageUri(image)) throw new Error("`image` 须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
   const resolved = resolveProvider(providerName, undefined, "vision");
   let activeProvider = asVisionProvider(resolved.provider);
-  if (!activeProvider.visionTasks().includes(task)) {
-    throw new Error(`provider "${activeProvider.name}" 不支持 ${task}(支持:${[...activeProvider.visionTasks()].join(",")})。`);
-  }
   const warnings: string[] = [];
+  if (!activeProvider.visionTasks().includes(task)) {
+    // 门禁失败 ≠ 终局(审计 B-01 critical):默认头(如 tesseract)不支持该 task 时,按 tier 链
+    // 自动路由到「已配置且支持该 task」的 provider(与 recognize 失败的 fallback 同语义)。
+    // 显式点名不支持该 task 的 provider 仍直抛 —— 点名即钉死,不静默换渠道。
+    if (providerName) {
+      throw new Error(`provider "${activeProvider.name}" 不支持 ${task}(支持:${[...activeProvider.visionTasks()].join(",")})。支持 ${task} 的 provider 见 list_vision_capabilities。`);
+    }
+    const fb = getFallbackProvider(activeProvider.name, "vision", { task });
+    if (!fb) {
+      throw new Error(`provider "${activeProvider.name}" 不支持 ${task}(支持:${[...activeProvider.visionTasks()].join(",")}),且当前没有已配置且支持该 task 的 provider —— 候选与配置方法见 list_vision_capabilities。`);
+    }
+    warnings.push(`provider "${activeProvider.name}" 不支持 ${task},已自动路由到 "${fb.name}"(已配置且支持该 task)。`);
+    activeProvider = asVisionProvider(fb);
+  }
   let result: VisionResult;
   try {
     result = await activeProvider.recognize({ image, task, hints });
@@ -124,25 +148,23 @@ function buildTools() {
   // 与 scripts/check-schema.mjs 用同一 getProviderPriority 真源(能力缺失时双方各自回落,保一致)。
   // S000 门已删(2026-08-26,链即开关):链头 = 首个注册名(未注册名已剔除)——
   // 链中不配置某渠道即不会被展示为默认(与运行时 defaultHead 同源;运行时解析仍以 resolveProvider 为准)。
-  const videoHead = (() => {
-    // F5(B3):链为空/链头异常 → 兜底 legacy 默认(与 image 侧同款,消不对称)
-    try { return asVideoProvider(getProvider(getProviderPriority("video")?.[0] ?? config.defaultVideoProvider)).name; }
-    catch { return config.defaultVideoProvider; }
-  })();
+  // F5(B3):链为空/链头异常 → 兜底 legacy 默认(与 image 侧同款,消不对称)。
+  // 与 get_video 缺省/videoChainHeadName() 单一真源(H-finding:双写无钉扎,同类回归风险)。
+  const videoHead = videoChainHeadName();
   const vc = asVideoProvider(getProvider(videoHead)).videoConstraints();
 
   return [
     {
       name: "generate_image",
       description:
-        "Generate or edit an AI image (text-to-image 文生图/AI画图; or image-to-image 图生图 via `images`) using free models (Agnes AI default, or Zhipu). Output downloads locally and the path is returned; no local rendering libs needed.\n\nWHEN: subject is photographic or illustrated (写实图/插画/概念图/original logo artwork / 原创品牌主视觉); user says 'AI画图 / 文生图 / generate an image of ...' and wants AI-generated pixels.\n\nAVOID:\n- Text-heavy cards / OG images / posters / quote cards / cover images → use `generate_card` instead (deterministic Satori render, no AI variability, same input → same output).\n- An existing brand logo (Iconify 200k+ vector set) → use `generate_icon` instead; this tool only draws ORIGINAL logo artwork.\n\nNEXT: call `list_models` first to discover available model names and size constraints per provider. provider=flow (Google Flow via local Chrome): `aspect` (16:9/9:16/1:1/3:4/4:3) and `seed` are honored exactly; outputs carry `mediaId`+`seed` (re-download via `flow_status(mediaId)`); image generation is 0-credit. provider=flow also accepts `images` (image-to-image, live-verified): images[0] = base image (aspect follows the base), images[1..10] = references — each is uploaded to the Flow project first (0 credits). Image UPSCALE: model=GEM_PIX_2_UPSAMPLE_2K + images[0] (an existing image mediaId, or a URI to upload first) → 2K upscale, 0 credits, prompt ignored.\n\nMultilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
+        "Generate or edit an AI image (text-to-image 文生图/AI画图; or image-to-image 图生图 via `images`) using free models (Agnes AI default, or Zhipu). Output downloads locally and the path is returned; no local rendering libs needed.\n\nWHEN: subject is photographic or illustrated (写实图/插画/概念图/original logo artwork / 原创品牌主视觉); user says 'AI画图 / 文生图 / generate an image of ...' and wants AI-generated pixels.\n\nAVOID:\n- Text-heavy cards / OG images / posters / quote cards / cover images → use `generate_card` instead (deterministic Satori render, no AI variability, same input → same output).\n- An existing brand logo (Iconify 200k+ vector set) → use `generate_icon` instead; this tool only draws ORIGINAL logo artwork.\n\nNEXT: call `list_models` first to discover available model names and size constraints per provider. provider=flow (Google Flow via local Chrome): `aspect` (16:9/9:16/1:1/3:4/4:3) and `seed` are honored exactly; outputs carry `mediaId`+`seed` (re-download via `flow_status(mediaId)`); image generation is 0-credit. provider=flow also accepts `images` (image-to-image, live-verified): images[0] = base image (aspect follows the base), images[1..9] = references (base + references cap: 10 total) — each is uploaded to the Flow project first (0 credits). Image UPSCALE: model=GEM_PIX_2_UPSAMPLE_2K + images[0] (an existing image mediaId, or a URI to upload first) → 2K upscale, 0 credits, prompt ignored.\n\nMultilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "Image description." },
           model: {
             type: "string",
-            description: "Optional; omit to use the provider default. Call list_models to see options. provider=flow: GEM_PIX_2_UPSAMPLE_2K = 2K UPSCALE mode (requires images[0] = an existing image mediaId or a URI; 0 credits, prompt ignored).",
+            description: "Optional; omit to use the provider default. Call list_models to see options. provider=flow: GEM_PIX_2_UPSAMPLE_2K = 2K UPSCALE mode (requires images[0] = an existing image mediaId or a URI; 0 credits, prompt ignored — a non-empty placeholder prompt is still required by the schema).",
           },
           size: { type: "string", description: "e.g. 1024x1024. Zhipu requires each side 512-2880, multiple of 16, pixels ≤ 2^21 — the tool auto-snaps to a valid size; Agnes accepts free size. provider=flow: size maps to the nearest of 5 aspect ratios (1920x1080→16:9 / 720x1280→9:16 / 1024x1024→1:1 / 768x1024→3:4 / 1024x768→4:3); pass `aspect` for an exact ratio." },
           aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "3:4", "4:3"], description: "Direct aspect ratio (provider=flow only — maps to Flow IMAGE_ASPECT_RATIO_*; exact, no size guessing). Other providers ignore it with a warning; use `size` there." },
@@ -154,10 +176,10 @@ function buildTools() {
             description: "Image-to-image inputs (public URL or data URI). Omit for text-to-image.",
           },
           watermark: { type: "boolean", default: false, description: "true = keep provider watermark (Zhipu). Default false requests watermark off; some free-tier models may still embed one — see response `watermarked` flag." },
-          download: { type: "boolean", default: true },
+          download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get mediaId only." },
           name: { type: "string", description: "Output filename (without extension); multi-image adds -1/-2/… suffix. Defaults to img_<uuid>. NOTE: providers (incl. Google Flow) do not name assets server-side — this name applies when the tool downloads & saves locally; if the file already exists, a -2/-3… suffix is added (never silently overwrites)." },
-          outDir: { type: "string", description: "产物落盘目录,省略用默认 ./output(服务启动目录,即启动任务的项目;可经 config outDir 全局改)。" },
-          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); naming an opt-in provider (flow) pins it — errors surface instead of silently substituting, while free providers (agnes/zhipu) named explicitly still fall through with a warning. Not listing a provider in the chain = it is not auto-routed; explicit provider calls are always allowed (environment problems surface as structured S1xx preflight errors)." },
+          outDir: { type: "string", description: "Output directory; omit = default ./output under the server start dir (the project that launched the task); change globally via config outDir." },
+          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); naming an opt-in provider (flow) pins it — errors surface instead of silently substituting, while free providers (agnes/zhipu) named explicitly still fall through with a warning. Not listing a provider in the chain = it is not auto-routed; explicit provider calls are always allowed (environment problems surface as structured S1xx preflight errors). Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
         },
         required: ["prompt"],
       },
@@ -169,29 +191,29 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          prompt: { type: "string", description: "Video content description (subject + action + camera + style). For provider=flow V2V edit mode (videoMediaId + abra_edit) this is the EDIT INSTRUCTION (e.g. 'make it night with neon lights'), not a fresh scene description." },
-          model: { type: "string", description: "Optional; omit to use the provider default video model. provider=flow: pass a FULL usage key (e.g. abra_t2v_8s / veo_3_1_t2v_lite / veo_3_1_upsampler_1080p) or mnemonic+durationSeconds (abra_t2v + 8) — the complete live catalog is in flow_status; open key families: t2v (text, shape-verified wire), i2v (+`image`), r2v (+`images`), interpolation/_fl (+`keyframes` 2), extension (+`videoMediaId`, e.g. veo_3_1_extension_lite / veo_3_1_extend_fast_landscape), upsampler (+`videoMediaId`, veo_3_1_upsampler_1080p = 0 credits; 4k tier-locked), edit (+`videoMediaId` + edit-instruction prompt, abra_edit = 20 credits, wire probe-verified). Tier locks: fast ultra/_4s/_6s + low_priority are ADVANCED-only; plain fast is NOT available on ADVANCED — unavailable keys are rejected with the per-tier matrix before submission." },
-          mode: { type: "string", enum: [...VIDEO_MODES], description: "Optional generation mode hint. Omit it — provider=flow infers the mode from the model key + inputs (image→i2v, images→r2v, keyframes→interpolation, videoMediaId→extension/edit/upsampler); mismatches (e.g. image + a t2v key) are rejected with a structured S301 naming the key to use." },
+          prompt: { type: "string", description: "Video content description (subject + action + camera + style). For provider=flow V2V edit mode (videoMediaId + abra_edit) this is the EDIT INSTRUCTION (e.g. 'make it night with neon lights'), not a fresh scene description. The schema requires a non-empty prompt even for modes where flow ignores it on the wire (upsampler) — pass a short placeholder there." },
+          model: { type: "string", description: "Optional for agnes/zhipu (omit = provider default); REQUIRED for provider=flow (deliberately no default — video bills credits). provider=flow: pass a FULL usage key (e.g. abra_t2v_8s / veo_3_1_t2v_lite / veo_3_1_upsampler_1080p) or mnemonic+durationSeconds (abra_t2v + 8) — the complete live catalog is in flow_status; open key families: t2v (text, shape-verified wire), i2v (+`image`), r2v (+`images`), interpolation/_fl (+`keyframes` 2), extension (+`videoMediaId`, e.g. veo_3_1_extension_lite / veo_3_1_extend_fast_landscape), upsampler (+`videoMediaId`, veo_3_1_upsampler_1080p = 0 credits; 4k tier-locked), edit (+`videoMediaId` + edit-instruction prompt, abra_edit = 20 credits, wire probe-verified). Tier locks: fast ultra/_4s/_6s + low_priority are ADVANCED-only; plain fast is NOT available on ADVANCED — unavailable keys are rejected with the per-tier matrix before submission." },
+          mode: { type: "string", enum: [...VIDEO_MODES], description: "Optional generation mode hint. Omit it — provider=flow infers the mode from the model key + inputs (image→i2v, images→r2v, keyframes→interpolation, videoMediaId→extension/edit/upsampler); mismatches (e.g. image + a t2v key) are rejected with a structured S301 naming the key to use. For agnes/zhipu mode is AUTHORITATIVE, not a hint: image-to-video without image / keyframes without an array → error; explicit text-to-video + image drops the image (with a warning)." },
           image: { type: "string", description: "image-to-video: single image URL (http(s)/data:). provider=flow: START_IMAGE — upload (0 credits) then submit; requires an i2v key (e.g. abra_i2v_8s / veo_3_1_i2v_lite), a t2v key + image → structured S301 telling you the key to use." },
           keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image URL array. provider=flow: exactly 2 images (first + last frame), requires an interpolation/_fl key (e.g. veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl); other counts or key families → structured S301." },
           images: { type: "array", items: { type: "string" }, description: "reference images (provider=flow only): image URLs (http(s)/data:) for r2v keys (e.g. abra_r2v_8s / veo_3_1_r2v_lite) — uploaded (0 credits) then submitted as referenceImages. Per-key cap (live inputSpec): 7 for abra r2v / 3 for veo r2v keys. Mutually exclusive with image/keyframes/videoMediaId. Other providers ignore it with a warning." },
-          audioMediaIds: { type: "array", items: { type: "string" }, description: "provider=flow only, r2v keys only (experimental audio reference / Match Voice to Visuals): preset voice sample mediaIds to attach as referenceAudio — the ONLY legal source is flow_status(action=voices) (30 preset voices, ids like \"achernar\"/\"kore\", 0 credits; user-uploaded audio wire not reverse-engineered yet). Caps: 5 for abra r2v / 1 for veo r2v. Submission carries audioFailurePreference=BLOCK_SILENCED_VIDEOS — if audio safety filtering hits, the whole generation fails rather than returning a silent video. Non-r2v keys or non-preset ids → structured S301." },
+          audioMediaIds: { type: "array", items: { type: "string" }, description: "provider=flow only, r2v keys only (experimental audio reference / Match Voice to Visuals): preset voice sample mediaIds to attach as referenceAudio — the ONLY legal source is the no-arg flow_status() snapshot's preset_voices field (30 preset voices, mediaId like \"achernar\"/\"kore\", 0 credits; user-uploaded audio wire not reverse-engineered yet). Caps: 5 for abra r2v / 1 for veo r2v. Submission carries audioFailurePreference=BLOCK_SILENCED_VIDEOS — if audio safety filtering hits, the whole generation fails rather than returning a silent video. Non-r2v keys or non-preset ids → structured S301." },
           videoMediaId: { type: "string", description: "provider=flow only: mediaId of an EXISTING video in the Flow project (see flow_status) as the source for extension keys (veo_3_1_extension_lite, 10 credits), V2V edit (abra_edit + prompt = the edit instruction, 20 credits) or the 0-credit upscaler (veo_3_1_upsampler_1080p) — references the generated video directly (videoInput:{mediaId}), no re-upload needed. Must be a completed video; images/in-progress ids → structured S301." },
           resolution: { type: "string", enum: [...RESOLUTIONS], default: "720p", description: "Provider may snap to nearest preset (Agnes size_mapping). provider=flow: ignored with a warning — ALL Flow generation keys output 720P (ultra/quality variants too); the only higher-resolution path is the 0-credit veo_3_1_upsampler_1080p afterwards." },
           ratio: { type: "string", description: "16:9 / 9:16 / 1:1 / 4:3 / 3:4 (preferred over raw size). provider=flow: video supports 16:9 / 9:16 only (others → structured S301)." },
-          numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Allowed: " + vc.allowedNumFrames.join("/") + " (provider-specific; cross-provider routing re-validates per actual provider — check list_models). provider=flow: prefer durationSeconds (native set = 96/144/192/240 @24fps)." },
-          frameRate: { type: "number", enum: vc.allowedFrameRates, default: vc.defaultFrameRate, description: "允许值 " + vc.allowedFrameRates.join("/") + " (provider 专有;跨 provider 路由后按实际 provider 复算)" },
-          durationSeconds: { type: "number", description: "If set, auto-pick the nearest valid numFrames (~3/5/10/18s). provider=flow: legal set {4,6,8,10}s — off-grid values snap to the nearest with a warning (5→4s, 12→10s)." },
+          numFrames: { type: "number", enum: vc.allowedNumFrames, default: vc.defaultNumFrames, description: "Chain-head (default provider) allowed values: " + vc.allowedNumFrames.join("/") + " — e.g. zhipu accepts 150/300 @ 30/60fps; values are re-validated per actual provider after routing (off-list snaps with a warning — check list_models). Agnes caps by resolution: 1080p≤241 / 720p≤441 (over-cap clamps with a warning). Mutually exclusive with durationSeconds — pass exactly one. provider=flow: prefer durationSeconds (native set = 96/144/192/240 @24fps); duration-embedded keys (e.g. abra_t2v_8s) reject a conflicting numFrames with S301." },
+          frameRate: { type: "number", enum: vc.allowedFrameRates, default: vc.defaultFrameRate, description: "Chain-head (default provider) allowed values: " + vc.allowedFrameRates.join("/") + " — e.g. zhipu accepts 30/60; re-validated per actual provider after routing (off-list snaps with a warning)." },
+          durationSeconds: { type: "number", description: "If set, auto-pick the nearest valid numFrames (~3/5/7/10/18s). Mutually exclusive with numFrames — pass exactly one. provider=flow: abra family legal set {4,6,8,10}s; veo family rejects 10s (4/6/8s or key-embedded duration only); a full key with an embedded _Ns suffix + a different durationSeconds → structured S301 conflict. Off-grid values snap to the nearest with a warning (5→4s, 12→10s)." },
           seed: { type: "number", description: "Reproducibility seed. provider=flow: passed through, actual seed echoed in outputs; omit → random per call (repeat calls for xN each get a fresh seed; an explicit seed is reused across the N calls)." },
           negativePrompt: { type: "string", description: "Negative prompt. provider=flow: NOT on the wire — ignored with a warning (fold exclusions into the prompt instead, e.g. 'no text overlays')." },
-          wait: { type: "boolean", description: "省略=智能(预估≤60s 同步、>60s 异步返回 handle);true=阻塞等待(发 progress);false=立即返回 handle。" },
+          wait: { type: "boolean", description: "Omit = smart (estimated ≤60s sync, >60s async returns a handle); true = block until done (emits progress); false = return a handle immediately." },
           confirmToken: { type: "string", description: "Two-phase billing confirm (provider=flow video only). First call WITHOUT this token returns {needConfirm:true, estimatedCost, confirmToken, expiresInSeconds} instead of submitting (zero credits spent). Re-call with the SAME parameters plus confirmToken to actually submit. Tokens are short-lived (default 10 min, flow.confirmTtlMs) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds) — changing any of them invalidates the token (fetch a fresh one). Free submissions (e.g. veo_3_1_upsampler_1080p) and non-flow providers never trigger the gate; tier-unavailable keys are rejected with a per-tier matrix instead of getting a token; disable via config flow.videoConfirm=false." },
-          timeoutMs: { type: "number", default: 900000 },
-          pollIntervalMs: { type: "number", default: 10000 },
-          download: { type: "boolean", default: true },
+          timeoutMs: { type: "number", default: 900000, description: "Max ms to block in wait=true smart-sync mode (default 900000) before returning a handle." },
+          pollIntervalMs: { type: "number", default: 10000, description: "Poll cadence in ms while waiting in sync mode (default 10000)." },
+          download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get the taskId/mediaId only." },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>. Providers (incl. Flow) do not name assets server-side — applies at local download; existing files get -2/-3… suffix (never silently overwrites)." },
-          outDir: { type: "string", description: "产物落盘目录,省略用默认 ./output(服务启动目录,即启动任务的项目;可经 config outDir 全局改)。" },
-          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider). provider=flow bills credits — always pass it explicitly when Flow video is intended." },
+          outDir: { type: "string", description: "Output directory; omit = default ./output under the server start dir (the project that launched the task); change globally via config outDir." },
+          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider). provider=flow bills credits — always pass it explicitly when Flow video is intended. Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
         },
         required: ["prompt"],
       },
@@ -205,9 +227,9 @@ function buildTools() {
         properties: {
           videoId: { type: "string", description: "Task id from create_video (agnes/zhipu async handle). provider=flow: pass the mediaId as taskId instead (flow has no separate videoId)." },
           taskId: { type: "string", description: "legacy fallback endpoint" },
-          download: { type: "boolean", default: true },
+          download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get raw metadata only." },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>. For Flow: mediaId/seed/model/prompt are returned alongside local_path so each file maps back to its exact input. Existing files get -2/-3… suffix (never silently overwrites)." },
-          outDir: { type: "string", description: "下载落盘目录,省略用默认 ./output(与 create_video 一致,避免异步轮询落盘到别处)。" },
+          outDir: { type: "string", description: "Download directory; omit = default ./output under the server start dir (same as create_video, so async polling writes to the same place); change globally via config outDir." },
           provider: { type: "string", default: videoHead, description: "Provider used at task creation: 'agnes' / 'zhipu' / 'flow' — defaults to the video provider chain head. create_video responses carry provider_used; pass it back here to poll the right backend." },
         },
       },
@@ -215,7 +237,7 @@ function buildTools() {
     {
       name: "flow_status",
       description:
-        "Google Flow introspection / media status / download / delete / share / cancel (ZERO-CREDIT; 零消耗自省/状态查询/媒体下载/媒体删除/分享链接/取消生成). Backed by the LOCAL Chrome session via CDP (lasso launch-chrome --port 9223, logged into labs.google) — every call runs as page-context fetch, no API keys needed. With NO mediaId: full snapshot (login email, credits balance, dynamic image/video model catalog with per-key generationTimeSeconds, 30 preset voices, project media list). With mediaId: one media's generation status (+ download the finished mp4/png locally). With deleteMediaIds: batch-delete project media (0 credits, IRREVERSIBLE — keeps flow_status polling payloads small). With shareMediaIds: create public share links (0 credits). With cancelMediaIds: cancel in-flight generations (0 credits). NEVER submits generation — video/image submission goes through create_video / generate_image with provider=\"flow\" (video costs credits: abra 7-20, veo lite 10 / fast 20 / quality 100 per clip; images & upscaling are 0-credit).\n\nWHEN: preflight before using the flow provider; poll a submitted mediaId; fetch an already-generated asset; check remaining credits; clean up accumulated media; share a result; cancel a wrong submission before it finishes.\n\nNEXT: create_video(provider=\"flow\", model=\"abra_t2v_8s\") submits (async handle → get_video(provider=\"flow\", taskId=…)); flow_status(mediaId=…) tracks it; flow_status(deleteMediaIds=[…]) deletes; flow_status(shareMediaIds=[…]) shares; flow_status(cancelMediaIds=[…]) cancels while in_progress.\n\nMultilingual triggers: flow 状态 · flow 积分 · Flow status (zh/en).",
+        "Google Flow introspection / media status / download / delete / share / cancel (ZERO-CREDIT; 零消耗自省/状态查询/媒体下载/媒体删除/分享链接/取消生成). Backed by the LOCAL Chrome session via CDP (lasso launch-chrome --port 9223, logged into labs.google) — every call runs as page-context fetch, no API keys needed. With NO mediaId: full snapshot (login email, credits balance, dynamic image/video model catalog with per-key generationTimeSeconds, preset_voices = 30 preset voice samples, project media list). With mediaId: one media's generation status (+ download the finished mp4/png locally). With deleteMediaIds: batch-delete project media (0 credits, IRREVERSIBLE — keeps flow_status polling payloads small). With shareMediaIds: create public share links (0 credits). With cancelMediaIds: cancel in-flight generations (0 credits). NEVER submits generation — video/image submission goes through create_video / generate_image with provider=\"flow\" (video costs credits: abra 7-20, veo lite 10 / fast 20 / quality 100 per clip; images & upscaling are 0-credit). Error-code legend for the flow provider family: [flow] S1xx = environment precondition (start/login Chrome — never silently retried) / S2xx = network-transient / S3xx = invalid input (fix params) / S4xx = media outcome (re-check via flow_status).\n\nWHEN: preflight before using the flow provider; poll a submitted mediaId; fetch an already-generated asset; check remaining credits; clean up accumulated media; share a result; cancel a wrong submission before it finishes.\n\nNEXT: create_video(provider=\"flow\", model=\"abra_t2v_8s\") submits (async handle → get_video(provider=\"flow\", taskId=…)); flow_status(mediaId=…) tracks it; flow_status(deleteMediaIds=[…]) deletes; flow_status(shareMediaIds=[…]) shares; flow_status(cancelMediaIds=[…]) cancels while in_progress.\n\nMultilingual triggers: flow 状态 · flow 积分 · Flow status (zh/en).",
       inputSchema: {
         type: "object",
         properties: {
@@ -226,14 +248,14 @@ function buildTools() {
           shareMediaIds: { type: "array", items: { type: "string" }, description: "Create PUBLIC share links for these project media (0 credits; tRPC flow.share.shareMedia → mediaShareId). Returns shareUrl per media: https://labs.google/fx/tools/flow/shared/{image|video}/<mediaShareId> (prompt included). Mutually exclusive with mediaId/deleteMediaIds/cancelMediaIds." },
           cancelMediaIds: { type: "array", items: { type: "string" }, description: "CANCEL in-flight VIDEO generations for these mediaIds (0 credits; POST /v1/flowMedia:cancelGeneration body {mediaId}). Only in_progress media are submitted — completed/failed are reported as notCancelable; status re-checked after (expect MEDIA_GENERATION_STATUS_CANCELED). LIVE-VERIFIED BOUNDARY: image in-flight cancel returns 404 (images are not cancelable — bundle wires cancel for the video queue only); video E2E cancel is wire-verified but not yet live-submitted. Mutually exclusive with mediaId/deleteMediaIds/shareMediaIds." },
           name: { type: "string", description: "Output filename (without extension). Defaults to flow_<mediaId-prefix>. Flow has no server-side asset naming — this renames at local download; existing files get -2/-3… suffix (never silently overwrites)." },
-          outDir: { type: "string", description: "下载落盘目录,省略用默认 ./output(服务启动目录,即启动任务的项目;可经 config outDir 全局改)。" },
+          outDir: { type: "string", description: "Download directory; omit = default ./output under the server start dir (the project that launched the task); change globally via config outDir." },
         },
       },
     },
     {
       name: "extract_text",
       description:
-        "Extract/recognize text from an image (OCR / 文字识别 / 文字提取 / 画像からの文字起こし) — verification codes, digits, license plates, printed Latin, or Chinese documents. Zero-config: tesseract runs in-process (WASM, bundled). Chinese accuracy is weak by default; configure a `paddleocr` provider for Chinese SOTA. The reverse operation is generate_image (text→image).\n\nNEXT: for multi-page PDFs use `extract_pdf`; for tables use `extract_table`; for charts use `analyze_chart`; for handwriting/scene/formula use `describe_image`.\n\nMultilingual triggers: 文字识别 · OCR · 文字提取 · 文字起こし · texto · textoerkennung (ja/es/de).",
+        "Extract/recognize text from an image (OCR / 文字识别 / 文字提取 / 画像からの文字起こし) — verification codes, digits, license plates, printed Latin, or Chinese documents. Zero-config: tesseract runs in-process (WASM, bundled); Chinese accuracy is weak by default — zero-deploy alternative: provider=\"glm-vision\" (free Zhipu cloud key) handles Chinese well, or self-host `paddle` (PaddleX, Chinese SOTA). Check list_vision_capabilities before choosing. The reverse operation is generate_image (text→image).\n\nNEXT: for multi-page PDFs use `extract_pdf`; for tables use `extract_table`; for charts use `analyze_chart`; for handwriting/scene/formula use `describe_image`.\n\nMultilingual triggers: 文字识别 · OCR · 文字提取 · 文字起こし · texto · textoerkennung (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
@@ -241,10 +263,10 @@ function buildTools() {
           languages: { type: "array", items: { type: "string" }, description: "BCP-47 language codes (e.g. en / zh-Hans / zh-Hant / ja / ko). Default [en]; use [zh-Hans,en] for Chinese." },
           digitOnly: { type: "boolean", description: "Recognize digits only (verification code / digit readout) → whitelist 0-9." },
           segmentation: { type: "string", enum: ["auto", "single-line", "single-char", "sparse-text"], default: "auto", description: "Layout assumption: auto=fully automatic / single-line=one line of text (captcha) / single-char=one character / sparse-text=scattered text." },
-          outputFormat: { type: "string", enum: ["text", "json"], default: "text", description: "text=full text only; json=includes blocks (bbox+confidence per line)." },
-          layout: { type: "string", enum: ["none", "natural", "plain", "code"], default: "none", description: "Layout post-processing (provider-agnostic TBPU, Umi-OCR algorithm port): none=no processing (default, join by newline) / natural=multi-column natural paragraphs (best for documents, GapTree+ParagraphParse) / plain=multi-column plain text flow (no hard line breaks) / code=single-column code block (preserve indentation). Apply when document has multi-column layout or paragraph wrapping issues." },
-          ignoreAreas: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, required: ["x", "y", "w", "h"] }, description: "Ignore regions (watermark / red stamp / header-footer) — blocks whose bbox falls fully inside any area are dropped. Coordinates in image pixel space; {x,y,w,h} = origin+size. Filtering runs before layout." },
-          provider: { type: "string", description: "Vision provider; default config.defaultVisionProvider (tesseract fallback; paddle/vlm need configuration)." },
+          outputFormat: { type: "string", enum: ["text", "json"], default: "text", description: "text=full text only; json=includes blocks. Note: blocks with bbox+confidence are returned by tesseract only; paddle returns confidence without bbox; glm-vision/vlm return text without blocks." },
+          layout: { type: "string", enum: ["none", "natural", "plain", "code"], default: "none", description: "Layout post-processing (provider-agnostic TBPU, Umi-OCR algorithm port): none=no processing (default, join by newline) / natural=multi-column natural paragraphs (best for documents, GapTree+ParagraphParse) / plain=multi-column plain text flow (no hard line breaks) / code=single-column code block (preserve indentation). Advanced Umi strategies (multi-para/multi-line/multi-none/single-para/single-line/single-none/single-code) are also accepted. Effective only when the provider returns blocks (tesseract; paddle partially — no bbox); glm-vision/vlm skip it (you get a warning)." },
+          ignoreAreas: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, required: ["x", "y", "w", "h"] }, description: "Ignore regions (watermark / red stamp / header-footer) — blocks whose bbox falls fully inside any area are dropped. Coordinates in image pixel space; {x,y,w,h} = origin+size; corner form [[x1,y1],[x2,y2]] also accepted. Filtering runs before layout, and only when the provider returns blocks with bbox (tesseract; paddle blocks lack bbox so it is advisory; glm-vision/vlm skip it)." },
+          provider: { type: "string", description: "Vision provider; default config.defaultVisionProvider (tesseract). When the default lacks a task, the tool auto-routes to a configured provider that supports it. Candidates needing configuration: paddle (self-hosted PaddleX) / vlm (self-hosted vLLM) / glm-vision (free Zhipu cloud key, zero-deploy)." },
           name: { type: "string", description: "Output filename (no extension; saved as .txt when text is extracted)." },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
           download: { type: "boolean", default: true, description: "Save extracted text as .txt (default true)." },
@@ -255,14 +277,14 @@ function buildTools() {
     {
       name: "extract_table",
       description:
-        "Recognize a table from an image → HTML/Markdown/JSON (表格识别/表格提取/tabla): invoices, receipts, financial statements, academic paper tables. Requires a `paddleocr` provider (PaddleX serving, Chinese SOTA); no pure-JS fallback (tesseract cannot parse table structure — a clear error is returned, not a silent OCR downgrade).\n\nNEXT: for plain text in the same image use `extract_text`; for chart data use `analyze_chart`; for a natural-language description of the image use `describe_image`.\n\nMultilingual triggers: 表格识别 · 表格提取 · tabla · 表 (ja/es/de).",
+        "Recognize a table from an image → HTML/Markdown/JSON (表格识别/表格提取/tabla): invoices, receipts, financial statements, academic paper tables. Needs a provider that supports extract-table: glm-vision (zero-deploy, free Zhipu cloud key) or paddle (self-hosted `paddle` = PaddleX serving, Chinese SOTA). The default provider auto-routes to a configured one that supports this task; no pure-JS fallback (tesseract cannot parse table structure — a clear error is returned, not a silent OCR downgrade). Check list_vision_capabilities first.\n\nNEXT: for plain text in the same image use `extract_text`; for chart data use `analyze_chart`; for a natural-language description of the image use `describe_image`.\n\nMultilingual triggers: 表格识别 · 表格提取 · tabla · 表 (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
           image: { type: "string", description: "Image URI: http(s):// or data: URI. Read local files into a data URI before passing." },
-          format: { type: "string", enum: ["html", "markdown", "json", "latex"], default: "html", description: "Output format for the table content." },
-          provider: { type: "string", description: "Vision provider; default paddle (requires configured baseUrl)." },
-          name: { type: "string", description: "Output filename (no extension)." },
+          format: { type: "string", enum: ["html", "markdown", "json", "latex"], default: "html", description: "Output format for the table content. html/markdown: all supporting providers; json/latex: model-output formats honored by glm-vision/vlm — paddle falls back to html with a warning (the file gets the extension of the format ACTUALLY returned)." },
+          provider: { type: "string", description: "Vision provider for extract-table: glm-vision (zero-deploy, free cloud key) or paddle (self-hosted). Omit = defaultVisionProvider with task-aware auto-routing to a configured provider that supports this task; explicit name pins it. See list_vision_capabilities." },
+          name: { type: "string", description: "Output filename (no extension; extension follows the format actually returned, e.g. .html/.md)." },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
           download: { type: "boolean", default: true, description: "Save table content to file (default true)." },
         },
@@ -272,16 +294,16 @@ function buildTools() {
     {
       name: "analyze_chart",
       description:
-        "Extract data points FROM an existing chart IMAGE (图表识别/图表数据提取/Chart OCR): reverse-engineer bar/line/pie/scatter charts into structured data series. Requires a `paddleocr` provider (PP-Chart2Table via useChartRecognition); if paddle is unconfigured, call `list_vision_capabilities` first to warn the user instead of hitting a 503.\n\nWHEN: user says '识别这张图表的数据 / extract data from this chart / chart OCR / 读出图里的数值' and provides a chart image.\n\nAVOID:\n- Rendering a chart FROM data → use `generate_chart` instead (the inverse operation).\n\nNEXT: companion to `extract_table` for tabular data in the same image (try extract_table if the chart has an underlying data table).\n\nMultilingual triggers: 图表识别 · 图表数据 · gráfico · Chart-Daten · Graphik (ja/es/de).",
+        "Extract data points FROM an existing chart IMAGE (图表识别/图表数据提取/Chart OCR): reverse-engineer bar/line/pie/scatter charts into structured data series. Providers that support analyze-chart: glm-vision (zero-deploy, free Zhipu cloud key — returns chart=structured JSON via prompt extraction, best-effort + description=full markdown analysis) or paddle (PP-Chart2Table via useChartRecognition — chart field is a PLACEHOLDER struct, real data is in the markdown description). The default provider auto-routes to a configured one that supports this task; call `list_vision_capabilities` first to check what is configured.\n\nWHEN: user says '识别这张图表的数据 / extract data from this chart / chart OCR / 读出图里的数值' and provides a chart image.\n\nAVOID:\n- Rendering a chart FROM data → use `generate_chart` instead (the inverse operation).\n\nNEXT: companion to `extract_table` for tabular data in the same image (try extract_table if the chart has an underlying data table).\n\nMultilingual triggers: 图表识别 · 图表数据 · gráfico · Chart-Daten · Graphik (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
           image: { type: "string", description: "Chart image URI: http(s):// or data: URI." },
-          chartType: { type: "string", enum: ["bar", "line", "pie", "scatter", "auto"], default: "auto", description: "Chart type hint (auto lets provider decide)." },
-          provider: { type: "string" },
-          name: { type: "string" },
-          outDir: { type: "string" },
-          download: { type: "boolean", default: true },
+          chartType: { type: "string", enum: ["bar", "line", "pie", "scatter", "auto"], default: "auto", description: "Chart type hint (auto lets provider decide). Honored by glm-vision/vlm (fed into the extraction prompt); paddle ignores it." },
+          provider: { type: "string", description: "Vision provider for analyze-chart: glm-vision (zero-deploy, free cloud key; structured JSON output) or paddle (markdown description; chart field is a placeholder). Omit = defaultVisionProvider with task-aware auto-routing to a configured provider that supports this task; explicit name pins it. See list_vision_capabilities." },
+          name: { type: "string", description: "Output filename (no extension; saved as .json)." },
+          outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
+          download: { type: "boolean", default: true, description: "Save extracted chart JSON/description to file (default true)." },
         },
         required: ["image"],
       },
@@ -289,26 +311,26 @@ function buildTools() {
     {
       name: "describe_image",
       description:
-        "VLM image understanding — natural-language description or visual QA (图像描述/看图说话/VQA/describir imagen): handwritten text, complex layouts, scenes, formulas→LaTeX. Requires `paddleocr` provider (PaddleOCR-VL); M3+ adds `vlm` provider for enhanced VQA. Leave `question` empty for a default description.\n\nAVOID: clean printed text/digits/captchas → use `extract_text` instead (faster, structured output). This tool is for handwriting / complex layouts / scene understanding / formula→LaTeX.\n\nMultilingual triggers: 图像描述 · 看图说话 · 描述图片 (ja/es/de).",
+        "VLM image understanding — natural-language description or visual QA (图像描述/看图说话/VQA/describir imagen): handwritten text, complex layouts, scenes, formulas→LaTeX. Providers that support describe-image: glm-vision (zero-deploy, free Zhipu cloud key — honors `question` for full VQA), vlm (self-hosted vLLM — also honors `question`), paddle (PaddleOCR-VL — default description, ignores `question`). The default provider auto-routes to a configured one that supports this task. Leave `question` empty for a default description.\n\nAVOID: clean printed text/digits/captchas → use `extract_text` instead (faster, structured output). This tool is for handwriting / complex layouts / scene understanding / formula→LaTeX.\n\nMultilingual triggers: 图像描述 · 看图说话 · 描述图片 (ja/es/de).",
       inputSchema: {
         type: "object",
         properties: {
           image: { type: "string", description: "Image URI: http(s):// or data: URI." },
-          question: { type: "string", description: "Optional VQA question; empty = default description. Note: paddle provider (PaddleOCR-VL) gives a default description and ignores the question; full VQA via question requires the M3+ vlm provider." },
-          provider: { type: "string" },
-          name: { type: "string" },
-          outDir: { type: "string" },
-          download: { type: "boolean", default: true },
+          question: { type: "string", description: "Optional VQA question; empty = default description. paddle ignores the question (default description only); glm-vision (zero-deploy free cloud key) and vlm honor it for full VQA." },
+          provider: { type: "string", description: "Vision provider for describe-image: glm-vision (zero-deploy, free cloud key; full VQA via question) / vlm (self-hosted; full VQA) / paddle (default description only). Omit = defaultVisionProvider with task-aware auto-routing to a configured provider that supports this task; explicit name pins it. See list_vision_capabilities." },
+          name: { type: "string", description: "Output filename (no extension; saved as .md)." },
+          outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
+          download: { type: "boolean", default: true, description: "Save description to file (default true)." },
         },
         required: ["image"],
       },
     },
     {
       name: "list_models",
-      description: "List available AI image/video models and video constraints per provider (Agnes / Zhipu). Use to discover model names (e.g. cogview-4, agnes-video-v2.0) and allowed video frame counts before calling generate_image / create_video.",
+      description: "List available AI image/video models and video constraints per provider. Generation providers: agnes / zhipu / flow (flow's live video key catalog is richer via `flow_status`); vision providers (tesseract/paddle/vlm/glm-vision) are listed too. Use to discover model names (e.g. cogview-4, agnes-video-v2.0) and allowed video frame counts before calling generate_image / create_video.",
       inputSchema: {
         type: "object",
-        properties: { provider: { type: "string" } },
+        properties: { provider: { type: "string", description: "Optional: filter detail to one provider (agnes/zhipu/flow/tesseract/paddle/vlm/glm-vision); omit = all." } },
       },
     },
     {
@@ -318,7 +340,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          provider: { type: "string", description: "Optional; filter to one provider (e.g. 'paddle'). Omit for all vision providers (tesseract/paddle/vlm)." },
+          provider: { type: "string", description: "Optional; filter to one provider (e.g. 'paddle'). Omit for all vision providers (tesseract/paddle/vlm/glm-vision)." },
         },
       },
     },
@@ -329,11 +351,11 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          code: { type: "string", description: "D2 or DOT source code. D2 SYNTAX (full docs: https://d2lang.com):\nRULE 1: in { } blocks, each property on its OWN LINE (newline-separated). WRONG: `x: { fill: red; shape: oval }`. RIGHT:\nx: {\n  shape: oval\n  style.fill: red\n}\nRULE 2 (CRITICAL): `#` starts a COMMENT. Hex colors MUST be quoted: `style.fill: \"#f0ff3a\"` (WRONG: `style.fill: #f0ff3a`). Named colors don't need quotes: `style.fill: red`. Gradients: `style.fill: \"linear-gradient(#hex, #hex)\"` (quoted) or `style.fill: linear-gradient(red, blue)` (named).\nRULE 3 (CRITICAL): numeric properties accept INTEGERS ONLY (NOT floats). `style.stroke-width: 2` ✅, `style.stroke-width: 1.5` ❌ ERROR.\nSHAPES: rectangle(default), oval, circle, diamond, hexagon, cylinder, cloud, person, page, step, stored_data, package.\nLAYOUT: `direction: right` (or left/up/down) at top level only.\nCONNECTIONS: `a -> b: label`, `a <-> b`, chain `a -> b -> c`.\nSTYLE (value types matter!):\n  style.fill / style.stroke / style.font-color → color: named (red) or hex QUOTED (\"#ff0000\") or gradient QUOTED.\n  style.stroke-width → INTEGER 0-15 (NOT float!)\n  style.stroke-dash → INTEGER 0-10\n  style.font-size → INTEGER 8-100\n  style.border-radius → INTEGER 0-20\n  style.opacity → FLOAT 0-1\n  style.shadow / style.3d / style.double-border / style.bold / style.italic → true or false\n  style.text-transform → uppercase / lowercase / title / none\n  width / height → INTEGER (pixels)\nCONTAINERS: nested { }; cross-ref `parent.child`.\nICONS: `icon: lucide:server` (Iconify set:name, auto-resolved by this tool).\nEXAMPLE (styled):\ndirection: right\ndb: {\n  shape: cylinder\n  style.fill: \"#1a1a2e\"\n  style.stroke: \"#f0ff3a\"\n  style.stroke-width: 2\n  style.shadow: true\n}\napi: {\n  shape: hexagon\n  style.fill: \"#16213e\"\n  style.border-radius: 14\n}\napi -> db: query\nMISTAKES: (1) space-separating properties on one line = ERROR. (2) Unquoted hex (# starts comment) = ERROR. (3) Float for integer property (1.5 for stroke-width) = ERROR. (4) Referencing by label not key. (5) `direction:` is top-level only.\nGraphviz DOT (semicolons OK): digraph G { rankdir=LR; A -> B; C }" },
+          code: { type: "string", description: "D2 or DOT source code. D2 SYNTAX (full docs: https://d2lang.com):\nRULE 1: in { } blocks, each property on its OWN LINE (newline-separated). WRONG: `x: { fill: red; shape: oval }`. RIGHT:\nx: {\n  shape: oval\n  style.fill: red\n}\nRULE 2 (CRITICAL): `#` starts a COMMENT. Hex colors MUST be quoted: `style.fill: \"#f0ff3a\"` (WRONG: `style.fill: #f0ff3a`). Named colors don't need quotes: `style.fill: red`. Gradients: `style.fill: \"linear-gradient(#hex, #hex)\"` (quoted) or `style.fill: linear-gradient(red, blue)` (named).\nRULE 3 (CRITICAL): numeric properties accept INTEGERS ONLY (NOT floats). `style.stroke-width: 2` ✅, `style.stroke-width: 1.5` ❌ ERROR.\nSHAPES: rectangle(default), oval, circle, diamond, hexagon, cylinder, cloud, person, page, step, stored_data, package, sql_table (ER tables with typed columns), class (UML with members), code, text, sequence_diagram (a full sequence-diagram container — use this, not boxes+arrows, for real sequence diagrams).\nLAYOUT: `direction: right` (or left/up/down) at top level only.\nCONNECTIONS: `a -> b: label`, `a <-> b`, chain `a -> b -> c`.\nSTYLE (value types matter!):\n  style.fill / style.stroke / style.font-color → color: named (red) or hex QUOTED (\"#ff0000\") or gradient QUOTED.\n  style.stroke-width → INTEGER 0-15 (NOT float!)\n  style.stroke-dash → INTEGER 0-10\n  style.font-size → INTEGER 8-100\n  style.border-radius → INTEGER 0-20\n  style.opacity → FLOAT 0-1\n  style.shadow / style.3d / style.double-border / style.bold / style.italic → true or false\n  style.text-transform → uppercase / lowercase / title / none\n  width / height → INTEGER (pixels)\nCONTAINERS: nested { }; cross-ref `parent.child`.\nICONS: `icon: lucide:server` (Iconify set:name, auto-resolved by this tool).\nEXAMPLE (styled):\ndirection: right\ndb: {\n  shape: cylinder\n  style.fill: \"#1a1a2e\"\n  style.stroke: \"#f0ff3a\"\n  style.stroke-width: 2\n  style.shadow: true\n}\napi: {\n  shape: hexagon\n  style.fill: \"#16213e\"\n  style.border-radius: 14\n}\napi -> db: query\nMISTAKES: (1) space-separating properties on one line = ERROR. (2) Unquoted hex (# starts comment) = ERROR. (3) Float for integer property (1.5 for stroke-width) = ERROR. (4) Referencing by label not key. (5) `direction:` is top-level only.\nGraphviz DOT (semicolons OK): digraph G { rankdir=LR; A -> B; C }" },
           engine: { type: "string", enum: ["d2", "graphviz", "mermaid"], default: "d2", description: "Render engine: d2 (D2 WASM, default) or graphviz (DOT). mermaid is listed for discoverability but unsupported in-process — use d2/graphviz." },
-          format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector high-res)" },
+          format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector, default). png = rasterized with a WHITE background, size capped at 2000x2000 (d2) / 1600x1400 (graphviz) — need larger? use svg + render_svg" },
           diagramType: { type: "string", description: "Currently ignored — diagram type is determined by DSL syntax (e.g. D2 shape: sequence_diagram). Reserved for future use." },
-          theme: { type: "string", description: "D2 only; named: 'default'(0)/'neutral'(1), or numeric themeID; unknown names error (see d2 --themes)" },
+          theme: { type: "string", description: "D2 only; named: 'default'(0)/'neutral'(1), or numeric themeID 0-300 (e.g. 200); unknown names / out-of-range IDs error clearly" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
@@ -351,11 +373,11 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          code: { type: "string", description: "D2 DSL source (same syntax as generate_diagram — see its description for the full D2 syntax guide)." },
+          code: { type: "string", description: "D2 DSL source (same syntax as generate_diagram — see generate_diagram's code parameter for the full D2 syntax guide)." },
           theme: { type: "string", description: "Light theme (D2 themeID or 'default'/'neutral'). Default 'default'." },
           darkTheme: { type: "string", description: "Dark theme (D2 themeID; '200' is a real dark palette). When set, D2 inks BOTH palettes + @media (prefers-color-scheme: dark) into the SVG so dark mode uses the dark palette. Defaults to '200' (auto dark palette). Pass '' to force single-palette (no auto-switch)." },
           title: { type: "string", description: "HTML <title> and visible heading. Default 'Interactive Diagram'." },
-          previewPng: { type: "boolean", default: false, description: "Also export a PNG snapshot (puppeteer-core if Chrome available, else resvg fallback). Default false (Chrome launch is slow)." },
+          previewPng: { type: "boolean", default: false, description: "Also export a PNG snapshot (rasterized via resvg — light palette only, the dark-palette media query is not evaluated in preview). Default false." },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
@@ -375,7 +397,7 @@ function buildTools() {
         properties: {
           manifest: {
             type: "object",
-            description: "Manifest tree root (producer-declared abstraction tree). Each node: id (REQUIRED, ^[a-z0-9-]+$, tree-unique), label (REQUIRED, UI text), diagram (REQUIRED, D2 DSL source; empty string \"\" = grouping container that MUST have children), diagramType (optional; architecture|sequence|er|class|flowchart; default architecture), children (optional array of nodes; omitted/empty = leaf), notes (optional WHY annotation, producer-only). To make a node clickable, add a drill link in its PARENT's D2: `node_key: { link: \"drill:<that-child-id>\" }`.",
+            description: "Manifest tree root (producer-declared abstraction tree). Each node: id (REQUIRED, ^[a-z0-9-]+$, tree-unique), label (REQUIRED, UI text), diagram (REQUIRED, D2 DSL source; empty string \"\" = grouping container that MUST have children), diagramType (optional; architecture|sequence|er|class|flowchart; default architecture — ANNOTATION ONLY, does NOT affect rendering: the rendered diagram comes entirely from your D2 DSL, e.g. sequence via shape: sequence_diagram in the DSL), children (optional array of nodes; omitted/empty = leaf), notes (optional WHY annotation, producer-only, not rendered). To make a node clickable, add a drill link in its PARENT's D2: `node_key: { link: \"drill:<that-child-id>\" }`.",
           },
           theme: { type: "string", description: "Light theme (D2 themeID or 'default'/'neutral'), shared across the whole tree. Default 'default'." },
           darkTheme: { type: "string", description: "Dark theme (D2 themeID; '200' is a real dark palette), shared across the whole tree. Defaults to '200' (auto dark palette). Pass '' to force single-palette (no auto-switch)." },
@@ -394,12 +416,12 @@ function buildTools() {
         type: "object",
         properties: {
           text: { type: "string", description: "Content to encode (URL or text)" },
-          format: { type: "string", enum: ["svg", "png"], default: "svg" },
-          margin: { type: "number", description: "Margin in modules (default 2)" },
-          errorCorrectionLevel: { type: "string", enum: ["L", "M", "Q", "H"], default: "M" },
+          format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector, default; png = rasterized)" },
+          margin: { type: "number", description: "Margin in modules (default 2, compact for screen embedding; pass >=4 for print/scanning — explicitly passing <4 emits an ISO 18004 quiet-zone warning)" },
+          errorCorrectionLevel: { type: "string", enum: ["L", "M", "Q", "H"], default: "M", description: "Error correction level L/M/Q/H (default M; raise to Q for logo overlays / damaged scans)" },
           dark: { type: "string", description: "Foreground color, default #000000" },
           light: { type: "string", description: "Background color, default #ffffff" },
-          width: { type: "number", description: "PNG 目标像素宽(默认 ~scale×modules;打印海报建议 ≥300);仅 png 生效,SVG 矢量无固定像素宽" },
+          width: { type: "number", description: "Target pixel width for PNG (default ~scale x modules; >=300 recommended for print posters). PNG only — SVG is vector with no fixed pixel width." },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
@@ -412,8 +434,8 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          spec: { type: "object", description: "Vega-Lite v5 spec (JSON object). Docs: https://vega.github.io/vega-lite/docs/.\nSkeleton: { data: {...}, mark: '...', encoding: {...} }.\nMARK TYPES: 'bar'(bar chart), 'line'(line), 'area', 'circle'/'point'(scatter), 'arc'(pie/donut, needs theta channel), 'tick', 'text'.\nDATA: { values: [{a:'A',b:28},{a:'B',b:55}] }.\nENCODING channels: x, y, color, size, shape, opacity, text, theta. Field types: 'quantitative'(numbers), 'nominal'(categories), 'temporal'(dates), 'ordinal'(ordered).\nPIE/DONUT: mark='arc' + encoding.theta (NOT 'angle' — v5 changed). Donut: add mark.innerRadius.\nAGGREGATION: { aggregate:'sum', field:'v', type:'quantitative' }.\nEXAMPLE bar: { data:{values:[{cat:'A',v:28}]}, mark:'bar', encoding:{x:{field:'cat',type:'nominal'},y:{field:'v',type:'quantitative'}} }\nMISTAKES: (1) pie uses 'theta' not 'angle'; mark is 'arc' not 'pie'. (2) Always set type on x/y. (3) mark object needs type key.\nNOTE: image marks with external URLs NOT embedded; use data URIs." },
-          format: { type: "string", enum: ["svg", "png"], default: "svg" },
+          spec: { type: "object", description: "Vega-Lite v5 spec (JSON object). Docs: https://vega.github.io/vega-lite/docs/.\nSkeleton: { data: {...}, mark: '...', encoding: {...} }.\nMARK TYPES: 'bar'(bar chart), 'line'(line), 'area', 'circle'/'point'(scatter), 'arc'(pie/donut, needs theta channel), 'tick', 'text'.\nDATA: { values: [{a:'A',b:28},{a:'B',b:55}] }.\nENCODING channels: x, y, color, size, shape, opacity, text, theta. Field types: 'quantitative'(numbers), 'nominal'(categories), 'temporal'(dates), 'ordinal'(ordered).\nPIE/DONUT: mark='arc' + encoding.theta (NOT 'angle' — v5 changed). Donut: add mark.innerRadius.\nAGGREGATION: { aggregate:'sum', field:'v', type:'quantitative' }.\nEXAMPLE bar: { data:{values:[{cat:'A',v:28}]}, mark:'bar', encoding:{x:{field:'cat',type:'nominal'},y:{field:'v',type:'quantitative'}} }\nMISTAKES: (1) pie uses 'theta' not 'angle'; mark is 'arc' not 'pie'. (2) Always set type on x/y. (3) mark object needs type key.\nNOTE: image marks with external URLs NOT embedded; use data URIs. Defaults if omitted: size 640x400 (unless you set autosize), Wong CVD-safe category palette, Geist font stack — your spec.config always wins." },
+          format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector, default; png = rasterized)" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
@@ -429,7 +451,7 @@ function buildTools() {
         properties: {
           tex: { type: "string", description: "LaTeX source, e.g. \\frac{a}{b} or \\sum_{i=1}^{n} i^2" },
           display: { type: "boolean", default: true, description: "true=block (display) style, false=inline" },
-          format: { type: "string", enum: ["svg", "png"], default: "svg" },
+          format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector, default; png = rasterized)" },
           fontSize: { type: "number", description: "Font size in em (default 18). Affects glyph size + SVG/PNG output dimensions." },
           width: { type: "number", description: "Target pixel width for PNG (default 600); SVG ignores this" },
           color: { type: "string", description: "Foreground color (default black)" },
@@ -451,7 +473,7 @@ function buildTools() {
           size: { type: "number", description: "Pixel size (square), default 128" },
           color: { type: "string", description: "Foreground color. Default 'currentColor' (SVG inherits surrounding text color; for PNG or standalone file pass explicit color — else black-on-transparent may be invisible on dark bg)." },
           background: { type: "string", description: "PNG background (default: white when color=currentColor, transparent otherwise; pass #ffffff/#000000 to override)." },
-          format: { type: "string", enum: ["svg", "png"], default: "svg" },
+          format: { type: "string", enum: ["svg", "png"], default: "svg", description: "Output format (svg = vector, default; png = rasterized)" },
           name: { type: "string", description: "Output filename (without extension); defaults to sanitized icon ID" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
@@ -482,9 +504,9 @@ function buildTools() {
           logo: { type: "string", description: "Embedded image (brand logo / avatar): a URL, data URI, or local file path (.png/.jpg/.webp/.svg). Placed at the top of the card content." },
           logoSize: { type: "number", description: "Logo pixel size (square edge), default 88" },
           logoRound: { type: "boolean", default: false, description: "Logo circular (for avatars); default false = rounded square" },
-          fontFamily: { type: "string", description: "Font family from @fontsource (default Geist, built-in offline, Latin only; CJK auto-stacked via Noto Sans SC)" },
+          fontFamily: { type: "string", description: "Font family from @fontsource (default Geist, built-in offline, Latin only; CJK auto-stacked via Noto Sans SC). Pass the @fontsource PACKAGE SLUG exactly — lowercase with hyphens, e.g. 'open-sans', 'fira-code' ('Open Sans' with spaces fails to fetch)" },
           fontPath: { type: "string", description: "Local base-font file path (.ttf/.otf/.woff) to override the default Geist; optional (CJK auto-supported via built-in Noto Sans SC)" },
-          format: { type: "string", enum: ["svg", "png"], default: "png" },
+          format: { type: "string", enum: ["svg", "png"], default: "png", description: "Output format (default png — OG/share images are raster; svg for web embed)" },
           name: { type: "string", description: "Output filename (without extension)" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
@@ -494,16 +516,16 @@ function buildTools() {
     {
       name: "render_svg",
       description:
-        "Render SVG source to high-quality PNG or SVG. Dual backend: resvg (92% filter fidelity, in-process) or Chrome (100% filter fidelity, needs system Chrome/Edge). AUTO-selects: SVG contains <filter>/<feGaussianBlur>/<feTurbulence> AND Chrome available → Chrome; else resvg. No AI; same input → same output.\n\nWHEN: '酷炫/霓虹/科技感' graphics with glow/blur/depth that `generate_diagram` cannot produce — write the SVG (feGaussianBlur, radial gradients, feTurbulence, etc.) and this tool rasterizes it.\n\nAVOID:\n- Structured technical diagrams (architecture / flowchart / sequence / ER / class / mindmap) → use `generate_diagram` instead (auto-layout via D2/Graphviz, no hand-written SVG needed).\n- Text-heavy cards / OG / posters → use `generate_card` instead (deterministic layout).\n\nNEXT: pair with `generate_diagram` for hybrid flows (D2 for structure, render_svg for stylized overlays).\n\nMultilingual triggers: SVG 渲染 · render SVG · SVG-Nebeneffekte (zh/en/de).",
+        "Render SVG source to high-quality PNG or SVG. Dual backend: resvg (92% filter fidelity, in-process) or Chrome (100% filter fidelity, needs system Chrome/Edge). AUTO-selects Chrome when the SVG needs it — <filter>/<feGaussianBlur>/<feTurbulence>/CSS filter:, <foreignObject>, remote <image href=https:>, @import url(https:…) or remote @font-face URLs — AND Chrome is available; else resvg (resvg renders foreignObject/remote resources BLANK — inline them as data URIs or use backend=chrome). No AI; same input → same output.\n\nWHEN: '酷炫/霓虹/科技感' graphics with glow/blur/depth that `generate_diagram` cannot produce — write the SVG (feGaussianBlur, radial gradients, feTurbulence, etc.) and this tool rasterizes it.\n\nAVOID:\n- Structured technical diagrams (architecture / flowchart / sequence / ER / class / mindmap) → use `generate_diagram` instead (auto-layout via D2/Graphviz, no hand-written SVG needed).\n- Text-heavy cards / OG / posters → use `generate_card` instead (deterministic layout).\n\nNEXT: pair with `generate_diagram` for hybrid flows (D2 for structure, render_svg for stylized overlays).\n\nMultilingual triggers: SVG 渲染 · render SVG · SVG-Nebeneffekte (zh/en/de).",
       inputSchema: {
         type: "object",
         properties: {
           svg: { type: "string", description: "SVG source code (XML string starting with <svg). Can include feGaussianBlur, feMerge, gradients, patterns — all SVG filter primitives supported." },
           format: { type: "string", enum: ["svg", "png"], default: "png", description: "Output format (png = rasterized; svg = pass-through)" },
           width: { type: "number", description: "Target pixel width for PNG (resvg backend uses this; Chrome backend uses SVG intrinsic size × scale, ignoring width). Default: auto-detect." },
-          backend: { type: "string", enum: ["auto", "resvg", "chrome"], default: "auto", description: "Rendering backend: 'auto' = detect filters + Chrome availability; 'resvg' = force lightweight (92%); 'chrome' = force Chrome (100%, needs Chrome installed)" },
+          backend: { type: "string", enum: ["auto", "resvg", "chrome"], default: "auto", description: "Rendering backend: 'auto' = detect filters/external resources + Chrome availability; 'resvg' = force lightweight (92%); 'chrome' = force Chrome (100%) — falls back to resvg with a warning when Chrome/Edge is unavailable (check `backend` in the result)" },
           scale: { type: "number", description: "Retina scale factor for Chrome backend (default 2; only affects Chrome renders)" },
-          name: { type: "string", description: "Output filename (without extension)" },
+          name: { type: "string", description: "Output filename (without extension). Defaults to svg_<id>" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
         required: ["svg"],
@@ -516,15 +538,15 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          html: { type: "string", description: "HTML source (with inline CSS/JS animations). Include a GSAP timeline on window.__tl/window.timeline, or expose window.__hf.seek(t), or use pure CSS @keyframes — all auto-detected." },
-          fps: { type: "number", description: "Frames per second (default 30, max 60)" },
-          duration: { type: "number", description: "Duration in seconds (required, max 120)" },
+          html: { type: "string", description: "HTML source (with inline CSS/JS animations). Deterministic capture protocols, in priority order: ① window.__hf.seek(t) — t in SECONDS, synchronous (best for native JS/rAF/setInterval/canvas animations: drive them from your seek handler); ② GSAP timeline on window.__tl / window.timeline / window.__gsapTimeline (paused + totalTime); ③ CSS @keyframes / WAAPI (auto pause + seek). Native JS/rAF/setInterval/canvas animations WITHOUT one of these handles advance by wall-clock → non-deterministic frames. Fragments are wrapped in a black background with zero margins; full <html> documents pass through verbatim." },
+          fps: { type: "number", description: "Frames per second (integer; default 30, max 60). fps×duration is capped at 3600 frames — excess is truncated with a warning (e.g. 120s@60fps renders only the first 60s); lower fps or duration" },
+          duration: { type: "number", description: "Duration in seconds (required, max 120; total frames fps×duration capped at 3600 — see fps)" },
           width: { type: "number", description: "Pixel width (default 1920)" },
           height: { type: "number", description: "Pixel height (default 1080)" },
           format: { type: "string", enum: ["mp4", "gif", "webm"], default: "mp4", description: "Output format (mp4 default, best compatibility)" },
-          scale: { type: "number", description: "Retina scale factor (default 1; 2 for 2× pixels)" },
-          quality: { type: "number", description: "Per-frame JPEG quality 1-100 (default 90; lower = smaller file)" },
-          name: { type: "string", description: "Output filename (without extension)" },
+          scale: { type: "number", description: "Retina scale factor (default 1; 2 for 2× pixels). Non-integers floor to the integer below" },
+          quality: { type: "number", description: "Per-frame JPEG quality 1-100 (default 90; out-of-range falls back to 90; lower = smaller file)" },
+          name: { type: "string", description: "Output filename (without extension). Defaults to video_<id>" },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
         },
         required: ["html", "duration"],
@@ -538,8 +560,8 @@ function buildTools() {
         type: "object",
         properties: {
           source: { type: "string", description: "PDF source: http(s):// URL / data:application/pdf;base64,... / file:// path / local .pdf path. Unlike extract_text, local paths are accepted (PDF rendering happens in-process)." },
-          pageRange: { type: "string", description: "Page selector (1-based, comma-separated): '3' / '1-10' / '1,3,5-7' / 'odd' / 'even' / 'last' / 'all' (default). Pages outside [1,total] are dropped with a warning." },
-          textStrategy: { type: "string", enum: ["auto", "ocr-only", "text-layer-only"], default: "auto", description: "auto (default) = try embedded text layer first, fall back to OCR if missing/sparse; ocr-only = force render+OCR every page; text-layer-only = only use embedded text (skip OCR, even if empty)." },
+          pageRange: { type: "string", description: "Page selector (1-based, comma-separated): '3' / '1-10' / '1,3,5-7' / 'odd' / 'even' / 'last' / 'all' (default). Pages outside [1,total] are dropped with a warning; resolved target pages are capped at config.pdf.maxPages (default 200)." },
+          textStrategy: { type: "string", enum: ["auto", "ocr-only", "text-layer-only"], default: "auto", description: "auto (default) = try embedded text layer first, fall back to OCR if the layer is missing (sparse layers only warn); ocr-only = force render+OCR every page; text-layer-only = only use embedded text (skip OCR, even if empty)." },
           languages: { type: "array", items: { type: "string" }, description: "BCP-47 language codes for OCR path (same as extract_text). Default [en]; [zh-Hans,en] for Chinese PDFs." },
           digitOnly: { type: "boolean", description: "OCR digits only (per-page, same as extract_text)." },
           segmentation: { type: "string", enum: ["auto", "single-line", "single-char", "sparse-text"], default: "auto", description: "OCR layout assumption (per-page, same as extract_text)." },
@@ -547,10 +569,10 @@ function buildTools() {
           ignoreAreas: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, required: ["x", "y", "w", "h"] }, description: "Ignore regions per page (watermark/stamp/header-footer). Coordinates in the rendered page pixel space (scale-applied). Blocks whose bbox falls fully inside any area are dropped. Applied per-page (not globally)." },
           mergePages: { type: "boolean", default: true, description: "true (default) = join all pages into a single `text` field (page separator = form feed \\f); false = return only `pages[]` without merging." },
           outputFormat: { type: "string", enum: ["text", "markdown", "json"], default: "text", description: "Output format: text/markdown saved as .txt/.md (page text joined); json saved as .json with pages[]+blocks. Markdown wraps each page in '## Page N' headers." },
-          scale: { type: "number", description: "PDF render scale for OCR path (default 2.0, high DPI). Clamped to [0.5, 3.0]. Higher = better OCR accuracy but more memory." },
-          concurrency: { type: "number", description: "Page concurrency (default 1 = serial; max 4). Memory-safe default; raise only for short PDFs with fast providers." },
-          wait: { type: "boolean", description: "Omit = smart (estimated ≤60s sync, >60s async returns handle); true = block until done (emits progress); false = immediately return handle." },
-          provider: { type: "string", description: "OCR vision provider; default config.defaultVisionProvider (tesseract fallback; paddle recommended for Chinese)." },
+          scale: { type: "number", description: "PDF render scale for OCR path (default 2.0, high DPI). Must be within [0.5, 3.0] — out-of-range is rejected with an error (not clamped)." },
+          concurrency: { type: "number", description: "Validated [1,4] but currently a NO-OP — the v1 pipeline is strictly serial (reserved for a future parallel pool)." },
+          wait: { type: "boolean", description: "Omit = smart (estimated ≤60s sync, >60s async returns a handle; estimation assumes OCR speed ~per page — for known digital PDFs pass wait=true or textStrategy=text-layer-only to get the result in one call); true = block until done (emits progress); false = return a handle immediately." },
+          provider: { type: "string", description: "OCR vision provider; default config.defaultVisionProvider (tesseract, zero-config). For Chinese: glm-vision (free cloud key, zero-deploy) or paddle (self-hosted) recommended — see list_vision_capabilities." },
           download: { type: "boolean", default: true, description: "Save extracted text to file (default true)." },
           name: { type: "string", description: "Output filename (without extension). Defaults to pdf_<uuid>." },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
@@ -578,13 +600,13 @@ function buildTools() {
       description:
         "Extract embedded generation metadata from a PNG / AI-generated image — reverse-engineer the prompt and params (逆向提示词/参数). Parses PNG tEXt/iTXt/zTXt chunks locally: ComfyUI workflow JSON (Agnes outputs embed the full ComfyUI prompt+model+sampler+seed+size) and A1111 WebUI parameters. Returns structured: generator (ComfyUI/A1111/none), positive/negative prompt, model, sampler, steps, cfg, seed, size, raw chunk list. Zero AI, zero network (unless imageSource is a URL). " +
         "WHEN TO CHOOSE: user shows an AI-generated image and asks 'what prompt was this / 什么参数生成的 / 逆向 prompt / 提取生成参数'. " +
-        "AVOID: ordinary photos (no embedded metadata, generator=none); for AI visual understanding (scene/object description) use describe_image. " +
+        "AVOID: generator=none does NOT prove 'ordinary photo' — it also covers unsupported generators (NovelAI/InvokeAI/Midjourney embed different keywords — inspect `chunks`) and stripped metadata; for AI visual understanding (scene/object description) use describe_image. " +
         "NEXT: recover the prompt, then re-run generate_image with it to reproduce. Multilingual triggers: 逆向提示词 · extract prompt · 提取参数 · prompt reverse · 生成参数 (en/zh).",
       inputSchema: {
         type: "object",
         properties: {
-          imageSource: { type: "string", description: "Image source: local file path / data URI / http(s) URL. PNG is richest (embeds ComfyUI/A1111 metadata)." },
-          includeRaw: { type: "boolean", default: false, description: "Also return the raw workflow JSON object (default false, structured summary only)." },
+          imageSource: { type: "string", description: "Image source: local file path / data URI / http(s) URL. PNG ONLY — JPEG/WebP return generator=none with a not-a-PNG warning (their metadata, if any, is not parsed)." },
+          includeRaw: { type: "boolean", default: false, description: "Also return the raw workflow JSON object (default false, structured summary only). ComfyUI images only — A1111 has no JSON workflow (see chunks[].textPreview for its raw parameters text)." },
         },
         required: ["imageSource"],
       },
@@ -614,6 +636,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const resolveOutDir = (v: unknown) =>
     optString(v) ? path.resolve(optString(v)!) : config.outDir;
 
+  /**
+   * 防覆盖避让(审计 E-01,downloadAsset 同款语义):目标已存在时加 -2/-3… 序号,绝不静默覆盖
+   * 既有文件 —— 与 generate_image/get_video/flow_status 的 name 参数已承诺的
+   * "never silently overwrites" 对齐,消除「同名参数在不同工具间碰撞语义对立」的模式迁移陷阱。
+   */
+  function uniqueFilePath(fp: string): string {
+    if (!fsSyncExists(fp)) return fp;
+    const dot = fp.lastIndexOf(".");
+    const stem = dot > 0 ? fp.slice(0, dot) : fp;
+    const ext = dot > 0 ? fp.slice(dot) : "";
+    for (let i = 2; ; i++) {
+      const cand = `${stem}-${i}${ext}`;
+      if (!fsSyncExists(cand)) return cand;
+    }
+  }
+
   /** 本地渲染落盘(diagram/qr/chart 共用)。sanitize name(BL-04)+ png 断言(DL-02)+ 去重(R-CI-02)。 */
   async function writeLocalRender(
     outDir: string,
@@ -625,7 +663,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     await fs.mkdir(outDir, { recursive: true });
     const safeName = path.basename(name ?? `${prefix}_${Date.now().toString(36)}`); // BL-04: sanitize
     const ext = format === "png" ? ".png" : ".svg";
-    const fp = path.join(outDir, safeName + ext);
+    const fp = uniqueFilePath(path.join(outDir, safeName + ext));
     if (format === "png") {
       if (!rendered.png) throw new Error(`${prefix} engine produced no PNG`); // DL-02: 断言
       await fs.writeFile(fp, rendered.png);
@@ -785,7 +823,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // 音频参考(flow r2v 专属叠加):mediaId 数组(预设语音 slug,非 URI 形态)——
         // 存在性/预设性校验归 provider 提交路径结构化 S301;不消费的 provider 自行告警忽略。
         const audioMediaIds = toStringArray(a.audioMediaIds);
-        if (audioMediaIds?.some((id) => !id?.trim())) return err("`audioMediaIds` 每项须为非空 mediaId(flow_status(action=voices) 的预设语音)。");
+        if (audioMediaIds?.some((id) => !id?.trim())) return err("`audioMediaIds` 每项须为非空 mediaId(无参 flow_status() 快照 preset_voices 字段的预设语音)。");
         const videoMediaId = optString(a.videoMediaId);
         // M4:numFrames 与 durationSeconds 互斥(防 silent 覆盖 + estimate 错位导致长时间阻塞)
         if (optNumber(a.numFrames) != null && optNumber(a.durationSeconds) != null) {
@@ -904,7 +942,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         created.warnings?.forEach((w: string) => warnings.push(w));
         // 异步 hint 用实际句柄键(videoId 优先,否则 taskId)+ 实际 provider(activeProvider 防 fallback 后错位)
         const handleKey = created.videoId ? `videoId="${created.videoId}"` : `taskId="${created.taskId}"`;
-        const handleHint = `get_video(${handleKey}${activeProvider.name !== config.defaultVideoProvider ? `, provider="${activeProvider.name}"` : ""})`;
+        const handleHint = `get_video(${handleKey}${activeProvider.name !== videoChainHeadName() ? `, provider="${activeProvider.name}"` : ""})`;
 
         if (!wait) {
           return ok({
@@ -965,7 +1003,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (!a.videoId && !a.taskId) {
           return err("get_video requires `videoId` (preferred) or `taskId`");
         }
-        const p = asVideoProvider(getProvider(optString(a.provider) ?? config.defaultVideoProvider));
+        // provider 缺省 = 视频链头(与 buildTools/create_video 同一真源:getProviderPriority 链头,
+        // 无能力/未配置回落 legacy 默认 —— 审计 A-07:原回落 defaultVideoProvider,链头≠默认时
+        // 按 schema 默认省略 provider 会打到错误后端 task not found)
+        const p = asVideoProvider(getProvider(optString(a.provider) ?? videoChainHeadName()));
         const r = await p.getVideo({ videoId: optString(a.videoId), taskId: optString(a.taskId) });
         let localPath: string | null = null;
         if (r.status === "completed" && r.url && a.download !== false) {
@@ -1079,7 +1120,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             : st.kind === "video" ? ".mp4" : ".png";
           // 自定义名走 downloadAsset 同款清洗(audit finding-14:防 : ? 控制字符原样进文件名)
           const safeName = sanitizeFileBase(optString(a.name)) || `flow_${mediaId.slice(0, 8)}`;
-          localPath = path.join(outDir, safeName + ext);
+          localPath = uniqueFilePath(path.join(outDir, safeName + ext));
           await fs.writeFile(localPath, got.buf);
           // P0-4 产物守门员(第 4 条落盘路径补齐,audit finding-12):视频传 mp4 容器探活;
           // 图片/缩略图不传 format,让 magic bytes 自动路由到对应检查分支
@@ -1111,7 +1152,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           return err(`provider "${activeProvider.name}" 不支持 extract-text(支持:${[...activeProvider.visionTasks()].join("/")})。`);
         }
         // ignoreAreas 严格校验(parseIgnoreAreas 接受 {x,y,w,h} / [[x1,y1],[x2,y2]] 两形态,非法即抛 → isError)
-        let ignoreAreas;
+        let ignoreAreas: ReturnType<typeof parseIgnoreAreas> = undefined;
         try {
           ignoreAreas = parseIgnoreAreas(a.ignoreAreas);
         } catch (e: any) {
@@ -1157,17 +1198,20 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const tbpu = applyTbpu(filtered.blocks, layout);
           if (tbpu.warnings?.length) warnings.push(...tbpu.warnings);
           result = { ...result, blocks: tbpu.blocks, text: tbpu.text };
+        } else if ((ignoreAreas?.length || (layout && layout !== "none")) && activeProvider.name !== "tesseract") {
+          // glm-vision/vlm 只返 text 无 blocks → ignoreAreas/layout 后处理静默跳过 —— 必须告知(审计 B-04)
+          warnings.push(`provider ${activeProvider.name} 未返回 blocks,ignoreAreas/layout 后处理未应用(仅 tesseract 返回带 bbox 的 blocks;paddle 的 blocks 无 bbox,ignoreAreas 仅告警级)。`);
         }
         let localPath: string | null = null;
         if (result.text && a.download !== false) {
           const outDir = resolveOutDir(a.outDir);
           await fs.mkdir(outDir, { recursive: true });
           const safeName = path.basename(optString(a.name) ?? `ocr_${Date.now().toString(36)}`);
-          localPath = path.join(outDir, `${safeName}.txt`);
+          localPath = uniqueFilePath(path.join(outDir, `${safeName}.txt`));
           await fs.writeFile(localPath, result.text, "utf-8");
         }
         if (activeProvider.name === "tesseract") {
-          warnings.push("使用 tesseract 进程内 OCR(零配置兜底,中文精度弱);配置 paddleocr provider 可获中文 SOTA。");
+          warnings.push("使用 tesseract 进程内 OCR(零配置兜底,中文精度弱);配置 glm-vision(免费云端 key)或 paddle provider 可获中文 SOTA。");
         }
         return ok({
           text: result.text,
@@ -1189,7 +1233,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const actualFormat = result.table.format ?? "html";
           const ext = actualFormat === "html" ? "html" : actualFormat === "markdown" ? "md" : "txt";
           const safeName = path.basename(optString(a.name) ?? `table_${Date.now().toString(36)}`);
-          localPath = path.join(outDir, `${safeName}.${ext}`);
+          localPath = uniqueFilePath(path.join(outDir, `${safeName}.${ext}`));
           await fs.writeFile(localPath, result.table.content, "utf-8");
         }
         return ok({
@@ -1209,7 +1253,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const outDir = resolveOutDir(a.outDir);
           await fs.mkdir(outDir, { recursive: true });
           const safeName = path.basename(optString(a.name) ?? `chart_${Date.now().toString(36)}`);
-          localPath = path.join(outDir, `${safeName}.json`);
+          localPath = uniqueFilePath(path.join(outDir, `${safeName}.json`));
           await fs.writeFile(localPath, content, "utf-8");
         }
         return ok({
@@ -1230,7 +1274,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const outDir = resolveOutDir(a.outDir);
           await fs.mkdir(outDir, { recursive: true });
           const safeName = path.basename(optString(a.name) ?? `desc_${Date.now().toString(36)}`);
-          localPath = path.join(outDir, `${safeName}.md`);
+          localPath = uniqueFilePath(path.join(outDir, `${safeName}.md`));
           await fs.writeFile(localPath, result.description, "utf-8");
         }
         return ok({
@@ -1274,11 +1318,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             engine: engineName as any,
             format,
             theme: optString(a.theme),
-            diagramType: optString(a.diagramType) ?? optString(a.type),
+            diagramType: optString(a.diagramType),
             name: optString(a.name),
           });
         } catch (e: any) {
           const msg = String(e?.message ?? e);
+          // theme 参数错(d2.ts resolveD2Theme 抛,前缀 unknown D2 theme / D2 themeID)是用户输入错,
+          // 非引擎错误形态 —— 直抛原样消息,不进 normalizeEngineError(否则被拼上
+          // 「未识别的错误形态,请反馈维护者」噪声尾,把用户输入错误包装成疑似 bug;审计 C-07)
+          if (D2_THEME_INPUT_ERROR.test(msg)) throw new Error(msg);
           // PNG 复用路径抛的 resvg 错带 `[resvg] ` 前缀(P0-2 §4.3.4),用 engineHint 路由到 resvg patterns 表
           const isResvg = /^\[resvg\] /i.test(msg);
           const normalized = normalizeEngineError(
@@ -1331,6 +1379,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           // 引擎错(D2 / resvg PNG 路径)沿用 generate_diagram 归一化范式。
           // resvg 错经 [resvg] 前缀路由(见 export-png.ts renderSvgToPngBuffer);否则按 d2 归一化。
           const isResvg = /^\[resvg\] /i.test(msg);
+          if (!isResvg && D2_THEME_INPUT_ERROR.test(msg)) throw new Error(msg); // theme 输入错直抛(同 generate_diagram)
           const normalized = normalizeEngineError(
             isResvg ? "resvg" : "d2",
             msg.replace(/^\[resvg\] /i, ""),
@@ -1375,6 +1424,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           // input 传空串:nit 审查 —— manifest 非 D2 源,传 JSON.stringify(manifest) 会标错输入源
           // (pickD2Offending 取整 manifest 单行 split 后 offendingConstruct 错位)。D2 错本身已含足够信息。
           const isResvg = /^\[resvg\] /i.test(msg);
+          if (!isResvg && D2_THEME_INPUT_ERROR.test(msg)) throw new Error(msg); // theme 输入错直抛(同 generate_diagram)
           const normalized = normalizeEngineError(
             isResvg ? "resvg" : "d2",
             msg.replace(/^\[resvg\] /i, ""),
@@ -1564,7 +1614,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // 视频落盘(Buffer → 文件,sanitize name 同 writeLocalRender)
         await fs.mkdir(outDir, { recursive: true });
         const safeName = path.basename(optString(a.name) ?? `video_${Date.now().toString(36)}`);
-        const fp = path.join(outDir, `${safeName}.${rendered.ext}`);
+        const fp = uniqueFilePath(path.join(outDir, `${safeName}.${rendered.ext}`));
         await fs.writeFile(fp, rendered.video);
         // P0-4 产物守门员:ffmpeg 容器探活(fatal=container-decodable / warning=tracks-present)。
         const checked = await assertOutputClean(fp, { tool: "render_video", format });
@@ -1693,7 +1743,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           await fs.mkdir(outDir, { recursive: true });
           const safeName = path.basename(optString(a.name) ?? `pdf_${Date.now().toString(36)}`);
           const ext = outputFormat === "json" ? ".json" : outputFormat === "markdown" ? ".md" : ".txt";
-          localPath = path.join(outDir, `${safeName}${ext}`);
+          localPath = uniqueFilePath(path.join(outDir, `${safeName}${ext}`));
           let fileContent: string;
           if (outputFormat === "json") {
             fileContent = JSON.stringify({
@@ -1712,7 +1762,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (result.path === "text-layer" && preferred.name === "tesseract") {
           // 走 text-layer 时 tesseract 未被实际调用,不必加兜底提示
         } else if (result.path !== "text-layer" && preferred.name === "tesseract") {
-          warnings.push("使用 tesseract 进程内 OCR(零配置兜底,中文精度弱);配置 paddleocr provider 可获中文 SOTA。");
+          warnings.push("使用 tesseract 进程内 OCR(零配置兜底,中文精度弱);配置 glm-vision(免费云端 key)或 paddle provider 可获中文 SOTA。");
         }
         return ok({
           path: result.path,
@@ -1766,7 +1816,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const safeName = path.basename(optString(a.name) ?? `pdf_${job.id}`);
           const outputFormat = (job.input.outputFormat ?? "text") as "text" | "markdown" | "json";
           const ext = outputFormat === "json" ? ".json" : outputFormat === "markdown" ? ".md" : ".txt";
-          localPath = path.join(outDir, `${safeName}${ext}`);
+          localPath = uniqueFilePath(path.join(outDir, `${safeName}${ext}`));
           let fileContent: string;
           if (outputFormat === "json") {
             fileContent = JSON.stringify({
@@ -1831,7 +1881,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 function requireString(v: unknown, name: string): string {
   if (typeof v !== "string" || !v.trim()) {
-    throw new Error(`\`${name}\` is required and must be a non-empty string`);
+    throw new Error(`参数 \`${name}\` 必填且须为非空字符串。`);
   }
   return v;
 }

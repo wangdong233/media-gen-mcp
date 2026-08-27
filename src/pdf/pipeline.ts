@@ -123,6 +123,8 @@ function textLayerHintsWarning(input: PdfPipelineInput, ignoreAreas: IgnoreAreaI
   if (input.digitOnly) ignored.push("digitOnly");
   if (input.segmentation) ignored.push("segmentation");
   if (ignoreAreas?.length) ignored.push("ignoreAreas");
+  // layout(TBPU)同样只作用于 OCR 路径的 blocks;text-layer 页无 blocks 可重排(审计 B-11 补漏)
+  if (input.layout && input.layout !== "none") ignored.push("layout");
   if (!ignored.length) return null;
   return `text-layer 路径不应用 ${ignored.join("/")} hints(这些仅 OCR 路径生效)。如需应用,请改用 textStrategy=ocr-only。`;
 }

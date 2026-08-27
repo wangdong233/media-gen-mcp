@@ -1193,24 +1193,6 @@ describe("E-parity:V2V edit 模式 wire(契约 §11.1;bundle Zod + 假 key 404 �
   });
 });
 
-describe("预设语音(契约 §8.8;原 flow_entity 工具 2026-08-26 用户裁决移除,listPresetVoices 保留供 flow_status voices 消费)", () => {
-  const VOICES = [
-    { mediaId: "achernar", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Achernar", description: "Female, soft, high pitch", isPresetAudioSample: true, audioSamplePath: "https://gstatic.com/aitestkitchen/voices/samples/Achernar.wav" } } } },
-    { mediaId: "charon", mediaType: "AUDIO", media: { audio: { generatedAudio: { name: "Charon", description: "Male", isPresetAudioSample: true } } } },
-  ];
-  test("listPresetVoices:路径 e.media.audio.generatedAudio(§11.4 纠偏:非条目顶层)", async () => {
-    const { p } = newProvider({ externalRef: VOICES });
-    const voices = await p.listPresetVoices();
-    assert.equal(voices.length, 2);
-    assert.equal(voices[0].id, "achernar");
-    assert.equal(voices[0].displayName, "Achernar");
-    assert.equal(voices[0].description, "Female, soft, high pitch");
-    assert.match(voices[0].sampleUrl ?? "", /Achernar\.wav$/);
-  });
-});
-
-// ═══ 14. per-tier 价矩阵 + tier 门禁(契约 §14.4;D-4 双向修正;StubTransport 零真实消耗) ═══
-
 describe("staticTierCosts per-tier 静态矩阵(§14.4;2026-08-27 live 快照蒸馏)", () => {
   test("abra 家族全 tier 同价(时长表)", () => {
     assert.deepEqual(staticTierCosts("abra_t2v_8s"), { SERVICE_TIER_ADVANCED: 12, SERVICE_TIER_INTERMEDIATE: 12, SERVICE_TIER_ENTRY: 12 });

@@ -226,9 +226,14 @@ export async function extractImageMeta(req: ExtractImageMetaRequest): Promise<Im
   const buf = await readImageBuffer(req.imageSource);
   const chunks = parsePngTextChunks(buf);
   const result: ImageMetaResult = { generator: "none", chunks: [], warnings };
+  // 区分「不是 PNG」与「PNG 无 text chunk」:JPEG/WebP 的 AI 图也走这里 —— 不能让调用方
+  // 把"格式不支持"误读成"非 AI 生成"(审计 D-6)。
+  const isPng = buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
 
   if (chunks.length === 0) {
-    warnings.push("未找到 PNG text chunk(可能不是 AI 生成图,或元数据被剥离)。");
+    warnings.push(isPng
+      ? "未找到 PNG text chunk(可能不是 AI 生成图,或元数据被剥离)。"
+      : "文件不是 PNG(本工具仅解析 PNG tEXt/iTXt/zTXt chunk;JPEG/WebP 不解析 —— 不能据此断定非 AI 生成)。");
   }
   for (const c of chunks) {
     result.chunks.push({

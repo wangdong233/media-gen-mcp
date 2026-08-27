@@ -308,6 +308,8 @@ export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoPro
     const warnings: string[] = [];
     if (req.images?.length) warnings.push("agnes 不支持 images(参考图),已忽略。");
     if (req.audioMediaIds?.length) warnings.push("agnes 不支持 audioMediaIds(音频参考),已忽略。");
+    // 显式 mode=text-to-video + image:agnes 的 mode 是权威选择器,起始图被丢弃 —— 必须告警(审计 A-16)
+    if (req.mode === "text-to-video" && req.image) warnings.push("显式 mode=text-to-video 时忽略 image 起始图(agnes 的 mode 是权威选择器;要图生视频请省略 mode 或改 image-to-video)。");
     if (req.videoMediaId) warnings.push("agnes 不支持 videoMediaId(视频引用),已忽略。");
 
     await this.enqueueSubmit(model);

@@ -54,7 +54,7 @@ process.env.MEDIA_GEN_MCP_CONFIG = cfgPath;
 
 const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
-const { parseProviderPriority, CONFIG_FILE } = require_(path.join(distDir, "config.js"));
+const { parseProviderPriority, CONFIG_FILE, config } = require_(path.join(distDir, "config.js"));
 const reg = require_(path.join(distDir, "providers/registry.js"));
 const { getProviderPriority, getFallbackProvider, resolveProvider, getProvider } = reg;
 const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
@@ -312,5 +312,37 @@ describe("flow 60s 软熔断(notifyUnavailable → ensureReady 零探测)", () =
       // 还原:等待窗口过期,免污染同文件后续用例
       return sleep(35).then(() => { flow.cooldownMs = prev; });
     }
+  });
+});
+
+// ═══ 审计 A-01(critical):flow 助记视频 key(abra_t2v)归属 ═══
+// schema model 描述承诺 "or mnemonic+durationSeconds (abra_t2v + 8)",工具层归属校验
+// 不得在到达 flow.ts resolveVideoModelKey 的助记解析之前拦下。
+
+describe("resolveProvider:flow 助记视频 key 归属(审计 A-01)", () => {
+  test("显式 provider=flow + mnemonic(abra_t2v)→ 不再报「未知模型」", () => {
+    const r = resolveProvider("flow", "abra_t2v", "video");
+    assert.equal(r.provider.name, "flow");
+    assert.equal(r.autoRouted, false);
+  });
+  test("链头 agnes + mnemonic(abra_i2v/abra_r2v)→ 自动路由到 flow(唯一拥有者)", () => {
+    reg.__priorityOverrideForTests.video = null;
+    const head = reg.getProviderPriority("video")?.[0] ?? config.defaultVideoProvider;
+    for (const m of ["abra_i2v", "abra_r2v"]) {
+      const r = resolveProvider(undefined, m, "video");
+      assert.equal(r.provider.name, "flow", `${m} 应归属 flow`);
+      assert.equal(r.autoRouted, true);
+      assert.equal(r.routedFrom, head);
+    }
+  });
+  test("带时长后缀的完整 key(abra_t2v_8s)不受影响(目录内直接命中)", () => {
+    const r = resolveProvider(undefined, "abra_t2v_8s", "video");
+    assert.equal(r.provider.name, "flow");
+  });
+  test("助记不误伤图像模态(image 的 abra_t2v 仍报未知模型)", () => {
+    assert.throws(
+      () => resolveProvider(undefined, "abra_t2v", "image"),
+      (e: any) => e.message.includes("未知模型"),
+    );
   });
 });
