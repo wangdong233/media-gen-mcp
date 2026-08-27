@@ -546,3 +546,19 @@ CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome
 - **edit 首次 live**:`batchAsyncGenerateVideoEditVideo` 一次 200 —— §11.1 形状全对(顶层无 useV2ModelConfig、requests[0]={aspectRatio 源继承 LANDSCAPE, metadata, seed, textInput, videoInput:{mediaId}, videoModelKey});~30s SUCCESSFUL;**edit 保留源视频时长(4s)/比例(16:9)且带音轨**(对源做"雨夜"类重打光指令)。EDIT_WIRE_WARNING 常量与提交响应警示已随 live 验证删除(src/providers/flow.ts 定义+消费、test/flow.test.ts import+断言,dist-test 随 build 再生)。
 - **音频参考首次 live**:`referenceAudio=[{mediaId:"achernar"}]` 提交 200,**生成 SUCCESSFUL 未被 BLOCK_SILENCED_VIDEOS 过滤**;产物音轨 mean_volume -20.0dB / max -0.9dB,比同期纯环境音基线(t2v -31.8dB / edit -36.2dB)**高约 12-16dB —— 语音确实混入,未被静默**(视觉交叉验证:画面人物对镜头说话+手势)。说话人与 achernar 音色一致性未做说话人级核验(无 speaker-ID,如实记录)。§14.6 的实验期告警文案已按此观察更新。
 - 台账:888 →881(t2v,-7)→861(edit,-20)→854(r2v+audio,-7);终值 854 复核一致。
+
+### 11.3.1 视频 E2E 取消 live 结论(2026-08-27 用户授权验证;积分 904→880,含一笔操作失误双提交,见 §15)
+
+用户质疑"Flow 是否真有取消入口"——验证结论:**wire 存在,实用层面基本不可用**:
+
+| 打点 | 家族/key | 时刻 | 结果 |
+|---|---|---|---|
+| cancel@+2s | abra_t2v_4s | 提交后 ~2s | **400 FAILED_PRECONDITION** |
+| cancel@+17s | abra_t2v_4s | — | 已 SUCCESSFUL → notCancelable(工具正确分类) |
+| cancel@+2s | veo_3_1_t2v_lite | 提交后 ~2s | **400 FAILED_PRECONDITION**(同族同拒) |
+| cancel@+45s | veo_3_1_t2v_lite | — | 已 SUCCESSFUL(生成实际 ~45s,远快于旧观测 ~110s)→ notCancelable |
+
+- 图片 in-flight 取消 404(§11.3 既有);视频早取消 400;**中段窗口未测到**(生成太快,重试时已完成)。
+- **工具语义已降级为 best-effort**(index.ts cancelMediaIds 描述 2026-08-27 更新):只在"数秒内发现提交错"时有价值。
+- 🔴 顺带发现(操作失误,如实记录):provider 直调 `createVideo` **无确认门**(门接线在 index.ts handler 层,types.ts 注释明示)——live 脚本两次直调 = 双提交(d52a26ed/0b3faa47 各 -7)。设计如此非缺陷;**live 脚本纪律:每笔提交只调一次 createVideo,门操作用 beginSubmissionConfirm 表达**。
+- 附带观测:veo lite 实际生成耗时 ~45s(契约 §3 旧表 ~110s 已过时,模型侧明显提速)。
