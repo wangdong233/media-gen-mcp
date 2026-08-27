@@ -103,6 +103,9 @@ class StubTransport {
       return this.json(this.sessionBody);
     }
     if (args.url.includes("credits?key=")) return this.json(this.creditsBody);
+    if (args.method === "POST" && args.url.includes("project.createProject")) {
+      return this.json({ result: { data: { json: { result: { projectId: `new-pid-${this.calls.length}` } } } } });
+    }
     if (args.url.includes("flow.projectInitialData")) {
       return this.json({ result: { data: { json: { projectContents: { media: this.media, workflows: this.workflows, externalReferenceMedia: this.externalRef }, modelConfig: this.modelConfig } } } });
     }
@@ -1493,6 +1496,19 @@ describe("referenceAudio(§14.6 假 key 404 探针定型;v1 收窄 = r2v + 预�
       () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: ["achernar", "charon"] }),
       (e: any) => e.code === "S301" && /该 key 1.*目录 inputSpec/.test(e.message),
     );
+  });
+});
+
+describe("项目解析与命名规范(2026-08-28 用户裁决:一个项目一个命名)", () => {
+  test("自动新建的 projectTitle 固定为 media-gen-mcp(不含日期 —— 防日期家族残留再犯)", async () => {
+    const { t, p } = newProvider({ providerCfg: { projectId: undefined } }); // 覆盖默认 proj-test,逼出文件解析路径
+    (p as any).projectFile = path.join(os.tmpdir(), `no-such-project-file-${crypto.randomUUID()}.json`); // 注入缝:文件不存在 → 走新建
+    const pid = await p.ensureProjectId();
+    assert.ok(pid, "应返回 projectId");
+    const create = t.calls.find((c: any) => c.url.includes("project.createProject"));
+    assert.ok(create, "应发出 createProject");
+    const body = JSON.parse(Buffer.from(create.bodyB64!, "base64").toString("utf8"));
+    assert.equal(body.json.projectTitle, "media-gen-mcp", "命名固定,不带日期后缀");
   });
 });
 

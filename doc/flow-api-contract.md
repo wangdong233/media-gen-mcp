@@ -76,6 +76,8 @@
 - `&mediaUrlType=MEDIA_URL_TYPE_THUMBNAIL` → image/jpeg(**raw JPEG 字节流**;🔴 2026-08-23 F 轮 live 勘误:旧记录 "base64 文本" 是错的 —— 经 dist provider 代码路径零积分实证,2,508,689B 视频的缩略图 = 43,007B、以 FF D8 JPEG magic 开头,arrayBuffer 即完整 JPEG。推论:缩略图字节数与本资产 mediaBlobSize 本就不同,**字节完整性校验只适用原始资产下载**;详见 §10.9)
 
 ### 2.7 项目创建(POST labs.google/fx/api/trpc/project.createProject,cookie)
+
+> **命名规范(2026-08-28 用户裁决)**:自动新建 projectTitle **固定 `media-gen-mcp`**(一个项目一个命名、明确标识)。🔴 教训:旧命名 `` `media-gen-mcp ${UTC日期}` `` 在 CI-parity 门禁(`HOME=$(mktemp -d)`)下 flow-project.json 读不到 → integration 测试真调 flow_status → **每次跑门限都在 Flow 账号新建一个日期空项目**(用户项目列表中的一串 "media-gen-mcp 2026-08-26" 即此残留;2026-08-26 CI-parity 纪律引入起累计)。修复:①命名固定 ②`test/flow-tools.integration.test.mjs` CI=true 强制 skip 真连 ③自动新建时 stderr 留痕。残留空项目无积分价值,可 UI 手删。
 body `{"json":{"projectTitle":"<name>","toolName":"PINHOLE"}}` → {result:{data:{json:{result:{projectId}}}}}
 
 ## 3. 模型矩阵(2026-08-22 快照,INTERMEDIATE tier)

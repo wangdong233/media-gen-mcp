@@ -968,15 +968,21 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   // ── 项目管理(契约 §2.7 / ~/.media-gen-mcp/flow-project.json) ──
 
   /** 解析 projectId:config → flow-project.json → 自动新建(POST project.createProject,零积分)。 */
+  projectFile: string | null = null; // 测试注入缝(对齐 preflightTtlMs/entitiesFile 先例;默认 ~/.media-gen-mcp/flow-project.json)
   async ensureProjectId(): Promise<string> {
     if (this.cfgProjectId) return this.cfgProjectId;
     try {
-      const raw = fs.readFileSync(FLOW_PROJECT_FILE, "utf-8");
+      const raw = fs.readFileSync(this.projectFile ?? FLOW_PROJECT_FILE, "utf-8");
       const pid = JSON.parse(raw)?.projectId;
       if (typeof pid === "string" && pid) return pid;
     } catch { /* 文件不存在/损坏 → 走新建 */ }
     await this.ensureReady();
-    const body = JSON.stringify({ json: { projectTitle: `media-gen-mcp ${new Date().toISOString().slice(0, 10)}`, toolName: TOOL_INTERNAL_NAME } });
+    // 项目命名规范(2026-08-28 用户裁决):固定名 media-gen-mcp —— 一个项目一个命名、明确标识。
+    // 🔴 教训:旧命名 `media-gen-mcp <UTC日期>` 在 HOME 被换(CI-parity 门禁)导致 flow-project.json
+    // 读不到时被 integration 测试真实触发,每次跑门禁都在 Flow 账号新建一个日期项目(用户在项目
+    // 列表看到的一串空项目即此残留)。CI 环境现已强制 skip 真连;此命名固定兜底防"日期家族"再犯。
+    const PROJECT_TITLE = "media-gen-mcp";
+    const body = JSON.stringify({ json: { projectTitle: PROJECT_TITLE, toolName: TOOL_INTERNAL_NAME } });
     const f = await this.transport.pageFetch({
       url: `${LABS_ORIGIN}/fx/api/trpc/project.createProject`,
       method: "POST",
@@ -989,12 +995,15 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const pid = created?.result?.data?.json?.result?.projectId;
     if (!pid) throw new FlowError("S202", `createProject 响应无 projectId:${bufToUtf8(f.bodyB64).slice(0, 200)}`, { flowStatus: 0 });
     try {
-      fs.mkdirSync(path.dirname(FLOW_PROJECT_FILE), { recursive: true });
-      fs.writeFileSync(FLOW_PROJECT_FILE, JSON.stringify({
+      const persistFile = this.projectFile ?? FLOW_PROJECT_FILE;
+      fs.mkdirSync(path.dirname(persistFile), { recursive: true });
+      fs.writeFileSync(persistFile, JSON.stringify({
         provider: "flow", projectId: pid, createdAt: new Date().toISOString(),
-        note: "media-gen-mcp flow provider 自动新建;复用此项目,失效再删让其重建",
+        note: "media-gen-mcp flow provider 自动新建(固定命名);复用此项目,失效再删让其重建",
       }, null, 2));
     } catch { /* 落盘失败不阻断(下次会再新建);projectId 已在返回值里 */ }
+    // 自动新建非常态(HOME 正常 + flow-project.json 在则永不走到)—— stderr 留痕,便于发现环境异常
+    console.error(`[flow] 已自动新建 Flow 项目 "${PROJECT_TITLE}"(${pid});若非预期,请检查 HOME 与 ~/.media-gen-mcp/flow-project.json`);
     return pid;
   }
 
