@@ -3,7 +3,7 @@
 > The all-in-one image toolkit for Claude Code — generate, draw, and understand images in a single sentence. Free.
 
 <p align="center">
- <img src="https://img.shields.io/badge/version-0.14.0-blue">
+ <img src="https://img.shields.io/badge/version-0.15.0-blue">
  <img src="https://img.shields.io/badge/license-MIT-green">
  <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -151,52 +151,21 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "What prompt and params was this image generated with? Can I reproduce it?"
 > Get: structured params — positive/negative prompt, model, sampling steps, CFG, seed, size (parsed locally from PNG-embedded ComfyUI/A1111 metadata; Agnes-generated images carry the full generation params — recover the prompt and reproduce with generate_image in one click)
 
-### Google Flow Provider (Veo 3.1 / Nano Banana — No API Key, 0-Credit Images)
+### Google Flow Provider (Veo 3.1 / Nano Banana — No API Key)
 
-**Generate images / videos through Google Flow using your local Chrome login state** (Google Labs' [labs.google/fx/tools/flow](https://labs.google/fx/tools/flow)) — no API key needed, and it doesn't touch your Agnes / Zhipu free quota. Outputs download automatically and carry a `mediaId` for later management.
+**What it is**: wires your locally-logged-in Google Flow Chrome into tools — no API key; images are **0-credit**, videos bill credits (7-100/clip) behind a **billing confirm gate**: the first call only returns a cost estimate + confirm token; nothing submits until you confirm.
 
-**Prerequisite (one time)**: log into Flow once in your local Chrome.
+**Prerequisite** (once): log into labs.google/fx in local Chrome — `lasso launch-chrome --port 9223 --idle-ms 0`, then log in; the MCP talks over CDP automatically.
 
-```bash
-lasso launch-chrome --port 9223 --mode visible
-# No lasso yet? npm i -g lasso-mcp
-# In the Chrome window that opens, visit https://labs.google/fx/tools/flow and log in; keep Chrome running afterwards
-```
+**What you can say**:
 
-If Chrome isn't running / not logged in, the tools return a **structured error code + guidance** (S100 = can't reach Chrome, S101 = no open Flow page) — follow the hint, launch once, done. Never a silent failure, never a sneaky provider switch.
+| You say … | You get |
+|---|---|
+| "Use Flow to draw a …" (or configure the chain so images auto-route to Flow) | 0-credit AI images (Nano Banana 2/Pro/Lite, incl. 2K upscale) |
+| "Use Flow to animate this image / make an 8s video" | Veo 3.1 / Omni Flash video (text-to-video, image-to-video, reference-image consistency, first+last frame, extend, edit, 1080p upscale — upscale 0-credit) |
+| "How many Flow credits are left? / download that clip / delete these junk images / make a share link" | full `flow_status` asset management, all 0-credit |
 
-**All of this is 0-credit (use freely)**:
-
-- **Image generation**: Nano Banana Pro / Nano Banana 2 (default) / Nano Banana 2 Lite; aspect ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproducible seeds; base-image edits + reference images (base + references cap: 10 total)
-- **Upscaling**: 2K image upscale (model=`GEM_PIX_2_UPSAMPLE_2K`), 1080p video upscale (model=`veo_3_1_upsampler_1080p`)
-- **Asset management**: upload images, batch-delete, create public share links (`labs.google/fx/tools/flow/shared/…`), cancel in-flight videos, check credits / media status (`flow_status`)
-
-**Video generation bills credits (per clip — know before you submit)**:
-
-| Model | Example keys | Credits per clip |
-|---|---|---|
-| Omni Flash (abra) text / image / reference | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15 (by 4/6/8/10s duration) |
-| Omni Flash video edit (V2V) | `abra_edit` | 20 |
-| Veo 3.1 Lite (incl. extend, first+last frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
-| Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
-| Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
-| Video upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
-
-One clip per call; durations 4 / 6 / 8 / 10 seconds (the veo family has NO 10s — 4/6/8s or the key-embedded duration only; a key with an embedded `_Ns` suffix plus a different durationSeconds → S301); ratio 16:9 / 9:16 only. Modes (all live-verified): text-to-video (t2v), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, up to 7 for abra keys / 3 for veo keys; may also carry `audioMediaIds` — 30 preset voice samples from flow_status, speech is audibly mixed into the output), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction, abra_edit), upscale (`videoMediaId`). All generation keys output 720P (ultra/quality variants too) — higher resolution is upscale-only.
-
-> Some keys are tier-locked (per-tier prices measured 2026-08): fast `ultra`/`4s`/`6s` variants and `low_priority` are ADVANCED-only (10 / 0 credits); plain fast is NOT available on ADVANCED; lite costs 5 on ADVANCED. Tier-unavailable keys are rejected BEFORE submission with the full per-tier matrix (no credits wasted); live per-key prices are in `flow_status`.
-
-**Usage (explicit `provider="flow"`)**:
-
-```
-"Draw a cyberpunk cat via Flow, 3:4, seed 42" → generate_image(provider="flow", aspect="3:4", seed=42)
-"Generate an 8s future-city flyover video via Flow" → create_video(provider="flow", model="abra_t2v_8s") ← first call returns a credit estimate + confirm token; re-call with the SAME params + confirmToken to actually submit
-"Check my Flow credits / is this mediaId done?" → flow_status() / flow_status(mediaId=…)
-```
-
-**The `flow_status` introspection tool (0-credit throughout)**: with no arguments it returns a full snapshot — logged-in account, credit balance, the live model catalog (with per-key reference durations), 30 preset voices (the `preset_voices` field), and the project media list; with a `mediaId` it tracks one media and downloads the finished asset (`thumbnail=true` fetches the media thumbnail — video or image); `deleteMediaIds` batch-deletes, `shareMediaIds` creates public share links, `cancelMediaIds` cancels in-flight videos (images are not cancelable).
-
-> **Credit red line**: Flow video bills credits and is **never auto-routed by default** — either list it explicitly in `videoProviderPriority` (you own the credits; a loud warning fires at startup) or pass `provider="flow"` per call. For free automatic image generation, put `flow` at the head of `imageProviderPriority` (see Configuration below).
+> Live per-tier video pricing is queryable via `flow_status`; priority-chain config (auto-routing to Flow) in [Configuration](#configuration-deep-dive).
 
 ### Understand an Image / a PDF (Image & Document → Data)
 
@@ -297,244 +266,76 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds (the veo family has NO 10s �
 
 ### 1. Generation Config (AI Image / Video)
 
-**Default provider: Agnes** (free tier is permanent, text-to-image + text-to-video fully open). Zhipu is the alternative (with native optimization for Chinese scenarios).
-
-**One provider is enough** (here's the complete `config.json`; filling just one is fine):
+**One free key is enough** (Agnes recommended, the default; Zhipu as backup, natively optimized for Chinese):
 
 ```json
 {
- "providers": {
- "agnes": { "apiKey": "sk-your-agnes-key" },
- "zhipu": { "apiKey": "your-zhipu-key" }
- },
- "defaultProvider": "agnes",
- "outDir": "/absolute/path/to/output"
+  "providers": {
+    "agnes": { "apiKey": "sk-your-agnes-key" },
+    "zhipu": { "apiKey": "your-zhipu-key" }
+  }
 }
 ```
 
-**How to Get a Free API Key**:
+- **Agnes** (recommended): https://platform.agnes-ai.com/ → sign up → API Keys → `sk-xxx`
+- **Zhipu**: [open.bigmodel.cn](https://open.bigmodel.cn/) → API Keys (free models `cogview-3-flash` / `cogvideox-flash`, free forever)
+- Two providers = resilience: if one rate-limits or wobbles, the other takes over automatically — zero perception, zero double-billing
+- Config file: `~/.media-gen-mcp/config.json` (Windows: `%USERPROFILE%\.media-gen-mcp\config.json`); **missing file never crashes** — structured capabilities and default OCR keep working
 
-- **Agnes** (recommended, default): https://platform.agnes-ai.com/ → Sign up → API Keys → copy `sk-xxx`
-- **Zhipu**: https://open.bigmodel.cn/ → Sign up → API Keys (free models: `cogview-3-flash` / `cogvideox-flash`, permanently free)
-
-**Configuring Both Is More Reliable**: if either provider temporarily goes down (rate limits / service fluctuations), the other automatically takes over — invisible to you, with no duplicate charges.
-
-**Provider Priority Chain (optional, one line to route image generation through Google Flow's free tier)**: add `imageProviderPriority` / `videoProviderPriority` to `config.json` — an ordered `[head, ...fallback]` list. When the head fails (rate limit / 5xx) or its environment isn't ready (e.g. Flow needs a local Chrome CDP session), the chain **falls through in order**, invisibly:
+**Provider priority chains (optional)** — one line to make "generate an image" automatically go through Flow's free tier:
 
 ```json
 {
- "imageProviderPriority": ["flow", "agnes", "zhipu"],
- "videoProviderPriority": ["agnes", "zhipu"]
+  "imageProviderPriority": ["flow", "agnes", "zhipu"],
+  "videoProviderPriority": ["agnes", "zhipu"]
 }
 ```
 
-- **Images flow-first**: Flow image generation is 0-credit; if Chrome isn't running / not logged in, it falls back agnes → zhipu (probes are circuit-broken for 60s, no retry storms). Passing `provider=flow` pins it — errors surface with no fallback (pinning applies to opt-in providers only; explicitly naming a free provider (agnes/zhipu) still falls through the chain with a warning).
-- **Video stays agnes-first** (free) by default; Flow video bills credits and is **deliberately excluded from default routing** — either list it in `videoProviderPriority` explicitly (you own the credits), or pass `provider="flow"` per call.
-- Omitting both keys keeps current behavior (default provider + agnes/zhipu free-tier mutual fallback), zero impact. Env equivalents: `MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
-- **Channel on/off = the priority chain (the chain IS the switch)**: whether a channel is enabled is decided solely by whether it appears in the two priority chains — **not configured = not enabled** (no auto-routing, no fallback), **listed = enabled** (chain head = default channel). A separate `flow.enabled` switch is not needed (and no longer supported); an explicit `provider="flow"` call is always allowed — when the environment is unavailable it returns a structured `[flow] S1xx` preflight error (with launch guidance), never a silent provider swap. Companion knob `"flow": { "toolDeadlineMs": 110000 }` caps Flow's long operations (image polling / video submission / asset downloads) to satisfy the no-stall rule (≤120s per call): on timeout it returns `[flow] S410` — the underlying operation is NOT cancelled; re-check and download later via `flow_status(mediaId)`.
-- **Billing confirm gate (two-phase, ON by default)**: when a video routes to / explicitly uses Flow, the first `create_video` call does NOT submit — it returns `{needConfirm:true, estimatedCost (credit estimate: dynamic creditMapping first, static table fallback), confirmToken, expiresInSeconds}`; re-call with the SAME parameters plus confirmToken to actually submit. Tokens are short-lived (default 10 min, tunable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds) — changing any of them after confirming requires a fresh token; a wrong token returns `[flow] S320`, an expired one `[flow] S321`. Keys unavailable on the current tier (e.g. INTERMEDIATE-tier fast ultra variants) are issued no token at all — rejected outright with `[flow] S303` plus the full per-tier matrix. 0-credit operations (e.g. the `veo_3_1_upsampler_1080p` upscale) and non-Flow providers NEVER trigger the gate. Turn off with `"flow": { "videoConfirm": false }` (default `true` — a false trigger only costs one extra round trip, a missed one bills real credits).
+- **The chain IS the switch**: listed = enabled (chain head = default), unlisted = disabled; on head failure it falls through in order (60s circuit breaker); explicit `provider="flow"` is always legal and throws on failure (structured `[flow] S1xx` with setup guidance — never silently switches providers)
+- **Video does NOT go through Flow by default** (bills credits, deliberately excluded): either add it to `videoProviderPriority` at your own cost, or pass `provider="flow"` explicitly each call
+- **Billing confirm gate (two-phase, on by default)**: the first Flow video call does NOT submit — it returns `{needConfirm, estimatedCost, confirmToken}`; re-call with the **same params + confirmToken** to actually submit. Tokens live 10 minutes and bind to all billing params (any change invalidates); tier-unavailable keys get no token and are rejected with the per-tier price matrix; 0-credit ops and non-Flow providers never trigger it. Disable: `"flow": { "videoConfirm": false }`
 
-**Flow asset management (all 0-credit)**: besides credits / media status / downloads, `flow_status` supports three zero-cost operations — `shareMediaIds=[…]` creates public share links (like `labs.google/fx/tools/flow/shared/image/<id>`, prompt included), `cancelMediaIds=[…]` cancels in-flight VIDEO generations (note: image jobs are not cancelable), and `deleteMediaIds=[…]` batch-deletes media.
-
-**Config File Location**: `~/.media-gen-mcp/config.json` (macOS / Linux) or `%USERPROFILE%\.media-gen-mcp\config.json` (Windows).
-
-> If this file is **missing, nothing breaks** — structured capabilities and the default OCR still work; you just can't call AI generation.
+**Flow asset management (all 0-credit)**: `flow_status` covers credits/status/download plus share (`shareMediaIds`) / cancel (`cancelMediaIds`) / batch delete (`deleteMediaIds`). Companion `"flow": { "toolDeadlineMs": 110000 }` caps long Flow ops (anti-stall; timeout → `[flow] S410`, underlying op not canceled — re-check later via `flow_status`).
 
 ---
 
 ### 2. Recognition Config (Image Understanding / OCR / Tables / Charts / Vision)
 
-Recognition capabilities come in **four tiers** — install on demand; the first tier works by default.
+Recognition comes in 4 tiers — **installed on demand; tier 1 works with zero config**:
 
-#### Tier 1: Default Lightweight Engine (Zero Config, Works on Install)
+| Tier | What it does | What to configure | Cost |
+|---|---|---|---|
+| **1 Default** (in-process) | English/digits/captcha/simple-doc OCR | **zero config** | free |
+| **2 Zhipu GLM-4.6V-Flash** | Chinese SOTA + complex tables + chart reading + visual QA (all 4 tasks) | **one key** (recommended, zero deployment) | **free forever** |
+| **3 PaddleX** | Chinese SOTA + invoice tables + layout analysis | self-hosted (GPU 12GB or CPU 8GB+) | free open-source |
+| **4 vLLM Qwen2.5-VL** | VQA / handwriting / formulas / complex scenes | self-hosted (GPU 16-24GB) | free open-source |
 
-- **What it can do**: English / digit / captcha / simple document OCR
-- **Need to run a service?**: **No**, packaged into the MCP process as WASM, language model auto-loads on first call
-- **Minimum Resource Requirements**:
- - CPU: any (pure CPU, no GPU dependency)
- - GPU: not required
- - Memory: ~200–500MB (fluctuates with image size)
- - Disk: ~30–50MB (WASM engine + language packs)
- - Model size: included in the disk footprint above (English language pack, on the order of a few MB)
-- **Speed**: ~3–5 seconds per image
-- **Who it's for**: 90% of lightweight OCR scenarios, overseas documents, captcha recognition
+> For most users: **tier 1 + one line of tier-2 GLM key covers everything**; tiers 3/4 are for users with GPUs wanting full offline (deployment details / CUDA requirements / Unlimited-OCR long-document advanced setup: [doc/自托管部署指南](doc/自托管部署指南.md)).
 
-> For most users, this tier is enough; the next three are optional upgrades.
-
-#### Tier 2: Zhipu GLM-4.6V-Flash (Cloud Free, Zero Deployment, Chinese SOTA + VQA)
-
-- **What it can do**: Chinese OCR (SOTA-level), complex tables (multi-level headers / merged cells), chart analysis, visual QA (VQA) — all 4 tasks, via the cloud GLM-4.6V-Flash
-- **Need to run a service?**: **No**, Zhipu Open Platform cloud API — register an account and get an api_key
-- **Minimum Resource Requirements**: **Zero** (pure HTTP calls, no CPU / GPU / disk overhead)
-- **Speed**: ~1–3 seconds per image (cloud, including network round-trip)
-- **Cost**: **GLM-4.6V-Flash is permanently free** (128K context + 32K output), mirroring the GLM-4-Flash text free-policy
-- **Who it's for**: users who want Chinese SOTA + VQA but **don't want to self-host PaddleX / vLLM**; perfectly fills the deployment gap left by the self-hosted tiers 3/4
-- **How to Configure**: register a free account at [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) and apply for an api_key (format `{id}.{secret}`), then add this to `config.json`:
-
- ```json
- {
- "providers": {
- "glm-vision": { "apiKey": "your-{id}.{secret}" }
- }
- }
- ```
-
- The default model is `glm-4.6v-flash`; you can switch it to `glm-4v-flash` (free, lightweight) or paid vision models (`glm-4.6v` / `glm-ocr`, etc.) via `providers["glm-vision"].model`. Once configured, the MCP auto-includes it in the fallback chain: **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
-
-- ⚠️ **Compliance Notes** (important):
- - Only standard **open.bigmodel.cn api_keys** are accepted; **Code Plan keys (ZAI_API_KEY) do NOT work** — they're bound to the dedicated Z.ai endpoint + limited to 9 whitelisted tools (Claude Code / Cline / Cursor, etc. — media-gen-mcp is not on the list). 3 violation-triggered calls get the account banned, with the subscription fee non-refundable
- - Multi-key rotation (`apiKeys: ["k1", "k2", ...]`) is technically supported, but **Zhipu's User Agreement §2/§3 prohibits multi-account usage / account sharing** — rotating multiple keys may violate the agreement and the platform reserves the right to ban the account. Make sure every key comes from a compliant account you legitimately own
-
-#### Tier 3: PaddleX / PP-StructureV3 (Chinese SOTA + Table Recognition)
-
-- **What it can do**: Chinese OCR (significantly better than the default engine), layout analysis, **invoices / reports / scanned documents → HTML/Markdown tables**, chart reading
-- **Need to run a service?**: **Yes**, self-host a PaddleX REST service; the MCP calls it via `baseUrl`
-- **Minimum Resource Requirements** (measured):
-
- | Mode | Minimum | Recommended | Notes |
- |---|---|---|---|
- | GPU mode | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | Model loading ~2.4GB; peak ~6GB on complex PDFs |
- | CPU mode | 4-core CPU + 8GB RAM | 8-core + 16GB RAM | Runs (lightweight docs OK); batch / complex PDFs are 3–5× slower |
- | Disk | ~3GB | ~5GB | paddlepaddle + paddlex + model weights |
- | Model size | ~100–300MB (per pipeline) | — | Stacks up across multiple pipelines |
-
-- **CUDA Requirement**: Compute Capability ≥ 7.0 (V100 / T4 / RTX 20/30/40 series; 50-series not yet fully supported); needs CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 for GPU acceleration
-- **How to Install**:
-
- ```bash
- pip install paddlex paddlepaddle # GPU version: paddlepaddle-gpu
- paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
- ```
-
- Then add one line to `config.json`:
-
- ```json
- {
- "providers": {
- "paddle": { "baseUrl": "http://127.0.0.1:8080" }
- }
- }
- ```
-
-#### Tier 4: vLLM + Qwen2.5-VL (General Vision-Understanding VLM)
-
-- **What it can do**: visual QA, handwriting recognition, formula recognition, natural-language description of complex scenes — the "understanding" tasks PaddleX can't handle
-- **Need to run a service?**: **Yes**, self-host a vLLM inference service
-- **Minimum Resource Requirements** (measured):
-
- | Mode | Minimum | Recommended | Notes |
- |---|---|---|---|
- | GPU Full-Precision 7B (FP16) | 16GB VRAM | **24GB VRAM** (RTX 3090 / 4090 / A5000) | Model weights ~15–16GB + KV cache; vLLM occupies 90% of VRAM by default |
- | GPU Quantized 7B (INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | Quantized version fits RTX 4080 / 4060 Ti 16GB |
- | GPU Lightweight 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 ~6–8GB, INT4 ~3–4GB — the sweet spot for individual developers |
- | CPU mode | Not recommended | — | Runs but 5–10× slower; use a GPU for production |
- | Memory | 16GB | 16–32GB | — |
- | Disk | ~14GB (7B weights) | — | 3B is ~6GB |
- | CUDA Requirement | Compute Capability ≥ 7.0 | — | Tesla T4 (7.5) minimum; V100 / A100 / RTX 30/40 series all work |
-
-- **How to Install**:
- ```bash
- pip install vllm
- vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
- # When you see "Uvicorn running on http://0.0.0.0:8000", it's ready
- ```
- For more options (GPU selection / quantization / concurrency limits) see the [vLLM official docs](https://docs.vllm.ai). Then add this to `config.json`:
-
- ```json
- {
- "providers": {
- "vlm": { "baseUrl": "http://127.0.0.1:8000" }
- }
- }
- ```
-
-##### Advanced: Unlimited-OCR Long-Document Parsing (SGLang/vLLM self-hosted)
-
-Tier 4's default Qwen2.5-VL is a general VLM (strong at VQA / scene description). If what you need is **long-document OCR / complex tables / multi-page PDF one-shot parsing** (thousands~tens of thousands of characters per image), switch to [baidu/Unlimited-OCR](https://github.com/baidu/Unlimited-OCR) (MIT, pushes the Deepseek-OCR line one step further). It is **trained with only the 2-word prompt** `document parsing.`; long output relies on `custom_logit_processor` (DeepseekOCRNoRepeatNGram) to prevent degeneration — a different class of tool than Qwen2.5-VL.
-
-**When Unlimited-OCR is configured, the `vlm` provider auto-enables all 4 tasks** (extract-text / extract-table / describe-image / analyze-chart), and `extract-text` / `extract-table` use the README single-image short prompt contract; `describe-image` (VQA) and `analyze-chart` (JSON extraction) keep the original long prompts — you don't need to write a prompt override, the MCP picks automatically based on model.
-
-**Deploy (SGLang, recommended — supports the full `custom_logit_processor` feature set)**:
-
-```bash
-# Pull image (see Unlimited-OCR README for details)
-docker pull vllm/vllm-openai:unlimited-ocr # Default CUDA 13.0
-# For Hopper GPUs use cu129:
-# docker pull vllm/vllm-openai:unlimited-ocr-cu129
-
-# Start the SGLang server (key params explained in the Unlimited-OCR README «SGLang» section)
-python -m sglang.launch_server \
- --model baidu/Unlimited-OCR \
- --served-model-name Unlimited-OCR \
- --attention-backend fa3 --page-size 1 \
- --mem-fraction-static 0.8 --context-length 32768 \
- --enable-custom-logit-processor \
- --host 0.0.0.0 --port 10000
-```
-
-`custom_logit_processor` is the stringified output of Python-side `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` (a SGLang-private serialization format that TS cannot synthesize). **Run it once at deploy time** and paste the string into `config.json`:
-
-```bash
-# In a Python env with sglang installed, run this one-liner:
-python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoRepeatNGramLogitProcessor as P; print(P.to_str())"
-# Prints one long string — copy it into the custom_logit_processor field below
-```
-
-**config.json example** (switch `vlm` to Unlimited-OCR + configure `extra_body` extension fields):
+**Tier 2 config (most common)**:
 
 ```json
 {
- "providers": {
- "vlm": {
- "baseUrl": "http://127.0.0.1:10000",
- "models": { "default": "Unlimited-OCR" },
- "extra_body": {
- "images_config": { "image_mode": "gundam" },
- "custom_params": { "ngram_size": 35, "window_size": 128 },
- "custom_logit_processor": "<the string printed by python -c above>",
- "skip_special_tokens": false
- }
- }
- }
+  "providers": {
+    "glm-vision": { "apiKey": "your-{id}.{secret}" }
+  }
 }
 ```
 
-Field meaning (all top-level, accepted by the SGLang OpenAI-compatible API; MCP just `Object.assign`-flattens them into the fetch body):
+- Key: [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) (free signup, format `{id}.{secret}`)
+- ⚠️ Standard api_key only; **Code Plan keys (ZAI_API_KEY) do NOT work** (bound to Z.ai endpoint + tool allowlist — violations get accounts banned); multi-key rotation is technically supported but Zhipu's agreement forbids multi-account use — compliance is on you
+- Default model `glm-4.6v-flash` (switch via `providers["glm-vision"].model` to `glm-4v-flash` or paid vision models)
 
-| Field | Value | Notes |
-|---|---|---|
-| `images_config.image_mode` | `gundam` / `base` | Single-image high-precision: `gundam` (base_size=1024, image_size=640, crop_mode=true); multi-page PDF: `base` (image_size=1024, crop_mode=false). media-gen-mcp is a **single-image contract**, default `gundam` is optimal |
-| `custom_params.ngram_size` | `35` (recommended) | NoRepeatNGram length; 35 is the README-recommended value |
-| `custom_params.window_size` | `128` (single-image) / `1024` (multi-page) | Single-image: 128; media-gen-mcp single-image contract recommends 128 |
-| `custom_logit_processor` | Python-side `.to_str()` output | Required (without it long output degenerates by repetition); TS cannot synthesize — must run Python once to get the string |
-| `skip_special_tokens` | `false` | OCR tasks must keep special tokens; do not skip |
+**Tier 3/4 self-hosted** (one baseUrl line each once the service is up; details in the deployment guide):
 
-> ⚠️ **Task gating (important)**: `extra_body` (incl. `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`) is only applied to fetch body on `extract-text` / `extract-table` (the OCR path) — `describe-image` (VQA) and `analyze-chart` (JSON extraction) **do NOT carry these fields**. Reason: NoRepeatNGram (ngram_size=35) suppresses legitimate repeated words in VQA descriptions; `skip_special_tokens:false` leaks OCR structural tokens into description / corrupts `analyze-chart`'s `JSON.parse`; `image_mode:gundam` (crop_mode=true) slices the whole image and breaks scene-level VQA holistic understanding. This is the symmetric counterpart of the model-aware short-prompt gating (`promptForUnlimited`) — `describe-image` / `analyze-chart` keep the original long prompt AND a clean body. To force extension fields through on `describe-image` / `analyze-chart`, configure `providers.vlm.extra_body` in config (effective on OCR tasks only) — there is currently NO per-call `extra` parameter at the tool layer (not in the schema; passing one is ignored).
-
-**Invocation**: pass `provider=vlm` explicitly to `extract_text` (otherwise it goes to defaultVisionProvider=tesseract):
-
+```json
+{
+  "providers": {
+    "paddle": { "baseUrl": "http://127.0.0.1:8080" },
+    "vlm":    { "baseUrl": "http://127.0.0.1:8000" }
+  }
+}
 ```
-extract_text(image="data:image/png;base64,...", provider="vlm")
-```
-
-**Important limitations**:
-
-- **Non-streaming mode**: media-gen-mcp uses the vLLM/SGLang **non-stream** `/v1/chat/completions` (JSON returned in one shot), suited for single-page / medium-short documents. Unlimited-OCR's `infer.py` defaults to `stream:true` — **do NOT copy `stream:true` into `extra_body`** — the MCP detects it and rejects with the hint "remove extra.stream". For very long PDFs, first [split pages with PyMuPDF](https://github.com/baidu/Unlimited-OCR#transformers) (the README has a `pdf_to_images` snippet), then call `extract_text` per page — independent per-page requests naturally avoid over-long outputs.
-- **Server timeout**: long documents take long to generate; when vLLM's default 60s is insufficient, raise SGLang `REQUEST_TIMEOUT` or vLLM `--timeout-keepalive`.
-- **GPU threshold**: 16–24GB VRAM (same as Tier 4); if you can't meet it, keep using the paddle(10)/glm-vision(9) chain.
-
-**License**: [MIT](https://github.com/baidu/Unlimited-OCR/blob/main/LICENSE) (aligns with the pure-free stance; same tier as Qwen Apache-2.0; commercial use OK).
-
-#### Four-Tier Cheat Sheet
-
-| Tier | Run a Service? | Resource Threshold | Chinese | Tables | Visual QA | License / Source |
-|---|---|---|---|---|---|---|
-| **1 Default** (tesseract) | No | Zero (pure CPU WASM) | Mediocre | ❌ | ❌ | Apache 2.0 (self-hosted) |
-| **2 Zhipu GLM-4.6V-Flash** | No (cloud API) | Zero (pure HTTP) | ✅ SOTA | ✅ | ✅ | User-supplied Zhipu key (permanently free) |
-| **3 PaddleX** | Yes | GPU 12GB or CPU 4-core 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0 (self-hosted) |
-| **4 vLLM Qwen2.5-VL** | Yes | **GPU 16–24GB** (CPU not viable) | ✅ | Mediocre | ✅ | Apache 2.0 (self-hosted) |
-
-> The three self-hosted tiers (1/3/4) deliberately pick only **Apache 2.0** engines (tesseract.js + PaddleOCR + Qwen2.5-VL), avoiding AGPL / GPL / commercial-use application traps — **enterprises can use them commercially with no concerns**. Tier 2 Zhipu is a cloud API (GLM-4.6V-Flash permanently free, user-supplied key), not self-hosted — suited for users who don't want to deploy a server but still need Chinese SOTA + VQA.
 
 ---
 

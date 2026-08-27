@@ -3,7 +3,7 @@
 > Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
 <p align="center">
- <img src="https://img.shields.io/badge/version-0.14.0-blue">
+ <img src="https://img.shields.io/badge/version-0.15.0-blue">
  <img src="https://img.shields.io/badge/license-MIT-green">
  <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -150,52 +150,21 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 > 你:"这张图是用什么 prompt、什么参数生成的?能复现吗?"
 > 得到:结构化参数 —— 正向 / 负向 prompt、模型、采样步数、CFG、种子、尺寸(从 PNG 嵌入的 ComfyUI / A1111 元数据本地解析;Agnes 生成的图自带完整生成参数,拿到 prompt 可用 generate_image 一键复现)
 
-### Google Flow 渠道(Veo 3.1 / Nano Banana,免 API Key,生图 0 积分)
+### Google Flow 渠道(Veo 3.1 / Nano Banana,免 API Key)
 
-**借本机 Chrome 的 Google Flow 登录态直接生图 / 生视频**(Google Labs 的 [labs.google/fx/tools/flow](https://labs.google/fx/tools/flow))—— 不用任何 API Key,也不占 Agnes / 智谱的免费配额;产物自动落盘,并带 `mediaId` 方便后续管理。
+**是什么**:接入你已登录 Google Flow 的本机 Chrome,把 Flow 的生成能力变成工具 —— 免 API Key,生图 **0 积分**,视频按积分计费(7-100/条,提交前必经**计费确认门**:第一次调用只返回积分预估+确认令牌,你确认后才真提交)。
 
-**前置条件(一次性)**:本机 Chrome 登录过 Flow。
+**前置**(只需一次):本机 Chrome 登录 labs.google/fx —— `lasso launch-chrome --port 9223 --idle-ms 0` 启动并登录即可,MCP 自动经 CDP 调用。
 
-```bash
-lasso launch-chrome --port 9223 --mode visible
-# 没装 lasso 先:npm i -g lasso-mcp
-# 弹出 Chrome 后打开 https://labs.google/fx/tools/flow 并登录,之后保持 Chrome 运行即可
-```
+**一句话能干什么**:
 
-Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 连不上 Chrome,S101 = 没有打开中的 Flow 页面),照提示启动一次就好 —— 绝不静默失败,也不偷偷换渠道。
+| 你说 …… | 得到 |
+|---|---|
+| "用 Flow 画一张 ……"(或配置链让生图自动走 Flow)| 0 积分 AI 图(Nano Banana 2/Pro/Lite,含 2K 放大)|
+| "用 Flow 把这张图动起来 / 生成 8 秒视频" | Veo 3.1 / Omni Flash 视频(文生/图生/参考图一致性/首尾帧/延长/编辑/1080p 超分,超分 0 积分)|
+| "Flow 还剩多少积分?/ 把这条视频下载下来 / 删掉这批废图 / 生成分享链接" | `flow_status` 全套资产管理,全程 0 积分 |
 
-**这些全部 0 积分(放心用)**:
-
-- **生图**:Nano Banana Pro / Nano Banana 2(默认)/ Nano Banana 2 Lite;比例 16:9 / 9:16 / 1:1 / 3:4 / 4:3;seed 可复现;支持底图改图 + 参考图(底图+参考图合计最多 10 张)
-- **放大**:图片 2K 放大(model=`GEM_PIX_2_UPSAMPLE_2K`)、视频 1080p 超分(model=`veo_3_1_upsampler_1080p`)
-- **资产管理**:上传图片、批量删除、生成公开分享链接(`labs.google/fx/tools/flow/shared/…`)、取消生成中的视频、查积分 / 查媒体状态(`flow_status`)
-
-**生视频按积分计费(每条,提交前请知悉)**:
-
-| 模型 | key 举例 | 积分/条 |
-|---|---|---|
-| Omni Flash(abra)文生 / 图生 / 参考图 | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15(按时长 4/6/8/10 秒) |
-| Omni Flash 视频编辑(V2V) | `abra_edit` | 20 |
-| Veo 3.1 Lite(含延长、首尾帧) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
-| Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
-| Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
-| 视频超分 1080p | `veo_3_1_upsampler_1080p` | **0** |
-
-视频一次一条,时长 4 / 6 / 8 / 10 秒(veo 家族无 10s —— 仅 4/6/8s 或 key 自带时长;key 自带 `_Ns` 后缀时不可再传不同的 durationSeconds,否则 S301),比例仅 16:9 / 9:16;模式(全部模式均已线上验证):文生视频(t2v)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images`,abra 键最多 7 张 / veo 键 3 张;可叠加 `audioMediaIds` 挂 30 预设语音做声音参考,产物音轨可听出语音)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令,abra_edit)/ 超分(`videoMediaId`)。所有生成 key 固定 720P(ultra/quality 变体同),更高分辨率只能生成后超分。
-
-> 部分 key 有会员档锁定(2026-08 实测 per-tier 价):fast 的 `ultra`/`4s`/`6s` 变体与 `low_priority` 仅 ADVANCED 可用(10 / 0 点);plain fast 在 ADVANCED 反而不可用;lite 在 ADVANCED 是 5 点。当前档不可用的 key 会在**提交前**被拒并附完整各档价目(不误扣积分);各 key 实时价目可查 `flow_status`。
-
-**用法(显式 `provider="flow"`)**:
-
-```
-"画张赛博朋克猫,用 Flow,3:4 比例,seed 42" → generate_image(provider="flow", aspect="3:4", seed=42)
-"用 Flow 生成 8 秒未来城市航拍视频" → create_video(provider="flow", model="abra_t2v_8s") ← 第一次返回积分预估+确认令牌,原参数加 confirmToken 复调才真提交
-"查一下 Flow 积分余额 / 这个 mediaId 生成完没" → flow_status() / flow_status(mediaId=…)
-```
-
-**`flow_status` 自省工具(全程 0 积分)**:不带参数返回全景 —— 登录账号、积分余额、动态模型目录(含每个 key 的参考耗时)、30 种预设语音(`preset_voices` 字段)、项目媒体列表;带 `mediaId` 查单个媒体状态并下载成品(`thumbnail=true` 取媒体缩略图,视频/图片均适用);`deleteMediaIds` 批量删除、`shareMediaIds` 生成公开分享链接、`cancelMediaIds` 取消生成中的视频(图片不可取消)。
-
-> **积分红线**:Flow 视频消耗积分,**默认绝不自动路由** —— 要么在 `videoProviderPriority` 显式列入(自担积分,启动时有强提示),要么每次显式 `provider="flow"`;生图想全自动白嫖,把 `flow` 配成 `imageProviderPriority` 链头即可(见下方「配置详解」)。
+> 视频积分明细与各会员档价目随 `flow_status` 实时可查;渠道优先级配置(让"生图"自动走 Flow)见[配置详解](#配置详解)。
 
 ### 看懂一张图 / 一份 PDF(把图和文档变数据)
 
@@ -296,244 +265,76 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 ### 一、生成类配置(AI 生图 / 视频)
 
-**默认服务方:Agnes**(免费层永久有效,文生图 + 文生视频全开放)。智谱为备选(中文场景原生优化)。
-
-**配一家就够**(以下是完整 `config.json`,只填一家也行):
+**配一家免费 Key 就够**(推荐 Agnes,默认服务方;智谱备选,中文场景原生优化):
 
 ```json
 {
- "providers": {
- "agnes": { "apiKey": "sk-你的agnes-key" },
- "zhipu": { "apiKey": "你的智谱-key" }
- },
- "defaultProvider": "agnes",
- "outDir": "/absolute/path/to/output"
+  "providers": {
+    "agnes": { "apiKey": "sk-你的agnes-key" },
+    "zhipu": { "apiKey": "你的智谱-key" }
+  }
 }
 ```
 
-**免费 API Key 怎么拿**:
+- **Agnes**(推荐):https://platform.agnes-ai.com/ → 注册 → API Keys → `sk-xxx`
+- **智谱**:[open.bigmodel.cn](https://open.bigmodel.cn/) → API Keys(免费模型 `cogview-3-flash` / `cogvideox-flash` 永久免费)
+- 配两家更稳:任一家限流/波动,另一家自动顶上,零感知零重复扣费
+- 配置文件:`~/.media-gen-mcp/config.json`(Windows:`%USERPROFILE%\.media-gen-mcp\config.json`);**没有也不崩** —— 结构化能力与默认 OCR 照常工作
 
-- **Agnes**(推荐,默认):https://platform.agnes-ai.com/ → 注册 → API Keys → 复制 `sk-xxx`
-- **智谱**:https://open.bigmodel.cn/ → 注册 → API Keys(免费模型:`cogview-3-flash` / `cogvideox-flash`,永久免费)
-
-**配两家更稳**:任一家临时挂掉(限流 / 服务波动),另一家自动顶上,你零感知、零重复扣费。
-
-**渠道优先级链(可选,一行让生图走 Google Flow 免费档)**:在 `config.json` 加 `imageProviderPriority` / `videoProviderPriority`,即「链头 → 回落顺序」;链头失败(限流/5xx)或环境不满足(如 Flow 需要本机 Chrome CDP 在开)时**按序自动回落**,你零感知:
+**渠道优先级链(可选)**——一行让"生图"自动走 Flow 免费档:
 
 ```json
 {
- "imageProviderPriority": ["flow", "agnes", "zhipu"],
- "videoProviderPriority": ["agnes", "zhipu"]
+  "imageProviderPriority": ["flow", "agnes", "zhipu"],
+  "videoProviderPriority": ["agnes", "zhipu"]
 }
 ```
 
-- **生图 flow 优先**:Flow 生图 0 积分;Chrome 没开/未登录时自动回落 agnes → 智谱(每次探测有 60 秒熔断,不反复重试)。显式传 `provider=flow` 则钉死该渠道、失败直抛不回落(钉死仅对 opt-in 渠道生效;显式点名免费渠道 agnes/智谱后失败仍会带告警按链回落)。
-- **视频默认仍 agnes 优先**(免费);Flow 视频消耗积分,**刻意不进默认链**——要么在 `videoProviderPriority` 里显式写入(自担积分),要么每次显式 `provider="flow"`。
-- 不配置这两项 = 现行为(默认渠道 + agnes/智谱免费层自动互备),零影响。环境变量等价:`MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`。
-- **渠道启停 = 优先级链(链即开关)**:渠道是否启用由两条优先级链是否包含它决定 —— **不配置 = 不启用**(不自动路由、不进 fallback),**列出 = 启用**(链头即默认渠道)。不需要(也不再支持)单独的 `flow.enabled` 开关;显式 `provider="flow"` 点名永远合法,环境不可用时返回结构化 `[flow] S1xx` 前置错(自带启动指引),绝不静默换渠道。配套 `"flow": { "toolDeadlineMs": 110000 }` = Flow 长操作(生图轮询/视频提交/资产下载)的工具级截止,防卡死(单次调用 ≤120s),超时转 `[flow] S410` —— 底层操作不取消,稍后经 `flow_status(mediaId)` 复查落盘。
-- **计费确认门(两段式,默认开)**:视频路由到/显式用 Flow 时,`create_video` 第一次调用**不提交**,返回 `{needConfirm:true, estimatedCost(积分预估,动态 creditMapping 优先 / per-tier 静态矩阵 / tier 盲静态表逐级兜底), confirmToken, expiresInSeconds}`;用**原参数 + confirmToken** 重新调用才真提交。令牌短时效(默认 10 分钟,`flow.confirmTtlMs` 可调,env `FLOW_CONFIRM_TTL_MS`)且与「模型+时长+预估+prompt+输入引用(image/keyframes/images/videoMediaId/audioMediaIds)」绑定 —— 确认后改任一项需重新获取;错误令牌返回 `[flow] S320`、过期返回 `[flow] S321`。当前会员档不可用的 key(如 INTERMEDIATE 档的 fast ultra 变体)**不发放令牌**,直接 `[flow] S303` 拒绝并附各档价目。0 积分操作(如 `veo_3_1_upsampler_1080p` 超分)与非 Flow 渠道**不触发**本门。关闭:`"flow": { "videoConfirm": false }`(默认 `true` —— 误门只多一次往返,漏门会真扣积分,故默认开)。
+- **链即开关**:渠道列进链 = 启用(链头即默认),不列 = 不启用;链头失败自动按序回落(60 秒熔断,不反复重试);显式 `provider="flow"` 点名永远合法且失败直抛(环境不可用返回带启动指引的 `[flow] S1xx`,绝不静默换渠道)
+- **视频默认不走 Flow**(消耗积分,刻意不进默认链):要么写进 `videoProviderPriority` 自担积分,要么每次显式 `provider="flow"`
+- **计费确认门(两段式,默认开)**:Flow 视频第一次调用不提交,只返回 `{needConfirm, estimatedCost, confirmToken}`;**原参数 + confirmToken** 再调才真提交。令牌 10 分钟有效、与全部计费参数绑定(改任一项失效);当前会员档不可用的 key 不发令牌直接拒绝并附各档价目;0 积分操作与非 Flow 渠道不触发。关闭:`"flow": { "videoConfirm": false }`
 
-**Flow 资产管理(全 0 积分)**:`flow_status` 除了查积分 / 查媒体状态 / 下载,还支持三件零消耗操作——`shareMediaIds=[…]` 生成公开分享链接(形如 `labs.google/fx/tools/flow/shared/image/<id>`,含提示词)、`cancelMediaIds=[…]` 取消生成中的视频(注意:图片生成不可取消)、`deleteMediaIds=[…]` 批量删除。
-
-**配置文件位置**:`~/.media-gen-mcp/config.json`(macOS / Linux)或 `%USERPROFILE%\.media-gen-mcp\config.json`(Windows)。
-
-> 这个文件**没有也不会崩** —— 结构化能力和默认 OCR 照常工作,只是不能调 AI 生成。
+**Flow 资产管理(全 0 积分)**:`flow_status` 支持查积分/查状态/下载,以及分享(`shareMediaIds`)/取消(`cancelMediaIds`)/批量删除(`deleteMediaIds`)。配套 `"flow": { "toolDeadlineMs": 110000 }` 为 Flow 长操作设工具级截止(防卡死,超时转 `[flow] S410`,底层不取消,稍后经 `flow_status` 复查)。
 
 ---
 
 ### 二、识别类配置(识图 / OCR / 表格 / 图表 / 视觉理解)
 
-识别能力**分四档**,按需选装,默认就能用第一档。
+识别能力分 4 档,**按需选装,默认档位 1 零配置即用**:
 
-#### 档位 1:默认轻量引擎(零配置,装上即用)
+| 档位 | 能干什么 | 要配什么 | 费用 |
+|---|---|---|---|
+| **1 默认**(进程内)| 英文/数字/验证码/简单文档 OCR | **零配置** | 免费 |
+| **2 智谱 GLM-4.6V-Flash** | 中文 SOTA + 复杂表格 + 图表读数 + 看图问答(全 4 task)| **一行 Key**(推荐,零部署)| **永久免费** |
+| **3 PaddleX** | 中文 SOTA + 发票表格 + 版面分析 | 自托管(GPU 12GB 或 CPU 8GB 起)| 免费开源 |
+| **4 vLLM Qwen2.5-VL** | 看图问答/手写/公式/复杂场景 | 自托管(GPU 16-24GB)| 免费开源 |
 
-- **能干什么**:英文 / 数字 / 验证码 / 简单文档 OCR
-- **要不要装服务**:**不用**,以 WASM 形式打包进 MCP 进程,首次调用时自动加载语言模型
-- **最小资源需求**:
- - CPU:任意(纯 CPU 运行,无 GPU 依赖)
- - GPU:不需要
- - 内存:约 200–500MB(随图片大小波动)
- - 磁盘:约 30–50MB(WASM 引擎 + 语言包)
- - 模型大小:含在上面磁盘占用里(英文语言包,几 MB 级)
-- **速度**:单张约 3–5 秒
-- **适合谁**:90% 的轻量 OCR 场景、海外文档、验证码识别
+> 大多数用户:**档位 1 + 配一行档位 2 的 GLM Key 就齐了**;档位 3/4 给有 GPU、想全离线的用户(部署细节/CUDA 要求/Unlimited-OCR 长文档进阶见 [doc/自托管部署指南](doc/自托管部署指南.md))。
 
-> 大多数用户到这一档就够,下面三档是可选加强。
-
-#### 档位 2:智谱 GLM-4.6V-Flash(云端免费,零部署,中文 SOTA + VQA)
-
-- **能干什么**:中文 OCR(SOTA 级)、复杂表格(多层表头 / 合并单元格)、图表分析、看图问答(VQA)—— 全 4 task,云端 GLM-4.6V-Flash
-- **要不要装服务**:**不用**,智谱开放平台云端 API,注册账号拿 api_key 即可
-- **最小资源需求**:**零**(纯 HTTP 调用,无 CPU / GPU / 磁盘开销)
-- **速度**:单张约 1–3 秒(云端,含网络往返)
-- **费用**:**GLM-4.6V-Flash 永久免费**(128K 上下文 + 32K 输出),对标 GLM-4-Flash 文本免费策略
-- **适合谁**:想要中文 SOTA + VQA 但**不想自建 PaddleX / vLLM** 的用户;完美补上档位 3/4 自建服务的部署门槛
-- **怎么配**:到 [open.bigmodel.cn](https://open.bigmodel.cn/console/apikey) 注册免费账号 + 申请 api_key(格式 `{id}.{secret}`),在 `config.json` 加:
-
- ```json
- {
- "providers": {
- "glm-vision": { "apiKey": "你的{id}.{secret}" }
- }
- }
- ```
-
- 默认模型 `glm-4.6v-flash`,可经 `providers["glm-vision"].model` 改为 `glm-4v-flash`(免费轻量)或付费视觉模型(`glm-4.6v` / `glm-ocr` 等)。配置后 MCP 自动纳入 fallback 链:**paddle(10)→ glm-vision(9)→ vlm(8)→ tesseract(1)**。
-
-- ⚠️ **合规说明**(重要):
- - 仅接受 **open.bigmodel.cn 标准 api_key**;**Code Plan key(ZAI_API_KEY)不可用** —— 绑定 Z.ai 专用端点 + 限 9 个白名单工具(Claude Code / Cline / Cursor 等,media-gen-mcp 不在内),违规调用 3 次封号且订阅费不退
- - 多 key 轮换(`apiKeys: ["k1", "k2", ...]`)技术上支持,但**智谱 User Agreement §2/§3 禁止多账号 / 账号共享** —— 多 key 轮换可能违约,平台有权封号。请确认所有 key 均为合规自有账号
-
-#### 档位 3:PaddleX / PP-StructureV3(中文 SOTA + 表格识别)
-
-- **能干什么**:中文 OCR(效果显著强于默认引擎)、版面分析、**发票 / 报表 / 扫描件 → HTML/Markdown 表格**、图表读数
-- **要不要装服务**:**要**,自托管 PaddleX REST 服务,MCP 通过 `baseUrl` 调用
-- **最小资源需求**(实测):
-
- | 模式 | 最低门槛 | 推荐 | 说明 |
- |---|---|---|---|
- | GPU 模式 | RTX 3060 12GB VRAM | RTX 3060 12GB / Tesla T4 | 模型加载约 2.4GB,处理复杂 PDF 峰值约 6GB |
- | CPU 模式 | 4 核 CPU + 8GB 内存 | 8 核 + 16GB 内存 | 能跑(轻量文档可用),批量 / 复杂 PDF 明显慢 3–5 倍 |
- | 磁盘 | 约 3GB | 约 5GB | paddlepaddle + paddlex + 模型权重 |
- | 模型大小 | 约 100–300MB(单pipeline) | — | 多 pipeline 累加 |
-
-- **CUDA 要求**:Compute Capability ≥ 7.0(V100 / T4 / RTX 20/30/40 系;50 系暂未完全适配),需 CUDA 11.8 + cuDNN 8.9 + TensorRT 8.6 才有 GPU 加速
-- **怎么装**:
-
- ```bash
- pip install paddlex paddlepaddle # GPU 版:paddlepaddle-gpu
- paddlex --serve --pipeline PP-StructureV3.yaml --port 8080
- ```
-
- 然后在 `config.json` 加一行:
-
- ```json
- {
- "providers": {
- "paddle": { "baseUrl": "http://127.0.0.1:8080" }
- }
- }
- ```
-
-#### 档位 4:vLLM + Qwen2.5-VL(通用视觉理解 VLM)
-
-- **能干什么**:看图问答、手写识别、公式识别、复杂场景自然语言描述 —— PaddleX 搞不定的"理解类"任务
-- **要不要装服务**:**要**,自建 vLLM 推理服务
-- **最小资源需求**(实测):
-
- | 模式 | 最低门槛 | 推荐 | 说明 |
- |---|---|---|---|
- | GPU 满精度 7B(FP16) | 16GB VRAM | **24GB VRAM**(RTX 3090 / 4090 / A5000) | 模型权重约 15–16GB + KV cache,vLLM 默认占用 90% 显存 |
- | GPU 量化 7B(INT8/AWQ) | 10–12GB VRAM | 16GB VRAM | 量化版可塞进 RTX 4080 / 4060 Ti 16GB |
- | GPU 轻量版 3B | 6–8GB VRAM | GTX 1660 / 3060 6–8GB | FP16 约 6–8GB,INT4 约 3–4GB,个人开发者甜点 |
- | CPU 模式 | 不推荐 | — | 能跑但慢 5–10 倍,生产场景请上 GPU |
- | 内存 | 16GB | 16–32GB | — |
- | 磁盘 | 约 14GB(7B 权重) | — | 3B 约 6GB |
- | CUDA 要求 | Compute Capability ≥ 7.0 | — | Tesla T4(7.5)起步,V100 / A100 / RTX 30/40 系均可 |
-
-- **怎么装**:
- ```bash
- pip install vllm
- vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000
- # 看到 "Uvicorn running on http://0.0.0.0:8000" 即就绪
- ```
- 更多参数(GPU 选择 / 量化版本 / 并发上限)见 [vLLM 官方文档](https://docs.vllm.ai)。然后在 `config.json` 加:
-
- ```json
- {
- "providers": {
- "vlm": { "baseUrl": "http://127.0.0.1:8000" }
- }
- }
- ```
-
-##### 进阶:Unlimited-OCR 长文档解析(SGLang/vLLM 自托管)
-
-档位 4 默认 Qwen2.5-VL 是通用 VLM(看图问答 / 场景描述强)。如果你要的是**长文档 OCR / 复杂表格 / 多页 PDF 一次性解析**(单图几千~上万字),切到 [baidu/Unlimited-OCR](https://github.com/baidu/Unlimited-OCR)(MIT,Deepseek-OCR 路线推进一步)。它**训练分布只用 2 词 prompt** `document parsing.`,长输出靠 `custom_logit_processor`(DeepseekOCRNoRepeatNGram)防退化,与 Qwen2.5-VL 是不同档位的工具。
-
-**配 Unlimited-OCR 时,`vlm` provider 自动通放全 4 task**(extract-text/extract-table/describe-image/analyze-chart),且 `extract-text` / `extract-table` 走 README 单图契约短 prompt;`describe-image`(VQA)与 `analyze-chart`(JSON 抽取)仍走原长 prompt —— 你不用手写 prompt override,MCP 按模型自动选。
-
-**部署(SGLang,推荐 — 支持 `custom_logit_processor` 全特性)**:
-
-```bash
-# 拉镜像(详见 Unlimited-OCR README)
-docker pull vllm/vllm-openai:unlimited-ocr # 默认 CUDA 13.0
-# Hopper GPU 用 cu129:
-# docker pull vllm/vllm-openai:unlimited-ocr-cu129
-
-# 启动 SGLang server(关键参数解释见 Unlimited-OCR README「SGLang」节)
-python -m sglang.launch_server \
- --model baidu/Unlimited-OCR \
- --served-model-name Unlimited-OCR \
- --attention-backend fa3 --page-size 1 \
- --mem-fraction-static 0.8 --context-length 32768 \
- --enable-custom-logit-processor \
- --host 0.0.0.0 --port 10000
-```
-
-`custom_logit_processor` 是 Python 端 `DeepseekOCRNoRepeatNGramLogitProcessor.to_str()` 的字符串化产物(SGLang 私有序列化格式,TS 侧无法合成)。**部署期跑一次**取串,粘进 `config.json`:
-
-```bash
-# 在装了 sglang 的 Python 环境里跑一行:
-python -c "from sglang.srt.sampling.custom_logit_processor import DeepseekOCRNoRepeatNGramLogitProcessor as P; print(P.to_str())"
-# 输出一行长字符串,复制到下面 config.json 的 custom_logit_processor 字段
-```
-
-**config.json 示例**(把 `vlm` 切到 Unlimited-OCR + 配置 `extra_body` 扩展字段):
+**档位 2 配置(最常用)**:
 
 ```json
 {
- "providers": {
- "vlm": {
- "baseUrl": "http://127.0.0.1:10000",
- "models": { "default": "Unlimited-OCR" },
- "extra_body": {
- "images_config": { "image_mode": "gundam" },
- "custom_params": { "ngram_size": 35, "window_size": 128 },
- "custom_logit_processor": "<上一步 python -c 打印的串>",
- "skip_special_tokens": false
- }
- }
- }
+  "providers": {
+    "glm-vision": { "apiKey": "你的{id}.{secret}" }
+  }
 }
 ```
 
-字段含义(全部顶层,SGLang OpenAI 兼容 API 接受;MCP 直接 `Object.assign` 摊平进 fetch body):
+- Key 申请:[open.bigmodel.cn](https://open.bigmodel.cn/console/apikey)(免费注册,格式 `{id}.{secret}`)
+- ⚠️ 只接受标准 api_key;**Code Plan key(ZAI_API_KEY)不可用**(绑定 Z.ai 端点+白名单工具,违规调用会封号);多 key 轮换技术上支持但智谱协议禁止多账号,请自担合规风险
+- 默认模型 `glm-4.6v-flash`(可经 `providers["glm-vision"].model` 换 `glm-4v-flash` 或付费视觉模型)
 
-| 字段 | 取值 | 说明 |
-|---|---|---|
-| `images_config.image_mode` | `gundam` / `base` | 单图高精度选 `gundam`(base_size=1024, image_size=640, crop_mode=true);多页 PDF 选 `base`(image_size=1024, crop_mode=false)。media-gen-mcp 是**单图契约**,默认 `gundam` 最优 |
-| `custom_params.ngram_size` | `35`(推荐) | NoRepeatNGram 长度,35 是 README 推荐值 |
-| `custom_params.window_size` | `128`(单图) / `1024`(多页) | 单图走 128;media-gen-mcp 单图契约建议 128 |
-| `custom_logit_processor` | Python 端 `.to_str()` 输出 | 必填(否则长输出会重复退化);TS 无法合成,须 Python 跑一次取串 |
-| `skip_special_tokens` | `false` | OCR 任务须保留特殊 token,不要 skip |
+**档位 3/4 自托管**(服务跑起来后各填一行 baseUrl,细节见部署指南):
 
-> ⚠️ **task 门控(重要)**:`extra_body`(含 `custom_logit_processor` / `skip_special_tokens:false` / `images_config.image_mode:gundam`)只在 `extract-text` / `extract-table`(OCR 路径)上摊入 fetch body —— `describe-image`(VQA)和 `analyze-chart`(JSON 抽取)**不带这些字段**。原因:NoRepeatNGram(ngram_size=35)会压制 VQA 描述里合理重复词;`skip_special_tokens:false` 会把 OCR 结构 token 泄漏进 description / 污染 `analyze-chart` 的 `JSON.parse`;`image_mode:gundam`(crop_mode=true)切片整图会破坏场景级 VQA 整体理解。这是 model-aware 短 prompt 门控(`promptForUnlimited`)的对称设计 —— `describe-image` / `analyze-chart` 仍走原长 prompt,也仍走干净 body。若你需要对 `describe-image` / `analyze-chart` 强制传扩展字段,只能在 config 的 `providers.vlm.extra_body` 配置(且仅 OCR 任务生效)—— 工具层暂未暴露 per-call `extra` 参数(schema 中没有该参数,传了会被忽略)。
-
-**调用**:`extract_text` 工具显式传 `provider=vlm`(否则走 defaultVisionProvider=tesseract):
-
+```json
+{
+  "providers": {
+    "paddle": { "baseUrl": "http://127.0.0.1:8080" },
+    "vlm":    { "baseUrl": "http://127.0.0.1:8000" }
+  }
+}
 ```
-extract_text(image="data:image/png;base64,...", provider="vlm")
-```
-
-**重要限制**:
-
-- **非 stream 模式**:media-gen-mcp 走 vLLM/SGLang 的**非 stream** `/v1/chat/completions`(JSON 一次性返回),适合单页 / 中短文档。Unlimited-OCR 的 `infer.py` 默认 `stream:true`,**不要把 `stream:true` 抄进 `extra_body`** —— MCP 检测到会 reject 并提示「请移除 extra.stream」。超长 PDF 建议先用 [PyMuPDF 拆页](https://github.com/baidu/Unlimited-OCR#transformers)(README 给了 `pdf_to_images` snippet)再逐页调 `extract_text`,每页独立请求天然规避超长输出。
-- **server 超时**:长文档生成耗时高,vLLM 默认 60s 不够时改 SGLang `REQUEST_TIMEOUT` 或 vLLM `--timeout-keepalive`。
-- **GPU 门槛**:16–24GB VRAM(同档位 4);跑不动者继续用 paddle(10)/glm-vision(9) 链。
-
-**License**:[MIT](https://github.com/baidu/Unlimited-OCR/blob/main/LICENSE)(对齐纯免费立场,与 Qwen Apache-2.0 同档,企业可商用)。
-
-#### 四档对比速查
-
-| 档位 | 装不装服务 | 资源门槛 | 中文 | 表格 | 看图问答 | License / 来源 |
-|---|---|---|---|---|---|---|
-| **1 默认**(tesseract) | 不装 | 零(纯 CPU WASM) | 一般 | ❌ | ❌ | Apache 2.0(自建) |
-| **2 智谱 GLM-4.6V-Flash** | 不装(云端 API) | 零(纯 HTTP) | ✅ SOTA | ✅ | ✅ | 用户自备智谱 key(永久免费) |
-| **3 PaddleX** | 装 | GPU 12GB 或 CPU 4 核 8GB | ✅ SOTA | ✅ | ❌ | Apache 2.0(自建) |
-| **4 vLLM Qwen2.5-VL** | 装 | **GPU 16–24GB**(CPU 不可用) | ✅ | 一般 | ✅ | Apache 2.0(自建) |
-
-> 自建三档(1/3/4)刻意只选 **Apache 2.0** 引擎(tesseract.js + PaddleOCR + Qwen2.5-VL),避开 AGPL / GPL / 商用申请陷阱,**企业可直接商用**。档位 2 智谱是云端 API(GLM-4.6V-Flash 永久免费,用户自备 key),非自建 —— 适合不想部署服务器的用户补齐中文 SOTA + VQA 能力。
 
 ---
 
