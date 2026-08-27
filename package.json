@@ -18,7 +18,7 @@
     "start": "node dist/index.js",
     "dev": "tsc -w",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
-    "test": "npm run build && npm run build:tests && node --test dist-test/*.test.js test/*.mjs && node scripts/check-error-text.mjs && node scripts/check-schema.mjs && MEDIA_GEN_CHECK_PROFILE=strict node scripts/check-render-output.mjs test/golden/expected/qr/url.png",
+    "test": "npm run build && npm run build:tests && node --test dist-test/*.test.js test/*.mjs && node scripts/check-error-text.mjs && node scripts/check-schema.mjs && node scripts/check-readme-sync.mjs && MEDIA_GEN_CHECK_PROFILE=strict node scripts/check-render-output.mjs test/golden/expected/qr/url.png",
     "render:golden": "npm run build && npm run build:tests && node scripts/render-golden.mjs",
     "check:render": "node scripts/check-render-output.mjs",
     "build:fixtures": "node scripts/build-p04-fixtures.mjs",

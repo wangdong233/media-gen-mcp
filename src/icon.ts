@@ -46,6 +46,19 @@ export interface IconRequest {
 export interface IconRenderOutput {
   svg: string;
   png?: Buffer;
+  /** B10 丢弃必告警:PNG-only 参数(background)在 SVG 输出下显式传入时告警。 */
+  warnings?: string[];
+}
+
+/**
+ * B10 丢弃必告警:background 是 PNG-only 参数(schema 已声明),SVG 输出保持透明不消费。
+ * 纯函数(与 Iconify 网络无关),renderIcon 与离线单测共用 —— renderIcon 必联网,测试只钉文案。
+ */
+export function iconDiscardWarnings(req: IconRequest): string[] {
+  if (req.format !== "png" && req.background != null) {
+    return ["background 仅 PNG 输出消费,SVG 图标保持透明背景,已忽略(要白/彩底请 format=png)。"];
+  }
+  return [];
 }
 
 export async function renderIcon(req: IconRequest): Promise<IconRenderOutput> {
@@ -110,7 +123,7 @@ export async function renderIcon(req: IconRequest): Promise<IconRenderOutput> {
     });
     png = Buffer.from(resvg.render().asPng());
   }
-  return { svg, png };
+  return { svg, png, warnings: iconDiscardWarnings(req) };
 }
 
 /** 仅供测试:清空图标缓存。 */

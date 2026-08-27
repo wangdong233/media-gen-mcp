@@ -52,6 +52,10 @@ export async function renderQR(req: QRRequest): Promise<QRRenderOutput> {
     },
   };
   const format = req.format ?? "svg";
+  // B10 丢弃必告警:width 是 PNG-only 参数(schema 已声明),SVG 矢量无固定像素宽 —— 显式传入时告警不静默。
+  if (format !== "png" && req.width != null) {
+    warnings.push("width 仅 PNG 输出消费,SVG 是矢量无固定像素宽,已忽略(要指定尺寸请 format=png)。");
+  }
   if (format === "png") {
     const pngOpts = { ...opts, type: "png" as const };
     if (req.width && req.width > 0) (pngOpts as any).width = Math.floor(req.width);

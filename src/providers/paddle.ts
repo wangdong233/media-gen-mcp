@@ -28,6 +28,7 @@ import type {
   TextBlock,
   ChartOut,
   ExtractTableHints,
+  DescribeImageHints,
 } from "./types.js";
 
 interface PaddleConfig {
@@ -201,6 +202,13 @@ export class PaddleocrProvider implements MediaProviderBase, VisionProvider {
       };
     }
     // describe-image(PaddleOCR-VL markdown 描述;VQA question 由 M3 vlm provider 支持,paddle 仅默认描述)
-    return { task: "describe-image", description: md, raw: r };
+    // B10 丢弃必告警:question 传入但 paddle 不消费(schema 已声明)→ 显式告警,不静默
+    const question = (req.hints as DescribeImageHints | undefined)?.question;
+    return {
+      task: "describe-image",
+      description: md,
+      raw: r,
+      ...(question ? { warnings: [`paddle 不支持 question,已忽略(默认描述;要 VQA 问答请用 vlm/glm-vision provider)。`] } : {}),
+    };
   }
 }

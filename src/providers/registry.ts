@@ -5,7 +5,7 @@ import { TesseractProvider } from "./tesseract.js";
 import { PaddleocrProvider } from "./paddle.js";
 import { VlmProvider } from "./vlm.js";
 import { GlmVisionProvider } from "./glm-vision.js";
-import { FlowProvider, FLOW_MNEMONIC_RE } from "./flow.js";
+import { FlowProvider, FLOW_MNEMONIC_RE, abraCreditRange, veoCreditRange } from "./flow.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -126,7 +126,7 @@ function hasModality(p: MediaProvider, modality: "image" | "video"): boolean {
   const vPrio = config.videoProviderPriority;
   if (vPrio?.includes("flow")) {
     console.warn(
-      `[media-gen-mcp] ⚠️ videoProviderPriority 包含 "flow":Flow 视频消耗积分(abra 7-20 / veo 10-100 点每条)。仅当你在 config.json 显式如此配置时才会走到该链;未列入时 flow 视频只能显式 provider=flow 调用。`,
+      `[media-gen-mcp] ⚠️ videoProviderPriority 包含 "flow":Flow 视频消耗积分(abra ${abraCreditRange()} / veo ${veoCreditRange()} 点每条)。仅当你在 config.json 显式如此配置时才会走到该链;未列入时 flow 视频只能显式 provider=flow 调用。`,
     );
   }
 }

@@ -101,7 +101,9 @@ describe("flow 计费确认门集成(死端口 CDP;确定性零积分)", { skip:
     const r = await c1.send("tools/list", {});
     const cv = r.result.tools.find((t) => t.name === "create_video");
     assert.ok(cv.inputSchema.properties.confirmToken, "confirmToken 参数在册");
-    assert.match(cv.inputSchema.properties.confirmToken.description, /needConfirm/);
+    // B8 描述瘦身:确认门流程+响应形状(needConfirm/…)归位到工具描述;参数侧只留 TTL/绑定细节并指针互指。
+    assert.match(cv.description, /needConfirm/, "工具描述文档化两段式门(响应形状)");
+    assert.match(cv.inputSchema.properties.confirmToken.description, /flow\.confirmTtlMs/, "参数文档化 TTL/绑定细节");
   });
 
   test("第一段:无 token → needConfirm 响应(非 isError;静态预估 12 + 令牌 + TTL)", async () => {

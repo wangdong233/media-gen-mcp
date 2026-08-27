@@ -43,8 +43,17 @@ const {
   estimateVideoCredits,
   staticTierCosts,
   formatTierMatrix,
+  FLOW_ZERO_CREDIT,
+  flowTierCost,
+  flowCreditsEn,
+  flowCreditsZh,
+  abraCreditRange,
+  abraGenCreditRange,
+  veoCreditRange,
+  veoPlainCostsList,
+  videoCostTableHintZh,
+  flowSnapshotCostHintZh,
   isFlowMediaIdLike,
-  EDIT_WIRE_WARNING,
   OPEN_VIDEO_MODES,
 } = require_(path.join(distDir, "providers/flow.js"));
 
@@ -309,7 +318,8 @@ describe("createVideo submitOnly 语义(stub 隔离,零真实消耗)", () => {
     const task = await p.createVideo({ prompt: "a test", model: "abra_t2v_8s" });
     assert.equal(task.status, "queued");
     assert.equal(task.taskId, "media-new-1");
-    assert.ok(task.warnings.some((w) => w.includes("预计消耗 12 积分")), "提交 warning 应含积分预估");
+    // B9:期望价数字取自 staticTierCosts 真源(改真源本断言随变,不落手写价)
+    assert.ok(task.warnings.some((w) => w.includes(`预计消耗 ${String(staticTierCosts("abra_t2v_8s")!.SERVICE_TIER_INTERMEDIATE)} 积分`)), "提交 warning 应含积分预估");
     // submit-only:calls 里不应有 projectInitialData(那属于轮询路径 getVideo)
     assert.ok(!t.calls.some((c) => c.url.includes("projectInitialData")), "createVideo 不得轮询");
     const post = t.calls.find((c) => c.method === "POST" && c.url.includes("/video:"));
@@ -379,7 +389,8 @@ describe("带图链路 wire 构造(i2v/首尾帧/图生图/上传;stub 隔离零
     assert.equal(body.requests[0].endImage, undefined);
     assert.ok(t.calls.some((c) => c.method === "POST" && c.url.includes("/flow/uploadImage")), "先上传后提交");
     assert.deepEqual(t.rcCalls, [{ siteKey: "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV", action: "VIDEO_GENERATION" }]);
-    assert.ok(task.warnings.some((w) => w.includes("预计消耗 12 积分")), "abra_i2v_8s = 12 点");
+    // B9:期望价数字取自 staticTierCosts 真源(改真源本断言随变,不落手写价)
+    assert.ok(task.warnings.some((w) => w.includes(`预计消耗 ${String(staticTierCosts("abra_i2v_8s")!.SERVICE_TIER_INTERMEDIATE)} 积分`)), "abra_i2v_8s 预估 = 真源价");
   });
   test("首尾帧:keyframes 2 张 → StartAndEndImage 端点 + startImage/endImage 各自 mediaId", async () => {
     const { t, p } = newProvider();
@@ -1152,13 +1163,14 @@ describe("E-parity:CANCELED 状态映射(§11.3;枚举经 bundle 字符串表实
   });
 });
 
-describe("E-parity:V2V edit 模式 wire(契约 §11.1;bundle Zod + 假 key 404 探针定型,live 未验证)", () => {
+describe("E-parity:V2V edit 模式 wire(契约 §11.1 定型;2026-08-27 live 已验证,契约 §15)", () => {
   test("OPEN_VIDEO_MODES 含 edit;abra_edit + videoMediaId + prompt → EditVideo 端点且顶层无 useV2ModelConfig", async () => {
     assert.ok(OPEN_VIDEO_MODES.has("edit"));
     const { t, p } = newProvider({ media: [doneMedia("vid-src-1")] });
     const r = await p.createVideo({ prompt: "make it snow", model: "abra_edit", videoMediaId: "vid-src-1" });
     assert.equal(r.status, "queued");
-    assert.ok(r.warnings?.some((w: string) => w.includes(EDIT_WIRE_WARNING)), "提交响应必须带 live-未验证警示");
+    // edit 已 live(§15):不再携带 live-未验证警示(EDIT_WIRE_WARNING 已随 live 验证删除)
+    assert.ok(!r.warnings?.some((w: string) => /未 live|not yet live/i.test(w)), "live 已验证模式不再带 live-未验证警示");
     const call = t.calls.find((c) => c.method === "POST" && c.url.includes("batchAsyncGenerateVideoEditVideo"));
     assert.ok(call, "命中 EditVideo 独立端点");
     const body = JSON.parse(Buffer.from(call.bodyB64, "base64").toString("utf8"));
@@ -1231,6 +1243,85 @@ describe("staticTierCosts per-tier 静态矩阵(§14.4;2026-08-27 live 快照蒸
   });
 });
 
+describe("B9 积分价文案单源格式层(hint/描述里的价数字唯一真源 = staticTierCosts,改真源即随变)", () => {
+  /** 从真源现取两档价(断言与 hint 双方都不落任何手写价)。 */
+  const adv = (k: string) => String(staticTierCosts(k)!.SERVICE_TIER_ADVANCED);
+  const mid = (k: string) => String(staticTierCosts(k)!.SERVICE_TIER_INTERMEDIATE);
+
+  test("短语/区间/列表全部从 staticTierCosts 推导(锚定当前真值)", () => {
+    assert.equal(flowTierCost("abra_edit"), mid("abra_edit"));
+    assert.equal(flowCreditsEn("abra_edit"), `${mid("abra_edit")} credits`);
+    assert.equal(flowCreditsZh("veo_3_1_upsampler_1080p"), `${mid("veo_3_1_upsampler_1080p")} 点`);
+    assert.equal(flowTierCost("veo_3_1_t2v_fast", "SERVICE_TIER_ADVANCED"), adv("veo_3_1_t2v_fast"), "UNAVAILABLE 原样返回");
+    // 区间 = 真源并集推导(非手写):abra 含 edit、abra 生成分支不含 edit、veo 三 plain 分支默认档
+    const range = (nums: number[]) => `${Math.min(...nums)}-${Math.max(...nums)}`;
+    const flat = (keys: string[]) => keys.flatMap((k) => Object.values(staticTierCosts(k) ?? {}).filter((v): v is number => typeof v === "number"));
+    const abraAll = FLOW_VIDEO_MODELS.filter((k) => /^abra_(t2v|i2v|r2v)_\d+s$/.test(k) || k === "abra_edit");
+    const abraGen = FLOW_VIDEO_MODELS.filter((k) => /^abra_(t2v|i2v|r2v)_\d+s$/.test(k));
+    assert.equal(abraCreditRange(), range(flat(abraAll)));
+    assert.equal(abraGenCreditRange(), range(flat(abraGen)));
+    const veoIntNums = ["veo_3_1_t2v_lite", "veo_3_1_t2v_fast", "veo_3_1_t2v"].map((k) => Number(mid(k))).filter(Number.isFinite);
+    assert.equal(veoCreditRange(), range(veoIntNums));
+    assert.equal(veoPlainCostsList(), `lite ${mid("veo_3_1_t2v_lite")} / fast ${mid("veo_3_1_t2v_fast")} / quality ${mid("veo_3_1_t2v")}`);
+    assert.equal(veoPlainCostsList("/"), `lite ${mid("veo_3_1_t2v_lite")}/fast ${mid("veo_3_1_t2v_fast")}/quality ${mid("veo_3_1_t2v")}`);
+    assert.equal(FLOW_ZERO_CREDIT, 0);
+  });
+
+  test("真源耦合:消耗表/快照 hint 的每个数字 = staticTierCosts 现值(改 staticTierCosts 任一价,hint 必随变)", () => {
+    const table = videoCostTableHintZh();
+    const snap = flowSnapshotCostHintZh();
+    // abra 时长梯:4/6/8/10s 逐档对照真源
+    const ladder = FLOW_VIDEO_DURATIONS.map((d: number) => mid(`abra_t2v_${d}s`)).join("/");
+    assert.ok(table.includes(`${FLOW_VIDEO_DURATIONS.join("/")}s=${ladder} 点`), `消耗表缺真源梯:${ladder}`);
+    for (const frag of [
+      `abra_edit=${mid("abra_edit")}`,
+      `veo lite=${mid("veo_3_1_t2v_lite")}(ADVANCED 档 ${adv("veo_3_1_t2v_lite")})`,
+      `veo fast=${mid("veo_3_1_t2v_fast")}(ADVANCED 档 ${adv("veo_3_1_t2v_fast")})`,
+      `veo quality=${mid("veo_3_1_t2v")}`,
+      `low_priority=ADVANCED 档 ${adv("veo_3_1_t2v_lite_low_priority")}`,
+      `veo_3_1_upsampler_1080p=${mid("veo_3_1_upsampler_1080p")}`,
+    ]) {
+      assert.ok(table.includes(frag), `消耗表缺真源片段:${frag}`);
+    }
+    for (const frag of [
+      `abra_edit ${mid("abra_edit")}`,
+      `upsampler_1080p ${mid("veo_3_1_upsampler_1080p")} 点`,
+      `lite ADVANCED=${adv("veo_3_1_t2v_lite")}`,
+      `plain fast 在 ADVANCED ${adv("veo_3_1_t2v_fast")}`,
+      `low_priority 仅 ADVANCED=${adv("veo_3_1_t2v_lite_low_priority")}`,
+    ]) {
+      assert.ok(snap.includes(frag), `快照 hint 缺真源片段:${frag}`);
+    }
+  });
+
+  test("「?」哨兵:全部生成文案无未知 key(手误 key 不得静默出价)", () => {
+    const all = [
+      videoCostTableHintZh(),
+      flowSnapshotCostHintZh(),
+      flowCreditsEn("abra_edit"),
+      flowCreditsEn("veo_3_1_extension_lite"),
+      flowCreditsEn("veo_3_1_upsampler_1080p"),
+      flowCreditsZh("abra_edit"),
+      flowCreditsZh("veo_3_1_upsampler_1080p"),
+      flowTierCost("veo_3_1_upsampler_4k", "SERVICE_TIER_ADVANCED"),
+      abraCreditRange(),
+      abraGenCreditRange(),
+      veoCreditRange(),
+      veoPlainCostsList(),
+      veoPlainCostsList("/"),
+    ];
+    for (const s of all) assert.ok(!s.includes("?"), `文案混入未知 key 哨兵:"${s}"`);
+  });
+
+  test("接线:S300 无 model 的消耗表 hint === videoCostTableHintZh()(文案层是唯一出处分,非第二份手写)", async () => {
+    const { p } = newProvider();
+    await assert.rejects(
+      () => p.createVideo({ prompt: "x" }),
+      (e: any) => e.code === "S300" && e.message.includes(`Hint: ${videoCostTableHintZh()}`),
+    );
+  });
+});
+
 describe("tier 门禁(§14.4 UNAVAILABLE;提交点与确认门双拦;零提交)", () => {
   test("静态矩阵:INTERMEDIATE 档提交 fast_ultra → S303 带 per-tier 矩阵,零 POST", async () => {
     const { t, p } = newProvider(); // credits stub = INTERMEDIATE,目录空 → staticTierCosts 兜底
@@ -1271,7 +1362,8 @@ describe("tier 门禁(§14.4 UNAVAILABLE;提交点与确认门双拦;零提交)"
     const r = await p.createVideo({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" });
     assert.equal(r.taskId, "media-new-1");
     assert.ok(t.calls.some((c: any) => c.method === "POST" && c.url.includes("/video:")), "ADVANCED 档应放行提交(stub)");
-    assert.ok((r.warnings ?? []).some((w: string) => w.includes("预计消耗 10 积分")), "提交后预估 = per-tier 真值 10");
+    // B9:期望价数字取自 staticTierCosts 真源(改真源本断言随变,不落手写价)
+    assert.ok((r.warnings ?? []).some((w: string) => w.includes(`预计消耗 ${String(staticTierCosts("veo_3_1_t2v_fast_ultra")!.SERVICE_TIER_ADVANCED)} 积分`)), "提交后预估 = per-tier 真值");
   });
   test("确认门:UNAVAILABLE key 不发令牌(注定失败的请求不进入确认流程)", async () => {
     const { p } = newProvider(); // INTERMEDIATE

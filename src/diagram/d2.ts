@@ -146,6 +146,12 @@ export class D2Engine implements DiagramEngine {
       //   { ...compiled.renderOptions, ...(themeID != null && { themeID }) } → 与改造前 byte-identical。
       //   darkThemeID 必须严格全大写(Go 反序列化大小写敏感,驼峰 darkThemeId 会静默不生效)。
       const themeID = resolveD2Theme(req.theme);
+      // B10 丢弃必告警:diagramType 两引擎都不消费(schema 已声明 Reserved;类型由 DSL 语法决定,
+      // 如 shape: sequence_diagram),显式传入时告警而非静默丢弃。
+      const warnings: string[] = [];
+      if (req.diagramType != null) {
+        warnings.push("diagramType 目前不影响渲染,已忽略(图类型由 DSL 语法决定,如 shape: sequence_diagram)。");
+      }
       const darkThemeID = req.darkTheme != null ? resolveD2Theme(req.darkTheme) : null;
       const renderOpts = {
         ...compiled.renderOptions,
@@ -173,7 +179,7 @@ export class D2Engine implements DiagramEngine {
           throw new Error("[resvg] " + (e?.message ?? String(e)));
         }
       }
-      return { svg: resolved, png };
+      return { svg: resolved, png, ...(warnings.length ? { warnings } : {}) };
     };
 
     // active refcount:渲染中 ref 保活(防 worker unref 导致在飞 render 被判 unsettled 提前退出),空闲 unref

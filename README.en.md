@@ -3,18 +3,18 @@
 > The all-in-one image toolkit for Claude Code — generate, draw, and understand images in a single sentence. Free.
 
 <p align="center">
- <img src="https://img.shields.io/badge/version-0.13.1-blue">
+ <img src="https://img.shields.io/badge/version-0.14.0-blue">
  <img src="https://img.shields.io/badge/license-MIT-green">
  <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
 
-**Install it once into Claude Code, and every image task afterward becomes a single sentence.** Designers creating visuals, engineers drawing architecture diagrams, marketers making share cards, finance teams extracting tables from invoices — generation/recognition + drawing/cards/QRCodes all covered, **100% free** (free providers + local engines — works the moment you install it).
+**Install it once into Claude Code, and every image task afterward becomes a single sentence.** Designers creating visuals, engineers drawing architecture diagrams, marketers making share cards, finance teams extracting tables from invoices — generation/recognition + drawing/cards/QRCodes all covered, **completely free** (free providers + local engines — works the moment you install it).
 
 Tired of producing images a few times a week and juggling N tools with N sets of parameters? Install this once and hand every image scenario to Claude.
 
 <div align="center">
 
-[简体中文](README.md) | **English** | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
+[简体中文](README.md) | **English**
 
 </div>
 
@@ -169,12 +169,20 @@ If Chrome isn't running / not logged in, the tools return a **structured error c
 
 - **Image generation**: Nano Banana Pro / Nano Banana 2 (default) / Nano Banana 2 Lite; aspect ratios 16:9 / 9:16 / 1:1 / 3:4 / 4:3; reproducible seeds; base-image edits + reference images (base + references cap: 10 total)
 - **Upscaling**: 2K image upscale (model=`GEM_PIX_2_UPSAMPLE_2K`), 1080p video upscale (model=`veo_3_1_upsampler_1080p`)
-- **Asset management**: upload images, batch-delete, create public share links (`labs.google/fx/tools/flow/shared/…`), cancel in-flight videos, check credits / media status (`flow_status`); create character entities and bind one of 30 preset voices (1 Lite (incl. extend, first+last frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
+- **Asset management**: upload images, batch-delete, create public share links (`labs.google/fx/tools/flow/shared/…`), cancel in-flight videos, check credits / media status (`flow_status`)
+
+**Video generation bills credits (per clip — know before you submit)**:
+
+| Model | Example keys | Credits per clip |
+|---|---|---|
+| Omni Flash (abra) text / image / reference | `abra_t2v_4s` / `abra_i2v_8s` / `abra_r2v_10s` … | 7 / 10 / 12 / 15 (by 4/6/8/10s duration) |
+| Omni Flash video edit (V2V) | `abra_edit` | 20 |
+| Veo 3.1 Lite (incl. extend, first+last frame) | `veo_3_1_t2v_lite` / `veo_3_1_extension_lite` … | 10 |
 | Veo 3.1 Fast | `veo_3_1_t2v_fast` … | 20 |
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | Video upscale 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-One clip per call; durations 4 / 6 / 8 / 10 seconds (the veo family has NO 10s — 4/6/8s or the key-embedded duration only; a key with an embedded `_Ns` suffix plus a different durationSeconds → S301); ratio 16:9 / 9:16 only. Modes: text-to-video (t2v; wire shape-verified only, never live-submitted through this provider), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, up to 7 for abra keys / 3 for veo keys; may also carry `audioMediaIds` — preset voice samples from flow_status, experimental), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction; wire is finalized but not yet live-submitted — the response carries a warning), upscale (`videoMediaId`). All generation keys output 720P (ultra/quality variants too) — higher resolution is upscale-only.
+One clip per call; durations 4 / 6 / 8 / 10 seconds (the veo family has NO 10s — 4/6/8s or the key-embedded duration only; a key with an embedded `_Ns` suffix plus a different durationSeconds → S301); ratio 16:9 / 9:16 only. Modes (all live-verified): text-to-video (t2v), image-to-video (`image`, upload is 0-credit), reference-images-to-video (`images`, up to 7 for abra keys / 3 for veo keys; may also carry `audioMediaIds` — 30 preset voice samples from flow_status, speech is audibly mixed into the output), first+last frame (`keyframes`, exactly 2), extend (`videoMediaId`), edit (`videoMediaId` + an edit instruction, abra_edit), upscale (`videoMediaId`). All generation keys output 720P (ultra/quality variants too) — higher resolution is upscale-only.
 
 > Some keys are tier-locked (per-tier prices measured 2026-08): fast `ultra`/`4s`/`6s` variants and `low_priority` are ADVANCED-only (10 / 0 credits); plain fast is NOT available on ADVANCED; lite costs 5 on ADVANCED. Tier-unavailable keys are rejected BEFORE submission with the full per-tier matrix (no credits wasted); live per-key prices are in `flow_status`.
 
@@ -186,7 +194,7 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds (the veo family has NO 10s �
 "Check my Flow credits / is this mediaId done?" → flow_status() / flow_status(mediaId=…)
 ```
 
-**The `flow_status` introspection tool (0-credit throughout)**: with no arguments it returns a full snapshot — logged-in account, credit balance, the live model catalog (with per-key reference durations), 30 preset voices, and the project media list; with a `mediaId` it tracks one media and downloads the finished asset (`thumbnail=true` fetches the media thumbnail — video or image); `deleteMediaIds` batch-deletes, `shareMediaIds` creates public share links, `cancelMediaIds` cancels in-flight videos (images are not cancelable).
+**The `flow_status` introspection tool (0-credit throughout)**: with no arguments it returns a full snapshot — logged-in account, credit balance, the live model catalog (with per-key reference durations), 30 preset voices (the `preset_voices` field), and the project media list; with a `mediaId` it tracks one media and downloads the finished asset (`thumbnail=true` fetches the media thumbnail — video or image); `deleteMediaIds` batch-deletes, `shareMediaIds` creates public share links, `cancelMediaIds` cancels in-flight videos (images are not cancelable).
 
 > **Credit red line**: Flow video bills credits and is **never auto-routed by default** — either list it explicitly in `videoProviderPriority` (you own the credits; a loud warning fires at startup) or pass `provider="flow"` per call. For free automatic image generation, put `flow` at the head of `imageProviderPriority` (see Configuration below).
 
@@ -324,7 +332,7 @@ One clip per call; durations 4 / 6 / 8 / 10 seconds (the veo family has NO 10s �
 - **Video stays agnes-first** (free) by default; Flow video bills credits and is **deliberately excluded from default routing** — either list it in `videoProviderPriority` explicitly (you own the credits), or pass `provider="flow"` per call.
 - Omitting both keys keeps current behavior (default provider + agnes/zhipu free-tier mutual fallback), zero impact. Env equivalents: `MEDIA_IMAGE_PROVIDER_PRIORITY="flow,agnes,zhipu"` / `MEDIA_VIDEO_PROVIDER_PRIORITY="agnes,zhipu"`.
 - **Channel on/off = the priority chain (the chain IS the switch)**: whether a channel is enabled is decided solely by whether it appears in the two priority chains — **not configured = not enabled** (no auto-routing, no fallback), **listed = enabled** (chain head = default channel). A separate `flow.enabled` switch is not needed (and no longer supported); an explicit `provider="flow"` call is always allowed — when the environment is unavailable it returns a structured `[flow] S1xx` preflight error (with launch guidance), never a silent provider swap. Companion knob `"flow": { "toolDeadlineMs": 110000 }` caps Flow's long operations (image polling / video submission / asset downloads) to satisfy the no-stall rule (≤120s per call): on timeout it returns `[flow] S410` — the underlying operation is NOT cancelled; re-check and download later via `flow_status(mediaId)`.
-- **Billing confirm gate (two-phase, ON by default)**: when a video routes to / explicitly uses Flow, the first `create_video` call does NOT submit — it returns `{needConfirm:true, estimatedCost (credit estimate: dynamic creditMapping first, static table fallback), confirmToken, expiresInSeconds}`; re-call with the SAME parameters plus `confirmToken` to actually submit. Tokens are short-lived (default 10 min, tunable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds) — changing any of them after confirming requires a fresh token; a wrong token returns `[flow] S320`, an expired one `[flow] S321`. Free operations (e.g. the `veo_3_1_upsampler_1080p` upscale) and non-Flow providers NEVER trigger the gate. Turn off with `"flow": { "videoConfirm": false }` (default `true` — a false trigger only costs one extra round trip, a missed one bills real credits).
+- **Billing confirm gate (two-phase, ON by default)**: when a video routes to / explicitly uses Flow, the first `create_video` call does NOT submit — it returns `{needConfirm:true, estimatedCost (credit estimate: dynamic creditMapping first, static table fallback), confirmToken, expiresInSeconds}`; re-call with the SAME parameters plus confirmToken to actually submit. Tokens are short-lived (default 10 min, tunable via `flow.confirmTtlMs` / env `FLOW_CONFIRM_TTL_MS`) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds) — changing any of them after confirming requires a fresh token; a wrong token returns `[flow] S320`, an expired one `[flow] S321`. Keys unavailable on the current tier (e.g. INTERMEDIATE-tier fast ultra variants) are issued no token at all — rejected outright with `[flow] S303` plus the full per-tier matrix. 0-credit operations (e.g. the `veo_3_1_upsampler_1080p` upscale) and non-Flow providers NEVER trigger the gate. Turn off with `"flow": { "videoConfirm": false }` (default `true` — a false trigger only costs one extra round trip, a missed one bills real credits).
 
 **Flow asset management (all 0-credit)**: besides credits / media status / downloads, `flow_status` supports three zero-cost operations — `shareMediaIds=[…]` creates public share links (like `labs.google/fx/tools/flow/shared/image/<id>`, prompt included), `cancelMediaIds=[…]` cancels in-flight VIDEO generations (note: image jobs are not cancelable), and `deleteMediaIds=[…]` batch-deletes media.
 
@@ -374,7 +382,7 @@ Recognition capabilities come in **four tiers** — install on demand; the first
  The default model is `glm-4.6v-flash`; you can switch it to `glm-4v-flash` (free, lightweight) or paid vision models (`glm-4.6v` / `glm-ocr`, etc.) via `providers["glm-vision"].model`. Once configured, the MCP auto-includes it in the fallback chain: **paddle(10) → glm-vision(9) → vlm(8) → tesseract(1)**.
 
 - ⚠️ **Compliance Notes** (important):
- - Only standard **open.bigmodel.cn api_keys** are accepted; **Code Plan keys (ZAI_API_KEY) do NOT work** — they're bound to the dedicated Z.ai endpoint + limited to 9 whitelisted tools (Claude Code / Cline / Cursor, etc. — media-gen-mcp is not on the list). Three violation-triggered calls get the account banned, with the subscription fee non-refundable
+ - Only standard **open.bigmodel.cn api_keys** are accepted; **Code Plan keys (ZAI_API_KEY) do NOT work** — they're bound to the dedicated Z.ai endpoint + limited to 9 whitelisted tools (Claude Code / Cline / Cursor, etc. — media-gen-mcp is not on the list). 3 violation-triggered calls get the account banned, with the subscription fee non-refundable
  - Multi-key rotation (`apiKeys: ["k1", "k2", ...]`) is technically supported, but **Zhipu's User Agreement §2/§3 prohibits multi-account usage / account sharing** — rotating multiple keys may violate the agreement and the platform reserves the right to ban the account. Make sure every key comes from a compliant account you legitimately own
 
 #### Tier 3: PaddleX / PP-StructureV3 (Chinese SOTA + Table Recognition)
@@ -533,7 +541,7 @@ extract_text(image="data:image/png;base64,...", provider="vlm")
 ### 3. Automatic Fallback Mechanism (Once Configured, You Don't Need to Worry)
 
 - **Generation Side**: Agnes ↔ Zhipu — if either fails, it auto-switches to the other (two consecutive failures within 60 seconds trigger a soft switchover; no restart or config change required on your end)
-- **Recognition Side**: default lightweight engine (in-process fallback) → PaddleX → vLLM, auto-degrading by capability
+- **Recognition Side**: default lightweight engine (in-process fallback) → auto-degrades by capability (fallback order: paddle(10) → glm-vision(9) → vlm(8); tesseract is the default head and the last-resort fallback)
 - **The One Exception**: video polling does **not** switch providers when fetching the result (to avoid getting the wrong result back)
 - What you need to do: configure two generation API Keys + optionally install one recognition tier; leave the rest to Claude
 
@@ -582,7 +590,7 @@ A: Routing for these ambiguous requests has been tuned — "make a card / poster
 
 - **Heavy Claude Code users** — anyone producing image tasks a few times a week, who doesn't want to install a separate MCP and memorize a new parameter set for every task.
 - **Developers writing technical docs / blogs** — who constantly need architecture diagrams, sequence diagrams, ER diagrams, data charts, formulas, and don't want to leave their workflow.
-- **Individual developers / indie products** — cost-conscious (100% free) and reproducibility-minded (same input → same output); don't want to build a separate backend just for image tasks.
+- **Individual developers / indie products** — cost-conscious (completely free) and reproducibility-minded (same input → same output); don't want to build a separate backend just for image tasks.
 - **Data / Finance / Legal** — two-way scenarios: plot data as charts, and reverse-extract data points from screenshots / invoices / **PDF reports / contracts** (watermarks / red stamps can be ignored; two-column papers merge in reading order).
 - **Education / Academic** — students extract text from lecture screenshots / scanned handouts / paper PDFs, merge two-column papers into continuous text, and ask questions about data read out of charts; teachers turn scanned paper exams into editable text.
 - **Operations / content creators / newsletter authors** — share cards / OG images / posters / QR codes, with Chinese + color emoji + gradients working out of the box.

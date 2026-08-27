@@ -44,6 +44,8 @@ export interface DiagramRequest {
 export interface DiagramRenderOutput {
   svg: string;
   png?: Buffer;
+  /** 引擎级警告(B10 丢弃必告警:graphviz 忽略 D2-only 的 theme 等参数时不静默)。 */
+  warnings?: string[];
 }
 
 export interface DiagramResult {

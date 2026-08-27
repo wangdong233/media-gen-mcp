@@ -53,6 +53,8 @@ export interface FormulaRequest {
 export interface FormulaRenderOutput {
   svg: string;
   png?: Buffer;
+  /** B10 丢弃必告警:PNG-only 参数(width/background)在 SVG 输出下显式传入时告警。 */
+  warnings?: string[];
 }
 
 export async function renderFormula(req: FormulaRequest): Promise<FormulaRenderOutput> {
@@ -88,6 +90,12 @@ export async function renderFormula(req: FormulaRequest): Promise<FormulaRenderO
   svg = svg.replace(/(width|height)="([\d.]+)ex"/g, (_m, dim, v) => `${dim}="${(parseFloat(v) * em / 2).toFixed(1)}px"`);
 
   let png: Buffer | undefined;
+  // B10 丢弃必告警:width/background 是 PNG-only 参数(schema 已声明),SVG 输出不消费 —— 显式传入时告警不静默。
+  const warnings: string[] = [];
+  if (req.format !== "png") {
+    if (req.width != null) warnings.push("width 仅 PNG 输出消费,SVG 尺寸由 fontSize 决定,已忽略(要指定像素宽请 format=png)。");
+    if (req.background != null) warnings.push("background 仅 PNG 输出消费,SVG 保持透明背景,已忽略。");
+  }
   if (req.format === "png") {
     // SVG 宽高为 ex 单位;用 Resvg fitTo 按 viewBox 等比缩放到目标像素宽
     const target = req.width && req.width > 0 ? req.width : 600;
@@ -97,5 +105,5 @@ export async function renderFormula(req: FormulaRequest): Promise<FormulaRenderO
     });
     png = Buffer.from(resvg.render().asPng());
   }
-  return { svg, png };
+  return { svg, png, ...(warnings.length ? { warnings } : {}) };
 }

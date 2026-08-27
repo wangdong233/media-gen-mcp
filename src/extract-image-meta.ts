@@ -267,5 +267,11 @@ export async function extractImageMeta(req: ExtractImageMetaRequest): Promise<Im
     if (fullWf) result.rawWorkflow = result.rawWorkflow ?? fullWf;
   }
 
+  // B10 丢弃必告警:includeRaw 仅 ComfyUI(带 workflow JSON)图像可消费(schema 已声明),
+  // A1111/无 chunk 图像没有 workflow JSON —— 显式请求但拿不到时告警,不静默
+  if (req.includeRaw && !result.rawWorkflow) {
+    warnings.push("includeRaw 未生效:本图无 workflow JSON(仅 ComfyUI 图像携带;A1111 原始参数见 chunks[].textPreview)。");
+  }
+
   return result;
 }

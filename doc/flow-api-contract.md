@@ -164,12 +164,12 @@ UNAVAILABLE = 当前 tier 不可用(4K/ultra 等)。
 
 | 模式 | apiPathname | requests[0] 专有字段 | 状态 |
 |---|---|---|---|
-| t2v | `batchAsyncGenerateVideoText` | —(纯 textInput) | 形状 404 探针 ✓(v1 已放行;🔴 provider 路径从未 live 提交——§14.7 透明标注,t2v 是 5-live 之外的两个 shape-verified 之一) |
+| t2v | `batchAsyncGenerateVideoText` | —(纯 textInput) | 形状 404 探针 ✓(v1 已放行;🔴 provider 路径从未 live 提交——§14.7 透明标注,t2v 是 5-live 之外的两个 shape-verified 之一。〔后被 §15 修正:2026-08-27 provider 路径 live 提交成功(-7 点)〕) |
 | i2v | `batchAsyncGenerateVideoStartImage` | `startImage` | ✅ live 200(abra_i2v_4s,-7 点) |
 | 首尾帧 | `batchAsyncGenerateVideoStartAndEndImage` | `startImage`+`endImage` | ✅ live 200(veo_3_1_interpolation_lite,-10 点) |
 | r2v | `batchAsyncGenerateVideoReferenceImages` | `referenceImages[]`(+`referenceAudio[]` §14.6) | ✅ live 200(abra_r2v_4s,-7 点,§10.6 台账;🔴 本行原记"未提交验证,暂不开放"有误——§10.6 台账已证明 r2v live,此处勘误) |
 | 延长 | `batchAsyncGenerateVideoExtendVideo` | `videoInput`(直接引用生成视频,§9.2 证伪上传前置) | ✅ live 200(§10.6,veo_3_1_extension_lite,-10 点;🔴 本行原记"未实现"未随 §10.6 刷新,勘误) |
-| 编辑 | `batchAsyncGenerateVideoEditVideo` | (EditVideo 不加 useV2ModelConfig) | 形状定型+假 key 404 ✓(§11.1;live 待授权) |
+| 编辑 | `batchAsyncGenerateVideoEditVideo` | (EditVideo 不加 useV2ModelConfig) | 形状定型+假 key 404 ✓(§11.1;live 待授权。〔后被 §15 修正:2026-08-27 live 提交成功(-20 点),全形状实证〕) |
 | 重拍 | `batchAsyncGenerateVideoReshootVideo` | | 未实现(无 wire 工作,如实) |
 | 超分 | `batchAsyncGenerateVideoUpsampleVideo` | 分辨率编码在 key(§9.1 证伪 outputSpec.videoUpsampleResolution;§14.3 补:upsample item 另有顶层 resolution 字段) | ✅ 已实现+live(§10.7) |
 | 物体插入/移除 | `...ObjectInsertion` / `...ObjectRemoval` | | 未实现 |
@@ -372,7 +372,7 @@ POST /v1/flow/upsampleImage
 - **端点**:`POST /v1/video:batchAsyncGenerateVideoEditVideo`(端点族 §7.3 表内)。
 - **顶层构造器明文(bundle 提交函数逐字)**:`{mediaGenerationContext:{batchId,…extra}, clientContext:{…,recaptchaContext}, requests:[item], ...('batchAsyncGenerateVideoEditVideo'!==apiPathname && {useV2ModelConfig:true})}` —— **edit 是唯一不带 useV2ModelConfig 的端点**(§7.3 表的推断升级为构造器明文实证)。
 - **item schema(bundle Zod `_0x457c52`,全字段 optional)**:`{aspectRatio, metadata, outputSpec, referenceAudio, referenceEntities, referenceImages, referenceLikenesses, requestContext, seed, structuredPrompt, textInput, videoInput, videoModelKey}` —— **无 promptExpansionInput**(与 extension 的关键差异);实现采用 `{aspectRatio(源继承), metadata, seed, textInput, videoInput:{mediaId}, videoModelKey}`。
-- **假 key 探针**:`videoModelKey:"abra_edit_fake_nonexistent_key"` + 真实源 videoInput → **404 NOT_FOUND**(形状全过、零调度、零积分)。🔴 真实付费提交(abra_edit 20 点)未做 —— 工具提交响应固定带警示(EDIT_WIRE_WARNING),live 待用户授权。
+- **假 key 探针**:`videoModelKey:"abra_edit_fake_nonexistent_key"` + 真实源 videoInput → **404 NOT_FOUND**(形状全过、零调度、零积分)。🔴 真实付费提交(abra_edit 20 点)未做 —— 工具提交响应固定带警示(EDIT_WIRE_WARNING),live 待用户授权。〔后被 §15 修正:2026-08-27 live 提交成功(-20 点),EDIT_WIRE_WARNING 已删除〕
 - reCAPTCHA action:VIDEO_GENERATION(同族端点共用,§7.4)。
 
 ### 11.2 分享 shareMedia ✅(live 200;0 点)
@@ -493,7 +493,7 @@ CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome
 
 - **探针(零积分零调度,§11.1 同法)**:POST `/v1/video:batchAsyncGenerateVideoReferenceImages`,`videoModelKey="abra_r2v_8s_nonexistent_probe_key"` + r2v 全量字段 + **`referenceAudio:[{mediaId:"achernar"}]`** + referenceImages → **404 NOT_FOUND**(形状全过;字段名若未知会是 400 Unknown name,§9 field-sieve 先例)。§14.1 的 bundle Zod 结论由此升级为探针实证。快照:/tmp/flow-survey/e-probe-reference-audio.json。
 - **预设语音 mediaId 形状(新 wire 事实)**:是 **slug 名非 UUID**——30 个全表(achernar/achird/algenib/algieba/alnilam/aoede/autonoe/callirrhoe/charon/despina/enceladus/erinome/fenrir/gacrux/iapetus/kore/laomedeia/leda/orus/puck/pulcherrima/rasalgethi/sadachbia/sadaltager/schedar/sulafat/umbriel/vindemiatrix/zephyr/zubenelgenubi),与 §8.1 实体 `audioReferences.presetVoiceId` 同命名空间(charon 双证)。工程含义:mediaId 形状启发(isFlowMediaIdLike)不适用,存在性/预设性校验必须走 projectInitialData 实查。
-- **实施(provider)**:`create_video` 新参 `audioMediaIds: string[]`。v1 收窄边界(D-3 裁决):① 仅 r2v key(edit 自身未 live,不叠加;requirements 矩阵里 AUDIO_REFERENCE 是 r2v/edit 的可选叠加项);② mediaId 必须是本项目 externalReferenceMedia 的预设语音(`isPresetAudioSample=true` 实查,非预设 → S301 带 voices 指路 hint);③ per-key 上限(动态 inputSpec.maxAudioReferences 优先/静态 abra=5、veo=1);④ wire = `requests[0].referenceAudio = [{mediaId}]`(r2v item 其余字段集不变);⑤ 恒发顶层 `audioFailurePreference=BLOCK_SILENCED_VIDEOS`(与客户端"仅当模型 outputsAudio 才发"的构造器存在差异——provider 全模型恒发,§2.5 live 形状先例已验可过;音频过滤命中时整条失败而非静默视频,实验期告警随响应返回)。
+- **实施(provider)**:`create_video` 新参 `audioMediaIds: string[]`。v1 收窄边界(D-3 裁决):① 仅 r2v key(edit 自身未 live,不叠加;requirements 矩阵里 AUDIO_REFERENCE 是 r2v/edit 的可选叠加项);② mediaId 必须是本项目 externalReferenceMedia 的预设语音(`isPresetAudioSample=true` 实查,非预设 → S301 带 voices 指路 hint);③ per-key 上限(动态 inputSpec.maxAudioReferences 优先/静态 abra=5、veo=1);④ wire = `requests[0].referenceAudio = [{mediaId}]`(r2v item 其余字段集不变);⑤ 恒发顶层 `audioFailurePreference=BLOCK_SILENCED_VIDEOS`(与客户端"仅当模型 outputsAudio 才发"的构造器存在差异——provider 全模型恒发,§2.5 live 形状先例已验可过;音频过滤命中时整条失败而非静默视频,实验期告警随响应返回)。〔本节 ① 的"edit 未 live"前提已被 §15 修正(edit 已 live,但音频叠加仍只在 r2v 实证过,v1 边界维持);⑤ 的实验期告警文案已按 §15 live 观察(语音确实混入、未被过滤)更新〕
 - **用户自有音频上传 wire 仍缺**(scotty 仅视频、uploadImage 仅图片)—— v1 无用户音频路径,在 S301 hint 与工具描述诚实披露。
 - 确认门 digest 摘入 audioMediaIds(排序后入摘;集合语义,换序不失效、增删失效 —— S320)。
 
@@ -515,7 +515,8 @@ CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome
 ### 14.9 等价性文档措辞修正(equivalent-doc;D-1/D-5)
 
 - **x1-x4 等价表述**(index.ts create_video 描述):UI 的 x1-x4 = N 次独立单元素 POST(§14.2 构造器实证),provider 单 POST 同构 —— 保留等价声明;**"each gets its own seed" 修正**为"seed 每次调用独立随机,**除非显式传 seed**(显式 seed 在 N 次调用间复用)"(flow.ts `req.seed ?? randomInt` 的诚实描述,D-5)。
-- **t2v 透明标注**(D-1):工具描述与 S303 hint 补"t2v wire 仅 404 形状探针验证,provider 路径从未 live 提交"(与 edit 的 EDIT_WIRE_WARNING 同款措辞;最终盘点 = 5 模式 live:i2v/首尾帧/r2v/extension/upsampler + 2 模式 shape-verified:t2v/edit)。
+- **B8 描述瘦身(B8;2026-08-27)**:create_video 的 flow key 目录原在「工具描述/model 参数/各输入参数」三度复述,收敛为单一分工 —— 工具描述=七模式一行表(输入×key 例×价)+确认门流程+xN/seed 语义+积分区间+`flow_status()` 指针;model 参数=mnemonic 规则(full key 或 缩写+durationSeconds)+家族开放列表+tier 锁+指针;各输入参数只留「requires an i2v/r2v/interpolation/extension 类 key + S301 指路」不再枚举 key 例;confirmToken 参数的确认门流程复述删除(流程归工具描述,参数留 TTL/绑定/失效/开关细节,指针互指)。**零信息丢失重审**(逐项 diff vs 4b29956 基线):11 个 key 例全部存续于七模式表;r2v 参考图上限 7/3、音频 5/1、keyframes=2、预设语音 30;互斥对(numFrames↔durationSeconds、images↔image/keyframes/videoMediaId);tier 锁与 per-tier 矩阵拒绝;t2v/edit「未 live」标注由 §15 live 事实取代(非丢失,是状态升级)。schema token:2836→2435(chars 11344→9738,估算 chars/4),省 401。守卫同步:test/flow-confirm.integration.test.mjs 的 needConfirm 断言从参数侧改锚工具描述侧(两段式文档化的权威位置随 B8 归位),参数侧改锚 flow.confirmTtlMs。
+- **t2v 透明标注**(D-1):工具描述与 S303 hint 补"t2v wire 仅 404 形状探针验证,provider 路径从未 live 提交"(与 edit 的 EDIT_WIRE_WARNING 同款措辞;最终盘点 = 5 模式 live:i2v/首尾帧/r2v/extension/upsampler + 2 模式 shape-verified:t2v/edit。〔后被 §15 修正:t2v/edit 均已于 2026-08-27 live 验证,7/7 全 live,标注与警示全部解除〕)。
 
 ### 14.10 lite 档全矩阵 live 实证(2026-08-27 用户授权真实测试;积分 1050→888,-162)
 
@@ -530,3 +531,18 @@ CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome
 - **x2 = 两条独立提交**(各自确认令牌/扣分/seed)——与页面 xN=N 次独立 POST 同构,等价性由真实提交坐实(§14.2 升级为 live 证据)。
 - **S303 tier 门 live 实证**:帧 `veo_3_1_i2v_s_lite_4s_fl`(本档 UNAVAILABLE)确认门即拦,零积分消耗,错误带 per-tier 矩阵(ADVANCED=5)。
 - **行为发现(待改进,低优先)**:veo 系 + `durationSeconds:4`(本档无 4s key)→ 吸附到默认 8s key **进入确认流程且未见告警**;应补"时长吸附/回落"告警(audioMediaIds 之外的丢弃参数均有告警纪律,此处遗漏)。
+
+## 15. t2v / edit / 音频参考三笔 live 转正(2026-08-27,L 轮用户授权;积分 888→854,-34)
+
+> 三笔授权预算 ≤37(t2v 7 / edit 20 / r2v+audio 7),总闸 45;实扣 34,三笔全部一次成功零重试,预估(dynamic)=实扣零误差。方法:dist provider 代码路径(确认门两段式 beginSubmissionConfirm → createVideo → getVideo 轮询 → 下载 ffprobe),驱动脚本 /tmp/live-L3/。基线勘误:本轮期初余额实际 **888**(=§14.10 台账期末),"1050" 是 §14.10 期初值。
+
+| 笔 | key | 输入 | 实扣 | 时长 | 分辨率 | 音轨 |
+|---|---|---|---|---|---|---|
+| t2v 转正 | abra_t2v_4s | 纯 prompt(风景+音效描述) | 7 | 4.01s | 1280x720 | aac ✓ |
+| edit 转正 | abra_edit | videoMediaId=44bbe881…(§14.10 abra_r2v_4s 测试视频 1280x720)+ "make it a rainy night scene" 类指令 | 20 | 4.01s | 1280x720 | aac ✓ |
+| 音频参考转正 | abra_r2v_4s | images=[54c3bbb2…(项目内底图,getMediaBytes 转 data URI 再上传)] + audioMediaIds=["achernar"] | 7 | 4.01s | 1280x720 | aac 48kHz 立体声 ✓ |
+
+- **t2v 首次 live(provider 路径)**:`batchAsyncGenerateVideoText` 一次 200;SCHEDULED→ACTIVE→SUCCESSFUL ~35s;§14.9 "t2v 从未 live 提交" 透明标注解除,全 7 开放模式 live 收官。
+- **edit 首次 live**:`batchAsyncGenerateVideoEditVideo` 一次 200 —— §11.1 形状全对(顶层无 useV2ModelConfig、requests[0]={aspectRatio 源继承 LANDSCAPE, metadata, seed, textInput, videoInput:{mediaId}, videoModelKey});~30s SUCCESSFUL;**edit 保留源视频时长(4s)/比例(16:9)且带音轨**(对源做"雨夜"类重打光指令)。EDIT_WIRE_WARNING 常量与提交响应警示已随 live 验证删除(src/providers/flow.ts 定义+消费、test/flow.test.ts import+断言,dist-test 随 build 再生)。
+- **音频参考首次 live**:`referenceAudio=[{mediaId:"achernar"}]` 提交 200,**生成 SUCCESSFUL 未被 BLOCK_SILENCED_VIDEOS 过滤**;产物音轨 mean_volume -20.0dB / max -0.9dB,比同期纯环境音基线(t2v -31.8dB / edit -36.2dB)**高约 12-16dB —— 语音确实混入,未被静默**(视觉交叉验证:画面人物对镜头说话+手势)。说话人与 achernar 音色一致性未做说话人级核验(无 speaker-ID,如实记录)。§14.6 的实验期告警文案已按此观察更新。
+- 台账:888 →881(t2v,-7)→861(edit,-20)→854(r2v+audio,-7);终值 854 复核一致。

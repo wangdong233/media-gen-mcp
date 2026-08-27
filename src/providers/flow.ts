@@ -16,8 +16,8 @@
  *   S1xx 环境(CDP/页面/登录)| S2xx 页面 fetch 失败 | S3xx 参数/模型校验 | S4xx 媒体/下载
  *
  * 铁律(审查 03 安全约束):
- *   - 🔴 createVideo = 消耗积分的提交点(abra 7-20 点/条,veo 10-100 点/条)—— 入口有显式标记
- *   - 🔴 generateImage = 0 点生成(契约 §3 图片全部 0 点),仍是提交点 —— 入口有显式标记
+ *   - 🔴 createVideo = 消耗积分的提交点(价区间经 B9 格式层从 staticTierCosts 生成:abraCreditRange()/veoCreditRange())—— 入口有显式标记
+ *   - 🔴 generateImage = 零点生成(契约 §3 图片一律零消耗;价真源 = B9 格式层 FLOW_ZERO_CREDIT),仍是提交点 —— 入口有显式标记
  *   - getVideo/mediaStatus/getMediaBytes/getCredits = 零消耗只读路径(状态轮询/下载)
  *   - 渠道准入(C 任务):实现 capabilities()(能力事实)+ requiresOptIn()=true(准入策略)——
  *     未显式同意(点名 provider/model 或 <modality>ProviderPriority 列入)时,flow 永不进入
@@ -340,12 +340,12 @@ export class CdpFlowTransport implements FlowTransport {
 const IMAGE_ASPECTS = ["SQUARE", "PORTRAIT", "LANDSCAPE", "PORTRAIT_THREE_FOUR", "LANDSCAPE_FOUR_THREE"] as const;
 export type FlowImageAspect = (typeof IMAGE_ASPECTS)[number];
 
-/** 生图模型 key(契约 §3:全部 0 点)。 */
+/** 生图模型 key(契约 §3:一律零消耗;价真源 = B9 格式层 FLOW_ZERO_CREDIT)。 */
 export const FLOW_IMAGE_MODELS: string[] = [
   "GEM_PIX_2", // Nano Banana Pro(10 refs)
   "NARWHAL", // Nano Banana 2(默认)
   "HARBOR_SEAL", // Nano Banana 2 Lite
-  "GEM_PIX_2_UPSAMPLE_2K", // 2K 放大(0 点)
+  "GEM_PIX_2_UPSAMPLE_2K", // 2K 放大(零消耗)
 ];
 
 /** 生视频模型 usage key(实测快照;动态目录可经 flowStatus() 获取最新值)。 */
@@ -459,6 +459,86 @@ export function formatTierMatrix(m: Record<string, any> | Partial<Record<FlowSer
   return parts.join(" / ");
 }
 
+// ── B9 积分价文案单源格式层(薄层):hint/描述/错误文案里的积分数字一律经本层从 staticTierCosts 生成,禁手写 ──
+
+/** 非视频生成路径统一零消耗(契约 §3:生图/图片放大/上传/预设语音/只读管理)——文案里「0 点/0 credits」的唯一真源。 */
+export const FLOW_ZERO_CREDIT = 0;
+
+/** 文案默认档:INTERMEDIATE(当前登录档;ADVANCED 价差在文案里单独标注,见 videoCostTableHintZh)。 */
+const DOC_TIER: FlowServiceTier = "SERVICE_TIER_INTERMEDIATE";
+/** veo 三 plain 生成分支代表 key(文案「lite/fast/quality」价的取数口;不含 upsampler/low_priority 等零价特殊键)。 */
+const VEO_PLAIN_KEYS = { lite: "veo_3_1_t2v_lite", fast: "veo_3_1_t2v_fast", quality: "veo_3_1_t2v" } as const;
+
+/**
+ * key 在指定 tier 的积分价文案数字(staticTierCosts 在文案层的唯一取数口)。
+ * 数字 → 十进制串;"UNAVAILABLE" 原样;未知 key → "?"(哨兵:生成文案出现 "?" = key 手误,单测断言全部文案无 "?")。
+ */
+export function flowTierCost(key: string, tier: FlowServiceTier = DOC_TIER): string {
+  const v = staticTierCosts(key)?.[tier];
+  return v === undefined ? "?" : String(v);
+}
+
+/** 单 key 价短语(英文,工具 schema 描述用):如 "20 credits"。 */
+export function flowCreditsEn(key: string): string {
+  return `${flowTierCost(key)} credits`;
+}
+
+/** 单 key 价短语(中文,hint/错误文案用):如 "20 点"。 */
+export function flowCreditsZh(key: string): string {
+  return `${flowTierCost(key)} 点`;
+}
+
+/** keys ×(可选指定档)的全部数字价并集(UNAVAILABLE 排除;区间推导用)。 */
+function numericTierCosts(keys: string[], tier?: FlowServiceTier): number[] {
+  const out: number[] = [];
+  for (const k of keys) {
+    const m = staticTierCosts(k);
+    if (!m) continue;
+    for (const t of tier ? [tier] : (Object.keys(m) as FlowServiceTier[])) {
+      const v = m[t];
+      if (typeof v === "number") out.push(v);
+    }
+  }
+  return out;
+}
+
+function creditRange(nums: number[]): string {
+  return `${Math.min(...nums)}-${Math.max(...nums)}`;
+}
+
+/** abra 全家族价区间文案("7-20":t2v/i2v/r2v 时长梯 + abra_edit,全 tier 价并集)。 */
+export function abraCreditRange(): string {
+  return creditRange(numericTierCosts(FLOW_VIDEO_MODELS.filter((k) => /^abra_(t2v|i2v|r2v)_\d+s$/.test(k) || k === "abra_edit")));
+}
+
+/** abra 生成分支价区间文案("7-15":仅 t2v/i2v/r2v 时长梯,不含 edit;按 duration 计价的模式描述用)。 */
+export function abraGenCreditRange(): string {
+  return creditRange(numericTierCosts(FLOW_VIDEO_MODELS.filter((k) => /^abra_(t2v|i2v|r2v)_\d+s$/.test(k))));
+}
+
+/** veo 生成分支价区间文案("10-100":三 plain 分支默认档价并集)。 */
+export function veoCreditRange(): string {
+  return creditRange(numericTierCosts(Object.values(VEO_PLAIN_KEYS), DOC_TIER));
+}
+
+/** veo 三 plain 分支默认档价列表串(「lite 10 / fast 20 / quality 100」;sep 按中英场景自选)。 */
+export function veoPlainCostsList(sep = " / "): string {
+  return (Object.keys(VEO_PLAIN_KEYS) as Array<keyof typeof VEO_PLAIN_KEYS>).map((f) => `${f} ${flowTierCost(VEO_PLAIN_KEYS[f])}`).join(sep);
+}
+
+/** 提交前消耗表 hint(S300 无 model 时挂载)—— 每个数字取自 staticTierCosts,改真源即随变。 */
+export function videoCostTableHintZh(): string {
+  const ADV: FlowServiceTier = "SERVICE_TIER_ADVANCED";
+  const ladder = FLOW_VIDEO_DURATIONS.map((d) => flowTierCost(`abra_t2v_${d}s`)).join("/");
+  return `消耗表(tier 盲估算;per-tier 真值见 flow_status):abra t2v/i2v/r2v ${FLOW_VIDEO_DURATIONS.join("/")}s=${ladder} 点,abra_edit=${flowTierCost("abra_edit")},veo lite=${flowTierCost(VEO_PLAIN_KEYS.lite)}(ADVANCED 档 ${flowTierCost(VEO_PLAIN_KEYS.lite, ADV)}),veo fast=${flowTierCost(VEO_PLAIN_KEYS.fast)}(ADVANCED 档 ${flowTierCost(VEO_PLAIN_KEYS.fast, ADV)}),veo quality=${flowTierCost(VEO_PLAIN_KEYS.quality)},fast 的 ultra/_4s/_6s 变体=ADVANCED 档专属 ${flowTierCost("veo_3_1_t2v_fast_ultra", ADV)},low_priority=ADVANCED 档 ${flowTierCost("veo_3_1_t2v_lite_low_priority", ADV)},veo_3_1_upsampler_1080p=${flowTierCost("veo_3_1_upsampler_1080p")}`;
+}
+
+/** flow_status 快照 hint 的计价首句 —— 每个数字取自 staticTierCosts,改真源即随变。 */
+export function flowSnapshotCostHintZh(): string {
+  const ADV: FlowServiceTier = "SERVICE_TIER_ADVANCED";
+  return `提交视频消耗积分(tier 盲估算:abra t2v/i2v/r2v ${abraGenCreditRange()}/abra_edit ${flowTierCost("abra_edit")}/veo ${veoPlainCostsList("/")} 每条;upsampler_1080p ${flowTierCost("veo_3_1_upsampler_1080p")} 点;🔴 per-tier 真值见各 key creditMapping —— lite ADVANCED=${flowTierCost(VEO_PLAIN_KEYS.lite, ADV)}、fast ultra/_4s/_6s 仅 ADVANCED=${flowTierCost("veo_3_1_t2v_fast_ultra", ADV)}、plain fast 在 ADVANCED ${flowTierCost(VEO_PLAIN_KEYS.fast, ADV)}、low_priority 仅 ADVANCED=${flowTierCost("veo_3_1_t2v_lite_low_priority", ADV)})`;
+}
+
 /**
  * r2v 模式输入上限(契约 §14.1,2026-08-27 live 快照 inputSpec/maxImageInputs):
  * abra_r2v_{4,6,8,10}s = 参考图 7 / 音频 5;veo r2v 家族(lite/fast±ultra/low_priority)= 3 / 1。
@@ -508,20 +588,17 @@ export const VIDEO_API_ENDPOINTS: Readonly<Record<string, string>> = {
  * v2 已开放提交的模式:
  * t2v/i2v/interpolation/r2v/extension/upsampler_1080p 全部 live 提交验证(§7/§9/§10);
  * edit(E 轮 parity 放行):wire 经 bundle Zod + 假 key 404 探针双定型(§11.1,形状全过、零调度),
- * 但**真实付费提交未做**(abra_edit 20 点,待用户授权)→ 提交响应固定带警示。
+ * 但**真实付费提交未做**(abra_edit,价见 staticTierCosts,待用户授权)→ 提交响应固定带警示。
  */
 export const OPEN_VIDEO_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "interpolation", "r2v", "extension", "edit", "upsampler"]);
 
-/** 未开放模式的拒绝依据(S303 消息组成部分 —— 错误里说明依据,不静默)。 */
+/** 未开放模式的拒绝依据(S303 消息组成部分 —— 错误里说明依据,不静默;价数字经 B9 格式层从 staticTierCosts 生成)。 */
 const NOT_OPEN_REASONS: Readonly<Record<string, string>> = {
-  "upsampler-4k": "veo_3_1_upsampler_4k 在 INTERMEDIATE tier UNAVAILABLE(契约 §9.1:需 ADVANCED 50 点);当前 tier 只开放 1080p(0 点)",
+  "upsampler-4k": `veo_3_1_upsampler_4k 在 INTERMEDIATE tier UNAVAILABLE(契约 §9.1:需 ADVANCED ${flowTierCost("veo_3_1_upsampler_4k", "SERVICE_TIER_ADVANCED")} 点);当前 tier 只开放 1080p(${flowTierCost("veo_3_1_upsampler_1080p")} 点)`,
 };
 
-/** edit 模式固定警示(E 轮 parity:wire 探针定型但 live 未验证,首次使用异常请回报契约 §11.1)。 */
 /** flow 助记模型正则(abra_t2v / abra_i2v / abra_r2v)—— key 解析与 provider 归属校验共用单一真源(H-nit)。 */
 export const FLOW_MNEMONIC_RE = /^(abra)_(t2v|i2v|r2v)$/;
-
-export const EDIT_WIRE_WARNING = "edit 模式 wire 已探针定型(bundle Zod + 假 key 404,契约 §11.1)但真实提交未 live 验证(abra_edit 20 点);首次使用若报 4xx/5xx 请回报契约文档。";
 
 /** 视频 usage key 的模式段 → 中文标签(S303/S301 报错用)。 */
 const VIDEO_MODE_LABELS: Record<string, string> = {
@@ -564,7 +641,7 @@ export function videoModeOfKey(key: string): string | undefined {
 function assertModeOpen(key: string, mode: string | undefined): void {
   if (mode === "upsampler" && key.includes("_4k")) {
     throw new FlowError("S303", `模型 "${key}" ${NOT_OPEN_REASONS["upsampler-4k"]}`, {
-      hint: "视频超分请用 veo_3_1_upsampler_1080p(0 点);4K 需升级 ADVANCED 会员后开放",
+      hint: `视频超分请用 veo_3_1_upsampler_1080p(${flowCreditsZh("veo_3_1_upsampler_1080p")});4K 需升级 ADVANCED 会员后开放`,
     });
   }
   if (mode == null || OPEN_VIDEO_MODES.has(mode)) return;
@@ -572,7 +649,7 @@ function assertModeOpen(key: string, mode: string | undefined): void {
     "S303",
     `模型 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式的 key,当前未开放:${NOT_OPEN_REASONS[mode] ?? "该模式请求形状未实证"}`,
     {
-      hint: "已开放:文生视频(t2v,如 abra_t2v_8s;wire 仅 404 形状探针验证,live 未提交)、图生视频(i2v + image,如 abra_i2v_8s)、参考图(r2v + images,如 abra_r2v_8s;可叠加 audioMediaIds 挂预设语音)、首尾帧(interpolation/_fl + keyframes 2 张)、延长(extension + videoMediaId,如 veo_3_1_extension_lite)、编辑(edit + videoMediaId + prompt,abra_edit,20 点,wire 定型未 live)、视频超分(upsampler + videoMediaId,veo_3_1_upsampler_1080p,0 点);全集见 flow_status",
+      hint: `已开放:文生视频(t2v,如 abra_t2v_8s;2026-08-27 live 已验证,契约 §15)、图生视频(i2v + image,如 abra_i2v_8s)、参考图(r2v + images,如 abra_r2v_8s;可叠加 audioMediaIds 挂预设语音)、首尾帧(interpolation/_fl + keyframes 2 张)、延长(extension + videoMediaId,如 veo_3_1_extension_lite)、编辑(edit + videoMediaId + prompt,abra_edit,${flowCreditsZh("abra_edit")};2026-08-27 live 已验证,契约 §15)、视频超分(upsampler + videoMediaId,veo_3_1_upsampler_1080p,${flowCreditsZh("veo_3_1_upsampler_1080p")});全集见 flow_status`,
     },
   );
 }
@@ -1052,7 +1129,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     await this.ensureReady();
     const src = req.images?.[0];
     if (!src) {
-      throw new FlowError("S301", "图片放大需要 images[0](要放大的图:已有图片的 mediaId,或 http(s)/data: URI 自动上传)", { hint: "mediaId 可经 flow_status 查看;放大 0 积分" });
+      throw new FlowError("S301", "图片放大需要 images[0](要放大的图:已有图片的 mediaId,或 http(s)/data: URI 自动上传)", { hint: `mediaId 可经 flow_status 查看;放大 ${FLOW_ZERO_CREDIT} 积分` });
     }
     const warnings: string[] = [];
     if (req.prompt?.trim()) warnings.push("图片放大不消费 prompt(固定 GEM_PIX_2_UPSAMPLE_2K 管线),已忽略。");
@@ -1217,7 +1294,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 🔴 适用面 live 边界(§11.3):bundle 中 cancel 仅被 VideoService 的 processingRequests 队列调用
    * (传提交响应的 media.name = mediaId);E 轮 live 实证对 **图片** in-flight 提交取消 → 404
    * "Requested entity was not found"(图片生成不可取消/不在 cancelable registry)。视频 in-flight 的
-   * E2E 取消未 live 验证(需 ≥7 点提交,待授权)——本方法对 video 类 in-flight 照常提交,图片类
+   * E2E 取消未 live 验证(需一次最低价视频提交,价见 staticTierCosts,待授权)——本方法对 video 类 in-flight 照常提交,图片类
    * 如实回传服务端 404 并在错误中解释。
    */
   async cancelGenerations(mediaIds: string[]): Promise<{
@@ -1348,7 +1425,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       video_families: videoFamilies,
       ...(voices.length ? { preset_voices: voices } : {}),
       media,
-      hint: "提交视频消耗积分(tier 盲估算:abra t2v/i2v/r2v 7-15/abra_edit 20/veo lite 10/fast 20/quality 100 每条;upsampler_1080p 0 点;🔴 per-tier 真值见各 key creditMapping —— lite ADVANCED=5、fast ultra/_4s/_6s 仅 ADVANCED=10、plain fast 在 ADVANCED UNAVAILABLE、low_priority 仅 ADVANCED=0)。create_video(provider=flow)已开放:t2v(wire 仅形状验证)/ i2v(image)/ 参考图(r2v + images,可叠加 audioMediaIds 挂预设语音,实验期)/ 首尾帧(keyframes 2 张)/ 延长(extension + videoMediaId)/ 编辑(edit + videoMediaId + prompt,abra_edit,wire 定型未 live)/ 视频超分(veo_3_1_upsampler_1080p + videoMediaId,0 点);generate_image(provider=flow)支持 images(底图+参考)与 GEM_PIX_2_UPSAMPLE_2K 放大;flow_status(deleteMediaIds) 删媒体 / (shareMediaIds) 生成公开分享链接 / (cancelMediaIds) 取消生成中任务;无参 flow_status() 快照的 preset_voices 字段列 30 预设语音(全 0 点,mediaId 亦作 r2v audioMediaIds 输入)。",
+      hint: `${flowSnapshotCostHintZh()}。create_video(provider=flow)已开放(全部模式 live 已验证,契约 §15):t2v / i2v(image)/ 参考图(r2v + images,可叠加 audioMediaIds 挂预设语音,live 实证生效)/ 首尾帧(keyframes 2 张)/ 延长(extension + videoMediaId)/ 编辑(edit + videoMediaId + prompt,abra_edit)/ 视频超分(veo_3_1_upsampler_1080p + videoMediaId,${flowCreditsZh("veo_3_1_upsampler_1080p")});generate_image(provider=flow)支持 images(底图+参考)与 GEM_PIX_2_UPSAMPLE_2K 放大;flow_status(deleteMediaIds) 删媒体 / (shareMediaIds) 生成公开分享链接 / (cancelMediaIds) 取消生成中任务;无参 flow_status() 快照的 preset_voices 字段列 30 预设语音(全 ${FLOW_ZERO_CREDIT} 点,mediaId 亦作 r2v audioMediaIds 输入)。`,
     };
   }
 
@@ -1566,7 +1643,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   // ── 生视频(契约 §7.3 v2 wire:每模式独立端点 + requests[]/videoModelKey/useV2ModelConfig) ──
 
   /**
-   * 🔴🔴 消耗点(视频提交:abra 7-20 点/条,veo lite 10 / fast 20 / quality 100 每条;upsampler_1080p 0 点)。
+   * 🔴🔴 消耗点(视频提交;全部价文案经 B9 格式层从 staticTierCosts 生成,见 videoCostTableHintZh)。
    * 提交即排队(submit-only 队列语义):本方法只提交返回 handle(SCHEDULED),绝不等待生成;
    * 轮询由工具层 waitVideo/getVideo 驱动(getVideo = 零消耗只读)。
    * 测试铁律:测试代码不得让本方法打真实网络(stub transport 除外)。
@@ -1596,7 +1673,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const model = req.model ?? this.models?.video?.default;
     if (!model) {
       throw new FlowError("S300", `视频模型未指定(刻意无默认:提交视频消耗积分)。传 model(如 abra_t2v_8s / veo_3_1_t2v_lite / abra_i2v_8s + image / veo_3_1_interpolation_lite + keyframes)或在 config.json providers.flow.models.video.default 配置。可用:${summarizeModels()}`, {
-        hint: "消耗表(tier 盲估算;per-tier 真值见 flow_status):abra t2v/i2v/r2v 4/6/8/10s=7/10/12/15 点,abra_edit=20,veo lite=10(ADVANCED 档 5),veo fast=20(ADVANCED 档 UNAVAILABLE),veo quality=100,fast 的 ultra/_4s/_6s 变体=ADVANCED 档专属 10,low_priority=ADVANCED 档 0,veo_3_1_upsampler_1080p=0",
+        hint: videoCostTableHintZh(),
       });
     }
     const rawDuration = req.durationSeconds ?? (req.numFrames != null ? req.numFrames / (req.frameRate ?? FLOW_FRAME_RATE) : undefined);
@@ -1639,10 +1716,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const capSource = dynCaps && (dynCaps.maxImageInputs != null || dynCaps.maxAudioReferences != null)
       ? "目录 inputSpec" : staticR2vCaps(key) ? "契约 §14.1 静态快照" : "未知家族保守值";
     if (audioIds.length) {
-      // v1 收窄(D-3):音频参考只随 r2v 开放 —— edit 自身未 live 不叠加;requirements 矩阵里
+      // v1 收窄(D-3):音频参考只随 r2v 开放 —— edit 已 live(§15)但音频叠加仍只在 r2v 实证过
       // AUDIO_REFERENCE 是 r2v/edit 的可选叠加项(§14.1),其余模式(纯 t2v/i2v/首尾帧)无该 requirement。
       if (mode != null && mode !== "r2v") {
-        throw new FlowError("S301", `audioMediaIds 音频参考需 r2v 模式 key(如 abra_r2v_8s,实验期 Match Voice to Visuals),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`, { hint: "音频 mediaId 清源 = 无参 flow_status() 快照的 preset_voices 字段(30 预设语音,0 点);用户自有音频上传 wire 未逆向,暂不支持" });
+        throw new FlowError("S301", `audioMediaIds 音频参考需 r2v 模式 key(如 abra_r2v_8s,实验期 Match Voice to Visuals),当前 "${key}" 是 ${VIDEO_MODE_LABELS[mode] ?? mode}(${mode})模式`, { hint: `音频 mediaId 清源 = 无参 flow_status() 快照的 preset_voices 字段(30 预设语音,${FLOW_ZERO_CREDIT} 点);用户自有音频上传 wire 未逆向,暂不支持` });
       }
       if (mode == null) warnings.push(`模型 "${key}" 模式未知,音频参考已随参考图(ReferenceImages)端点提交。`);
       if (audioIds.length > caps.audio) {
@@ -1813,7 +1890,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     throw new FlowError(
       "S303",
       `模型 "${key}" 在当前会员档(${cost.tier ?? "未知 tier"})UNAVAILABLE,不能提交(per-tier 价:${cost.tierMatrix || "见 flow_status"};来源 ${cost.source === "dynamic" ? "动态目录实时值" : "契约 §14.4 静态快照"})`,
-      { hint: "换当前档可用的 key(如 INTERMEDIATE/ENTRY 档用 veo_3_1_t2v_fast=20 或 lite=10,ADVANCED 档才有 fast_ultra/_4s/_6s=10 与 low_priority=0)或升级会员档;完整 per-tier 价目可调 flow_status 查看" },
+      { hint: `换当前档可用的 key(如 INTERMEDIATE/ENTRY 档用 veo_3_1_t2v_fast=${flowTierCost("veo_3_1_t2v_fast")} 或 lite=${flowTierCost("veo_3_1_t2v_lite")},ADVANCED 档才有 fast_ultra/_4s/_6s=${flowTierCost("veo_3_1_t2v_fast_ultra", "SERVICE_TIER_ADVANCED")} 与 low_priority=${flowTierCost("veo_3_1_t2v_lite_low_priority", "SERVICE_TIER_ADVANCED")})或升级会员档;完整 per-tier 价目可调 flow_status 查看` },
     );
   }
 
@@ -1887,7 +1964,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     if (req.resolution && req.resolution !== "720p") {
       // §14.3 实证:75/75 生成 usage 全部仅 720P(ultra/quality/_4s/_6s 变体同 720P)——
       // 「ultra 变体提分辨率」的旧指引是错的;唯一升分辨率路径 = 生成后超分。
-      warnings.push(`flow 视频生成分辨率恒 720P(契约 §14.3:75/75 生成 usage 仅 720P,ultra/quality 变体同 720P),resolution=${req.resolution} 已忽略;更高分辨率只能生成后超分(veo_3_1_upsampler_1080p,0 点;4K 需 ADVANCED 50 点)。`);
+      warnings.push(`flow 视频生成分辨率恒 720P(契约 §14.3:75/75 生成 usage 仅 720P,ultra/quality 变体同 720P),resolution=${req.resolution} 已忽略;更高分辨率只能生成后超分(veo_3_1_upsampler_1080p,${flowCreditsZh("veo_3_1_upsampler_1080p")};4K 需 ADVANCED ${flowTierCost("veo_3_1_upsampler_4k", "SERVICE_TIER_ADVANCED")} 点)。`);
     }
     // duration:numFrames/24 换算或 durationSeconds 原值 → 吸附到 Flow 合法集 {4,6,8,10}s
     // (通用 schema 承诺 "nearest valid";此前非集合值直接 S301 与承诺矛盾 —— audit finding-4)。
@@ -1920,7 +1997,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       }
       // 生成中守卫:单一真源 mapMediaStatus(02 R-CI-08)—— SCHEDULED/PENDING/ACTIVE 三枚举全拦
       // (§10.6/§10.7 live 实证 PENDING/ACTIVE 为 in_progress;旧手写 includes("SCHEDULED") 漏拦 ACTIVE
-      //  ~2 分钟主生成态,10 点 extension 可带不完整源闯到真实提交)。无 generatedVideo 的源
+      //  ~2 分钟主生成态,低价 extension key 可带不完整源闯到真实提交)。无 generatedVideo 的源
       // (上传残留/失败/未知状态)同样拒 —— videoInput 引用的必须是已完成的生成视频。
       const srcState = mapMediaStatus(sourceMedia);
       if (srcState.status !== "completed" || !sourceMedia?.video?.generatedVideo) {
@@ -1945,10 +2022,10 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       }
       const bad = (req.audioMediaIds ?? []).filter((id) => !preset.has(id));
       if (bad.length) {
-        throw new FlowError("S301", `audioMediaIds 含非预设语音样本:${bad.join(", ")}(音频参考只接受本项目 30 预设语音的 mediaId)`, { hint: "调无参 flow_status() 看快照 preset_voices 字段,列全部预设语音 mediaId(0 点);用户自有音频上传暂不支持(wire 未逆向,契约 §14.6)" });
+        throw new FlowError("S301", `audioMediaIds 含非预设语音样本:${bad.join(", ")}(音频参考只接受本项目 30 预设语音的 mediaId)`, { hint: `调无参 flow_status() 看快照 preset_voices 字段,列全部预设语音 mediaId(${FLOW_ZERO_CREDIT} 点);用户自有音频上传暂不支持(wire 未逆向,契约 §14.6)` });
       }
       referenceAudio = (req.audioMediaIds ?? []).map((id) => ({ mediaId: id }));
-      warnings.push(`音频参考是实验期能力(客户端 UI 同款 disclaimer,契约 §14.6):提交带 audioFailurePreference=BLOCK_SILENCED_VIDEOS —— 音频安全过滤命中时整条生成失败(而非返回静默视频)。本次挂 ${shape.audioCount} 个预设语音(上限 ${shape.audioCap})。`);
+      warnings.push(`音频参考是实验期能力(客户端 UI 同款 disclaimer,契约 §14.6):2026-08-27 首次 live 提交实证生效 —— 生成成功未被过滤,产物音轨含明显语音(mean_volume -20dB,比纯环境音基线高约 12-16dB,契约 §15);语音与所选预设音色的一致性未做说话人级核验。提交带 audioFailurePreference=BLOCK_SILENCED_VIDEOS —— 音频安全过滤命中时整条生成失败(而非返回静默视频)。本次挂 ${shape.audioCount} 个预设语音(上限 ${shape.audioCap})。`);
     }
 
     // 端点选择(契约 §7.3/§9/§11.1 端点表):mode=undefined 的未知家族按输入形态走对应端点
@@ -2037,7 +2114,6 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const est = typeof tierCost === "number" ? tierCost : estimateVideoCredits(resolved.key);
     if (est != null) warnings.push(`🔴 本条预计消耗 ${est} 积分${creditsNow?.credits != null ? `(当前余额 ${creditsNow.credits})` : ""}。`);
     if (r?.remainingCredits != null) warnings.push(`提交后剩余积分:${r.remainingCredits}。`);
-    if (endpointMode === "edit") warnings.push(`⚠️ ${EDIT_WIRE_WARNING}`);
     return { taskId: mediaId, status: "queued", warnings: warnings.length ? warnings : undefined, raw: r };
   }
 

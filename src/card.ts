@@ -707,6 +707,14 @@ export async function renderCard(req: CardRequest): Promise<CardRenderOutput> {
   if (template === "quote" && req.subtitle?.trim()) {
     warnings.push("subtitle 在 quote 模板不渲染,已忽略。");
   }
+  // 模板专属参数丢弃 warning(B10 丢弃必告警:传了"仅 X 模板消费"的参数但模板不是 X,不静默)。
+  // 触发条件是「显式传入」(undefined = 未传,不警告);hero 消费 blob、quote 消费 quoteStyle 时不警告。
+  if (req.blob !== undefined && template !== "hero") {
+    warnings.push("blob 仅 hero 模板消费,已忽略(当前模板无标题光斑层)。");
+  }
+  if (req.quoteStyle != null && template !== "quote") {
+    warnings.push(`quoteStyle 仅 quote 模板消费,已忽略(当前模板 ${template} 无引号布局)。`);
+  }
   let layout: Node;
   if (template === "quote") {
     layout = layoutQuote(req, { title: titleNode, body: bodyNode, footer: footerNode, logo: logoNode, accent, fontStack });

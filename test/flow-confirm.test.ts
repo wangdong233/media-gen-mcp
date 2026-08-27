@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
-const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
+const { FlowProvider, FlowError, staticTierCosts } = require_(path.join(distDir, "providers/flow.js"));
 const reg = require_(path.join(distDir, "providers/registry.js"));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -85,7 +85,8 @@ describe("计费确认门:两段式(无 token 返挑战 → 带 token 放行)", 
     assert.match(c.confirmToken, /^fvc1\.[0-9a-z]+\.[0-9a-z]+\.[0-9a-f]{32}$/);
     assert.equal(c.expiresInSeconds, 600, "默认 TTL 10 分钟");
     assert.match(String(c.hint), /confirmToken/);
-    assert.match(String(c.hint), /12 积分/);
+    // B9:期望价数字取自 staticTierCosts 真源(改真源本断言随变,不落手写价;estimatedCost 数值锚定见上行)
+    assert.ok(String(c.hint).includes(`${String(staticTierCosts("abra_t2v_8s")!.SERVICE_TIER_INTERMEDIATE)} 积分`), "hint 含真源价数字");
     assert.ok(!t.calls.some((x) => x.method === "POST" && x.url.includes("/video:")), "第一段绝不提交");
   });
 

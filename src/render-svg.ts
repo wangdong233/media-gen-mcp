@@ -30,6 +30,30 @@ export interface RenderSvgOutput {
   backendUsed: BackendUsed;
   /** 后端降级时附警告(如 Chrome 不可用 → resvg)。 */
   warning?: string;
+  /** B10 丢弃必告警:后端专属参数(width=resvg 消费;scale=Chrome 消费)在另一后端/直通下显式传入时告警。 */
+  warnings?: string[];
+}
+
+/**
+ * B10 丢弃必告警(纯函数,renderSvg 与离线单测共用;按「最终后端」判定,Chrome 失败回落 resvg 时 scale 同样被丢):
+ *  - width:schema 声明 resvg 后端消费;Chrome 按 SVG 内在尺寸×scale 渲染,忽略 width;svg 直通无栅格化,同样忽略。
+ *  - scale:schema 声明仅 Chrome 渲染消费;resvg 无 Retina 概念;svg 直通无渲染。
+ */
+export function renderSvgDiscardWarnings(req: RenderSvgRequest, backendUsed: BackendUsed): string[] {
+  const w: string[] = [];
+  if (backendUsed === "chrome") {
+    if (req.width != null) {
+      w.push("width 仅 resvg 后端消费,Chrome 后端按 SVG 内在尺寸×scale 渲染,已忽略 width。");
+    }
+  } else if (backendUsed === "passthrough") {
+    if (req.width != null) w.push("width 仅 PNG 栅格化消费,svg 直通不渲染,已忽略。");
+    if (req.scale != null) w.push("scale 仅 Chrome 后端 PNG 渲染消费,svg 直通不渲染,已忽略。");
+  } else {
+    if (req.scale != null) {
+      w.push("scale 仅 Chrome 后端消费,resvg 后端已忽略(要控制输出尺寸请用 width)。");
+    }
+  }
+  return w;
 }
 
 // ── Chrome 检测与生命周期 ──
@@ -217,7 +241,7 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
   const targetWidth = req.width && req.width > 0 ? Math.floor(req.width) : extractSvgSize(req.svg).width;
 
   if (format === "svg") {
-    return { svg: req.svg, backendUsed: "passthrough" };
+    return { svg: req.svg, backendUsed: "passthrough", warnings: renderSvgDiscardWarnings(req, "passthrough") };
   }
 
   // 后端选择:auto → 含滤镜且 Chrome 可用 → Chrome;否则 resvg
@@ -249,5 +273,6 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
     png = renderWithResvg(req.svg, targetWidth);
   }
 
-  return { svg: req.svg, png, backendUsed, warning };
+  // B10:按最终后端归拢丢弃告警(chrome 失败回落 resvg 时 backendUsed 已是 resvg,scale 判丢弃正确)
+  return { svg: req.svg, png, backendUsed, warning, warnings: renderSvgDiscardWarnings(req, backendUsed) };
 }

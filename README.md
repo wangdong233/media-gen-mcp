@@ -3,7 +3,7 @@
 > Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
 <p align="center">
- <img src="https://img.shields.io/badge/version-0.13.1-blue">
+ <img src="https://img.shields.io/badge/version-0.14.0-blue">
  <img src="https://img.shields.io/badge/license-MIT-green">
  <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -14,7 +14,7 @@
 
 <div align="center">
 
-**简体中文** | [English](README.en.md) | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
+**简体中文** | [English](README.en.md)
 
 </div>
 
@@ -41,7 +41,7 @@
 | "把这组销售数据画成柱状图" | 高清数据图表 |
 | "做个指向 github.com 的二维码" | 矢量二维码 |
 | "把 E=mc² 渲染成高清公式" | 矢量公式 |
-| "做张深色渐变分享卡,标题 7 月新品 🚀" | 排版好的分享卡(中文 + emoji 自动) |
+| "做张深色渐变分享卡,标题 七月新品 🚀" | 排版好的分享卡(中文 + emoji 自动) |
 | "识别这张发票截图里的表格" | 可粘贴的 HTML/Markdown 表格 |
 | "把这张柱状图读成数据点" | 结构化 JSON 数据 |
 | "描述一下这张图里有什么" | 自然语言回答 |
@@ -168,7 +168,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 
 - **生图**:Nano Banana Pro / Nano Banana 2(默认)/ Nano Banana 2 Lite;比例 16:9 / 9:16 / 1:1 / 3:4 / 4:3;seed 可复现;支持底图改图 + 参考图(底图+参考图合计最多 10 张)
 - **放大**:图片 2K 放大(model=`GEM_PIX_2_UPSAMPLE_2K`)、视频 1080p 超分(model=`veo_3_1_upsampler_1080p`)
-- **资产管理**:上传图片、批量删除、生成公开分享链接(`labs.
+- **资产管理**:上传图片、批量删除、生成公开分享链接(`labs.google/fx/tools/flow/shared/…`)、取消生成中的视频、查积分 / 查媒体状态(`flow_status`)
 
 **生视频按积分计费(每条,提交前请知悉)**:
 
@@ -181,7 +181,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 | Veo 3.1 Quality | `veo_3_1_t2v` … | 100 |
 | 视频超分 1080p | `veo_3_1_upsampler_1080p` | **0** |
 
-视频一次一条,时长 4 / 6 / 8 / 10 秒(veo 家族无 10s —— 仅 4/6/8s 或 key 自带时长;key 自带 `_Ns` 后缀时不可再传不同的 durationSeconds,否则 S301),比例仅 16:9 / 9:16;模式:文生视频(t2v;wire 仅形状验证,provider 路径未 live 提交)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images`,abra 键最多 7 张 / veo 键 3 张;实验期可叠加 `audioMediaIds` 挂 30 预设语音做声音参考)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令;wire 已定型,真实提交尚未线上验证,响应会带警示)/ 超分(`videoMediaId`)。所有生成 key 固定 720P(ultra/quality 变体同),更高分辨率只能生成后超分。
+视频一次一条,时长 4 / 6 / 8 / 10 秒(veo 家族无 10s —— 仅 4/6/8s 或 key 自带时长;key 自带 `_Ns` 后缀时不可再传不同的 durationSeconds,否则 S301),比例仅 16:9 / 9:16;模式(全部模式均已线上验证):文生视频(t2v)/ 图生视频(`image`,上传 0 积分)/ 参考图生视频(`images`,abra 键最多 7 张 / veo 键 3 张;可叠加 `audioMediaIds` 挂 30 预设语音做声音参考,产物音轨可听出语音)/ 首尾帧(`keyframes` 恰好 2 张)/ 延长(`videoMediaId`)/ 编辑(`videoMediaId` + 修改指令,abra_edit)/ 超分(`videoMediaId`)。所有生成 key 固定 720P(ultra/quality 变体同),更高分辨率只能生成后超分。
 
 > 部分 key 有会员档锁定(2026-08 实测 per-tier 价):fast 的 `ultra`/`4s`/`6s` 变体与 `low_priority` 仅 ADVANCED 可用(10 / 0 点);plain fast 在 ADVANCED 反而不可用;lite 在 ADVANCED 是 5 点。当前档不可用的 key 会在**提交前**被拒并附完整各档价目(不误扣积分);各 key 实时价目可查 `flow_status`。
 
@@ -250,7 +250,7 @@ Chrome 没开 / 没登录时,工具返回**结构化错误码 + 指引**(S100 = 
 ### 做卡片 / 海报 / 二维码(发出去好看)
 
 **做分享卡 / OG 图 / 引言卡 / 封面 / 海报**
-> 你:"做张深色渐变分享卡,标题 7 月新品 🚀"
+> 你:"做张深色渐变分享卡,标题 七月新品 🚀"
 > 得到:排版精美的卡片(标题、副标题、渐变色、辉光、彩色 emoji、Logo 内嵌全自动,中文与日文汉字不乱码)
 
 **生成二维码**

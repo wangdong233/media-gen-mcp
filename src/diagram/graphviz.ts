@@ -53,6 +53,15 @@ export class GraphvizEngine implements DiagramEngine {
 
   async render(req: DiagramRequest): Promise<DiagramRenderOutput> {
     if (!req.code || !req.code.trim()) throw new Error("`code` (DOT source) is required");
+    // B10 丢弃必告警:graphviz 不消费的参数在此显式告警(不静默)。
+    // theme 是 D2-only(schema 已声明);diagramType 两引擎都不消费(类型由 DSL 语法决定)。
+    const warnings: string[] = [];
+    if (req.theme != null) {
+      warnings.push("theme 仅 D2 引擎消费,graphviz 已忽略(DOT 无主题概念,配色请写进 DOT 的 style/fill)。");
+    }
+    if (req.diagramType != null) {
+      warnings.push("diagramType 目前不影响渲染,已忽略(图类型由 DSL 语法决定,如 digraph/子图 cluster)。");
+    }
     const viz = await this.getViz();
     // P0-2 §4.1 bug 修复:viz-js v3 语法错不抛错,返回 {status:"failure", output:undefined, errors:[...]}
     // 旧版 catch 是死代码、真实错被 result.errors 丢弃 → 用户只看到 "produced no SVG"。
@@ -91,6 +100,6 @@ export class GraphvizEngine implements DiagramEngine {
         throw new Error("[resvg] " + (e?.message ?? String(e)));
       }
     }
-    return { svg, png };
+    return { svg, png, ...(warnings.length ? { warnings } : {}) };
   }
 }
