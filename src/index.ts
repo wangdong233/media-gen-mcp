@@ -21,7 +21,7 @@ import {
 import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, getProviderPriority, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
-import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList } from "./providers/flow.js";
+import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList, sniffImage, LOCAL_IMAGE_INPUT_MAX_BYTES } from "./providers/flow.js";
 import { isFallbackWorthy, isChainAdvanceable, isRequestPinned } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
@@ -87,6 +87,45 @@ const server = new Server(
 const isImageUri = (u: string) => /^(https?:|data:)/i.test(u);
 
 /**
+ * 本地图片输入支持(日志#16,2026-08-31):image/keyframes/images 支持绝对本地路径 —— 工具侧读文件
+ * + magic-bytes 嗅探 mime(jpg/png/webp/gif)转 data: URI,消除客户端被迫 base64 的 stdio 开销
+ * (1MB JPG → ~1.4MB data URI 文本,单条 JSON-RPC 消息暴涨)。上限 LOCAL_IMAGE_INPUT_MAX_BYTES(15MB,
+ * 超出结构化拒绝);相对路径拒绝并提示转绝对;http(s)/data: 原样透传。
+ */
+async function localizeImageInput(
+  u: string,
+  label: string,
+  warnings: string[],
+): Promise<{ ok: true; uri: string } | { ok: false; error: string }> {
+  if (isImageUri(u)) return { ok: true, uri: u };
+  if (!path.isAbsolute(u)) {
+    return { ok: false, error: `${label} 须为 http(s): / data: URI 或绝对本地路径(收到 "${u.slice(0, 60)}";相对路径请转为绝对路径,工具侧会读文件转 data: URI)` };
+  }
+  let bytes: Buffer;
+  try {
+    const st = await fs.stat(u);
+    if (!st.isFile()) return { ok: false, error: `${label} 本地路径不是常规文件:"${u}"` };
+    if (st.size > LOCAL_IMAGE_INPUT_MAX_BYTES) {
+      return { ok: false, error: `${label} 本地文件 ${Math.round(st.size / 1024 / 1024)}MB 超上限 ${Math.round(LOCAL_IMAGE_INPUT_MAX_BYTES / 1024 / 1024)}MB(工具侧服务端读取;请压缩或改传 http(s) URL)` };
+    }
+    bytes = Buffer.from(await fs.readFile(u));
+    // 纵深防御(B 白盒 2026-08-31):stat→read 窗口内文件被替换/增长时,以实际读入字节复查
+    // (data: URI 化还会再膨胀 ~1.33x,超限必须在进内存转 URI 前拦下)
+    if (bytes.length > LOCAL_IMAGE_INPUT_MAX_BYTES) {
+      return { ok: false, error: `${label} 本地文件 ${Math.round(bytes.length / 1024 / 1024)}MB 超上限 ${Math.round(LOCAL_IMAGE_INPUT_MAX_BYTES / 1024 / 1024)}MB(工具侧服务端读取;请压缩或改传 http(s) URL)` };
+    }
+  } catch (e: any) {
+    return { ok: false, error: `${label} 本地文件读取失败:"${u}"(${e?.code ?? e?.message ?? e})` };
+  }
+  const sniffed = sniffImage(bytes);
+  if (!sniffed.mimeType) {
+    return { ok: false, error: `${label} 本地文件无法识别图片格式(前 8 字节非 PNG/JPEG/GIF/WEBP):"${u}"` };
+  }
+  warnings.push(`${label} 本地文件已由工具侧读取转 data: URI(${sniffed.mimeType},${Math.round(bytes.length / 1024)}KB):${u}`);
+  return { ok: true, uri: `data:${sniffed.mimeType};base64,${bytes.toString("base64")}` };
+}
+
+/**
  * pares6: PDF source URI 校验。
  * 接受:http(s):// / data:application/pdf / file:// / 本地路径(.pdf 后缀,CC 可直接传本地文件)。
  * 与 isImageUri 不同:PDF 路径本地文件允许(渲染层会 readFile),因为 CC Read 工具不能把 PDF 转 data URI。
@@ -105,6 +144,9 @@ async function runVisionTask(
   providerName: string | undefined,
   hints?: ExtractTextHints | ExtractTableHints | AnalyzeChartHints | DescribeImageHints,
 ): Promise<{ result: VisionResult; providerUsed: string; warnings: string[] }> {
+  // TODO(日志#16 后续独立小改动,B-finding-5 登记):vision 路径(extract_text/extract_table/
+  // analyze_chart/describe_image)暂不支持本地路径,与 generate_image/create_video 的输入面不一致 ——
+  // 后续把本行校验换成 localizeImageInput 同款本地化(独立 PR,不与本次 Flow 门修复捆绑)。
   if (!isImageUri(image)) throw new Error("`image` 须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
   const resolved = resolveProvider(providerName, undefined, "vision");
   let activeProvider = asVisionProvider(resolved.provider);
@@ -173,7 +215,7 @@ function buildTools() {
           images: {
             type: "array",
             items: { type: "string" },
-            description: "Image-to-image inputs (public URL or data URI). Omit for text-to-image.",
+            description: "Image-to-image inputs (public URL / data URI / absolute local file path — read server-side, ≤15MB). Omit for text-to-image.",
           },
           watermark: { type: "boolean", default: false, description: "true = keep provider watermark (Zhipu). Default false requests watermark off; some free-tier models may still embed one — see response `watermarked` flag." },
           download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get mediaId only." },
@@ -194,9 +236,9 @@ function buildTools() {
           prompt: { type: "string", description: "Video content description (subject + action + camera + style). For provider=flow V2V edit mode (videoMediaId + abra_edit) this is the EDIT INSTRUCTION (e.g. 'make it night with neon lights'), not a fresh scene description. The schema requires a non-empty prompt even for modes where flow ignores it on the wire (upsampler) — pass a short placeholder there." },
           model: { type: "string", description: "Optional for agnes/zhipu (omit = provider default); REQUIRED for provider=flow (no default — video bills credits). provider=flow: pass a FULL usage key (e.g. abra_t2v_8s / veo_3_1_t2v_lite) or mnemonic+durationSeconds (abra_t2v + 8). Open key families: t2v (text) / i2v (+`image`) / r2v (+`images`) / interpolation/_fl (+`keyframes` ×2) / extension (+`videoMediaId`) / upsampler (+`videoMediaId`) / edit (+`videoMediaId` + edit-instruction prompt). Tier locks: fast ultra/_4s/_6s + low_priority = ADVANCED-only; plain fast NOT on ADVANCED (unavailable keys rejected with the per-tier matrix before submission). Complete live catalog + per-key credits: `flow_status`." },
           mode: { type: "string", enum: [...VIDEO_MODES], description: "Optional generation mode hint. Omit it — provider=flow infers the mode from the model key + inputs (seven-mode rows map inputs to key families); mismatches → structured S301 naming the key. For agnes/zhipu mode is AUTHORITATIVE, not a hint: image-to-video without image / keyframes without an array → error; explicit text-to-video + image drops the image (with a warning)." },
-          image: { type: "string", description: "image-to-video: single image URL (http(s)/data:). provider=flow: START_IMAGE — uploaded then submitted; requires an i2v key (see model) — a mismatched key (e.g. a t2v key) → structured S301 naming the key to use." },
-          keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image URL array. provider=flow: exactly 2 images (first + last frame); requires an interpolation/_fl key (see model) — other counts or key families → structured S301." },
-          images: { type: "array", items: { type: "string" }, description: "reference images (provider=flow only): image URLs (http(s)/data:) for r2v keys — uploaded (" + FLOW_ZERO_CREDIT + " credits) then submitted as referenceImages; per-key cap (live inputSpec): 7 (abra r2v) / 3 (veo r2v). Mutually exclusive with image/keyframes/videoMediaId. Other providers ignore it with a warning." },
+          image: { type: "string", description: "image-to-video: single image (http(s)/data: URI, or an absolute local file path — read server-side, ≤15MB). provider=flow: START_IMAGE — uploaded then submitted; requires an i2v key (see model) — a mismatched key (e.g. a t2v key) → structured S301 naming the key to use." },
+          keyframes: { type: "array", items: { type: "string" }, description: "keyframes: image array (http(s)/data: URI, or absolute local file paths — read server-side, ≤15MB each). provider=flow: exactly 2 images (first + last frame); requires an interpolation/_fl key (see model) — other counts or key families → structured S301." },
+          images: { type: "array", items: { type: "string" }, description: "reference images (provider=flow only): http(s)/data: URIs or absolute local file paths (read server-side, ≤15MB each) for r2v keys — uploaded (" + FLOW_ZERO_CREDIT + " credits) then submitted as referenceImages; per-key cap (live inputSpec): 7 (abra r2v) / 3 (veo r2v). Mutually exclusive with image/keyframes/videoMediaId. Other providers ignore it with a warning." },
           audioMediaIds: { type: "array", items: { type: "string" }, description: "provider=flow only, r2v keys only (audio reference / Match Voice to Visuals; live-verified effective 2026-08-27 — evidence: contract §15): preset voice sample mediaIds to attach as referenceAudio — the ONLY legal source is the no-arg flow_status() snapshot's preset_voices field (30 preset voices, mediaId like \"achernar\"/\"kore\", " + FLOW_ZERO_CREDIT + " credits; user-uploaded audio wire not reverse-engineered yet; voice-to-preset identity match is not speaker-verified). Caps: 5 for abra r2v / 1 for veo r2v. Submission carries audioFailurePreference=BLOCK_SILENCED_VIDEOS — if audio safety filtering hits, the whole generation fails rather than returning a silent video. Non-r2v keys or non-preset ids → structured S301." },
           videoMediaId: { type: "string", description: "provider=flow only: mediaId of an EXISTING completed video in the Flow project (see flow_status) as the source for extension / V2V edit / upsampler keys (see model); references the generated video directly (videoInput:{mediaId}), no re-upload needed. Images or in-progress ids → structured S301." },
           resolution: { type: "string", enum: [...RESOLUTIONS], default: "720p", description: "Provider may snap to nearest preset (Agnes size_mapping). provider=flow: ignored with a warning — ALL Flow generation keys output 720P (ultra/quality variants too); higher resolution is upscale-only (upscale mode)." },
@@ -699,11 +741,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // H3:images[] 须为 URI(与 create_video 对称,防本地路径/相对路径 silent 进 body)。
         // 渠道专属输入引用例外经 provider 钩子放行(如 flow 2K 放大接受项目内 mediaId);
         // 存在性/类型校验归 provider 提交路径的结构化错误。
-        const imgs = toStringArray(a.images);
-        const uriOk = (u: string) => isImageUri(u) || p.acceptsImageInputRef?.(u, { model, images: imgs }) === true;
-        if (imgs?.some((u) => !uriOk(u))) {
-          return err("`images` 每项须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入(渠道专属输入引用如 mediaId 见该渠道参数说明)。");
+        // 本地路径支持(日志#16):绝对路径且文件存在 → 工具侧读文件转 data: URI(≤15MB);
+        // 相对路径仍拒绝(结构化提示转绝对)。mediaId 引用先于本地化判定(非路径形态)。
+        const imgsRaw = toStringArray(a.images);
+        const imgsList: string[] = [];
+        for (const u of imgsRaw ?? []) {
+          if (isImageUri(u) || p.acceptsImageInputRef?.(u, { model, images: imgsRaw }) === true) {
+            imgsList.push(u);
+            continue;
+          }
+          const loc = await localizeImageInput(u, "`images` 每项", warnings);
+          if (!loc.ok) return err(loc.error);
+          imgsList.push(loc.uri);
         }
+        // 未传 images 时保持 undefined(与旧行为一致,fallback 谈判/支持面判断零漂移)
+        const imgs = imgsList.length ? imgsList : undefined;
         // images 图生图:provider 不支持时拒绝(免静默丢弃 — zhipu cogview 纯文生图,传 images 会忽略)
         if (imgs?.length && p.supportsImageToImage?.() === false) {
           return err(`provider "${p.name}" 不支持图生图(images 会被忽略)。请改用 agnes,或去掉 images 走纯文生图。`);
@@ -806,20 +858,47 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case "create_video": {
         const prompt = requireString(a.prompt, "prompt");
         const outDir = resolveOutDir(a.outDir);
+        // warnings 提前声明:本地图片输入(localizeImageInput)在本块即需推送 note
+        const warnings: string[] = [];
         // M5:ratio 白名单(不只检格式,防 999:999 走到 API 行为未定义)
         const RATIO_OK = new Set(["16:9", "9:16", "1:1", "4:3", "3:4"]);
         const ratio = optString(a.ratio);
         if (ratio && !RATIO_OK.has(ratio)) {
           return err('ratio 须为 "16:9" / "9:16" / "1:1" / "4:3" / "3:4" 之一。');
         }
-        const image = optString(a.image);
-        if (image && !isImageUri(image)) return err("`image` 须为 http(s): 或 data: URI。");
-        const keyframes = toStringArray(a.keyframes);
-        if (keyframes?.some((u) => !isImageUri(u))) return err("`keyframes` 每项须为 http(s): 或 data: URI。");
+        // 本地图片路径支持(日志#16):image/keyframes/images 的绝对本地路径由工具侧读取转 data: URI
+        // (≤15MB;magic-bytes 嗅探 mime);相对路径结构化拒绝。URI 原样透传,后续 isImageUri 校验兜底。
+        let image = optString(a.image);
+        if (image && !isImageUri(image)) {
+          const loc = await localizeImageInput(image, "`image`", warnings);
+          if (!loc.ok) return err(loc.error);
+          image = loc.uri;
+        }
+        if (image && !isImageUri(image)) return err("`image` 须为 http(s): / data: URI,或绝对本地路径(工具侧读取转 data: URI)。");
+        const keyframesRaw = toStringArray(a.keyframes);
+        let keyframes = keyframesRaw;
+        if (keyframesRaw?.some((u) => !isImageUri(u))) {
+          const locList: string[] = [];
+          for (const u of keyframesRaw) {
+            const loc = await localizeImageInput(u, "`keyframes` 每项", warnings);
+            if (!loc.ok) return err(loc.error);
+            locList.push(loc.uri);
+          }
+          keyframes = locList;
+        }
         // images(r2v 参考图,URI 校验渠道中性)+ videoMediaId(渠道专属视频引用,非 URI 形态,
         // 交 provider 提交路径结构化校验):不消费的 provider 自行告警忽略。
-        const refImages = toStringArray(a.images);
-        if (refImages?.some((u) => !isImageUri(u))) return err("`images` 每项须为 http(s): 或 data: URI(参考图)。");
+        const refImagesRaw = toStringArray(a.images);
+        let refImages = refImagesRaw;
+        if (refImagesRaw?.some((u) => !isImageUri(u))) {
+          const locList: string[] = [];
+          for (const u of refImagesRaw) {
+            const loc = await localizeImageInput(u, "`images` 每项(参考图)", warnings);
+            if (!loc.ok) return err(loc.error);
+            locList.push(loc.uri);
+          }
+          refImages = locList;
+        }
         // 音频参考(flow r2v 专属叠加):mediaId 数组(预设语音 slug,非 URI 形态)——
         // 存在性/预设性校验归 provider 提交路径结构化 S301;不消费的 provider 自行告警忽略。
         const audioMediaIds = toStringArray(a.audioMediaIds);
@@ -842,7 +921,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const resolved = resolveProvider(optString(a.provider), model, "video");
         const p = asVideoProvider(resolved.provider);
         const vc = p.videoConstraints();
-        const warnings: string[] = [];
         if (resolved.autoRouted) {
           warnings.push(`model 自动路由:provider "${resolved.routedFrom}" → "${p.name}"。`);
         }

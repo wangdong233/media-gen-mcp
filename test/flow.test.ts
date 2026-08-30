@@ -169,9 +169,15 @@ const doneMedia = (name, extra = {}) => ({
   ...extra,
 });
 
+/** 确认令牌安装级密钥/消费表的测试隔离目录(日志#15 后密钥+消费表落盘 —— 单测不写真实 HOME)。 */
+const CONFIRM_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "flow-confirm-unit-"));
+
 function newProvider(opts: any = {}) {
   const t = new StubTransport(opts);
   const p = new FlowProvider({ transport: t, projectId: "proj-test", ...(opts.providerCfg ?? {}) });
+  // 测试注入缝:安装级 secret/consumed 指向本文件 tmp 目录(不触碰 ~/.media-gen-mcp)
+  p.confirmSecretFile = path.join(CONFIRM_DIR, "flow-confirm-secret");
+  p.confirmConsumedFile = path.join(CONFIRM_DIR, "flow-confirm-consumed.json");
   return { t, p };
 }
 

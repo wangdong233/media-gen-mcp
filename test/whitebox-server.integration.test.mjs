@@ -35,7 +35,9 @@ function call(name, args) {
 }
 
 before(async () => {
-  proc = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT });
+  // HOME 隔离:A-01 的 flow 确认门会签发令牌(日志#15 后密钥落 ~/.media-gen-mcp)—— 测试进程
+  // 指到 tmp,绝不写真实 HOME(与 flow-confirm/flow-localinput 集成同一纪律)。
+  proc = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT, env: { ...process.env, HOME: tmpOut } });
   proc.stdout.on("data", (chunk) => {
     buf += chunk.toString();
     let i;

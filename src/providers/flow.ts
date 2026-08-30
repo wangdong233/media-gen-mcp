@@ -91,12 +91,28 @@ const DEFAULT_TOOL_DEADLINE_MS = 110_000;
  */
 const DEFAULT_CONFIRM_TTL_MS = 600_000;
 /**
- * 确认令牌 HMAC 密钥(进程级随机):无状态令牌的签名根基 —— 令牌 = HMAC(secret, 签发时刻 + 请求计费摘要),
- * 无需服务端存储。进程重启后旧令牌一律失效(保守安全方向:重取令牌零成本)。
+ * 确认令牌 HMAC 密钥:🔴 安装级稳定密钥(2026-08-31,日志#15 修复)。
+ * 旧实现是模块级 `crypto.randomBytes(32)`(进程随机)—— 一次性 stdio 客户端每次调用新起进程,
+ * 进程 A 签发、进程 B 校验必 S320,错误文案完全不指向进程边界(产线误导排查 40 分钟)。
+ * 现改为 `~/.media-gen-mcp/flow-confirm-secret`(32B,0600,不存在则创建;原子 tmp+rename),
+ * 令牌跨进程可验;测试注入缝 = 实例字段 confirmSecretFile(对齐 projectFile 先例)。
+ * 🔴 安全配套(密钥持久化后单次消费语义必须同步跨进程,否则令牌可跨进程重放):
+ * consumedConfirmTokens 持久化到 ~/.media-gen-mcp/flow-confirm-consumed.json(原子写,读时惰性清理过期)。
  */
-const CONFIRM_SECRET = crypto.randomBytes(32);
+const FLOW_CONFIRM_SECRET_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-confirm-secret");
+const FLOW_CONFIRM_CONSUMED_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-confirm-consumed.json");
 const CONFIRM_TOKEN_PREFIX = "fvc1";
 const FLOW_PROJECT_FILE = path.join(os.homedir(), ".media-gen-mcp", "flow-project.json");
+/** 无 labs.google target 时自动开页的缺省 URL(flow-project.json 的 projectId/projectUrl 优先)。 */
+const DEFAULT_FLOW_TAB_URL = `${LABS_ORIGIN}/fx/tools/flow`;
+/** 401 自愈:reload 后等页面/新 session 生效的冷却(日志#13/#14:刷新页面即恢复)。 */
+const HEAL_RELOAD_SETTLE_MS = 3_000;
+/** S101 自愈:/json/new + 主动导航后等页面出现的冷却(重页面+代理慢,日志#5 实证可到 10s)。 */
+const HEAL_NEWTAB_SETTLE_MS = 8_000;
+/** S103 evaluate 瞬态超时自愈的退避(日志#7/#9:批产隐藏标签节流,重试即愈)。 */
+const HEAL_EVAL_BACKOFF_MS = 8_000;
+/** 本地图片输入的服务端读取上限(工具侧转 data: URI;超出结构化拒绝)。 */
+export const LOCAL_IMAGE_INPUT_MAX_BYTES = 15 * 1024 * 1024;
 
 
 const LAUNCH_HINT =
@@ -120,13 +136,19 @@ export class FlowError extends Error {
    * - 不设置 = 环境未就绪/参数校验错(非瞬时,不该被重试或 fallback 掩盖)
    */
   readonly flowStatus?: number;
+  /**
+   * S103 子类标记:CDP evaluate 超时(瞬态,批产实测重试即愈,日志#7/#9)——
+   * 供传输层自动退避一次判别(仅这一类自愈;其余 S100/S102 等环境前置仍不静默重试)。
+   */
+  readonly evalTimeout?: true;
 
-  constructor(code: string, message: string, opts?: { hint?: string; flowStatus?: number; precondition?: boolean }) {
+  constructor(code: string, message: string, opts?: { hint?: string; flowStatus?: number; precondition?: boolean; evalTimeout?: boolean }) {
     super(`[flow] ${code} ${message}${opts?.hint ? ` Hint: ${opts.hint}` : ""}`);
     this.name = "FlowError";
     this.code = code;
     this.flowStatus = opts?.flowStatus;
     if (opts?.precondition) this.precondition = true;
+    if (opts?.evalTimeout) this.evalTimeout = true;
     if (opts?.flowStatus !== undefined) (this as any).status = opts.flowStatus;
   }
 }
@@ -151,15 +173,37 @@ export interface PageFetchResp {
 /**
  * Flow 传输抽象。生产实现 = CDP Runtime.evaluate;测试注入 stub(零网络零消耗)。
  * pageFetch/recaptchaToken 之外的都从这两个原语派生。
+ *
+ * 自愈(2026-08-31,产线日志#4/#7/#9/#13/#14):生产实现在环境层内置三类「带 warning 的单次自愈」——
+ * S101 自动开页 / S103 evaluate 瞬态超时退避 / reload(401 自愈用)。自愈 note 经可选 notes 数组
+ * 上浮(provider 在公共入口 drain 进结果 warnings;stub 可选实现同通道供测试断言)。
+ * 纪律(03 清单「不静默重试」):每类自愈至多一次、必留痕(stderr + 结果 warnings)、
+ * S100(不可连)/S102(无 token)等环境前置绝不静默重试。
  */
 export interface FlowTransport {
-  /** 前置检测第 1/2 步:CDP 可连 + 定位 labs.google page target(失败抛 S100/S101)。 */
-  open(): Promise<{ pageUrl: string }>;
+  /**
+   * 前置检测第 1/2 步:CDP 可连 + 定位 labs.google page target(失败抛 S100/S101)。
+   * opts.newTabUrl = 无 target 时自动开页自愈用的 URL(生产实现消费;缺省 labs.google/fx/tools/flow)。
+   */
+  open(opts?: { newTabUrl?: string }): Promise<{ pageUrl: string }>;
   /** 在 labs.google 页面上下文执行 fetch(失败抛 S200/S201/S103)。 */
   pageFetch(args: PageFetchArgs, timeoutMs?: number): Promise<PageFetchResp>;
   /** 在页面上下文执行 grecaptcha.enterprise.execute(siteKey,{action}) 取 token(失败抛 S104)。 */
   recaptchaToken(siteKey: string, action: string): Promise<string>;
+  /** 刷新 labs 页面(401 自愈用;CDP Page.reload 语义)。可选 —— stub 无需实现。 */
+  reload?(): Promise<void>;
+  /** 自愈 note 通道(可选):provider 在公共入口 drain 到结果 warnings。 */
+  notes?: string[];
 }
+
+/** 传输/provider 共用:推一条自愈 note(stderr 永远留痕 + 结果 warnings 上浮通道)。 */
+function pushHealNote(transport: FlowTransport | null, note: string): void {
+  console.error(`[flow] ${note}`);
+  const notes = (transport as any)?.notes;
+  if (Array.isArray(notes)) notes.push(note);
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** JSON 字面量安全内嵌 JS 源码(U+2028/2029 在 JS 字符串里合法但 JSON.parse 页面侧无碍,预防性转义)。 */
 function jsonLiteral(v: unknown): string {
@@ -236,56 +280,81 @@ class CdpConnection {
     return this.opening;
   }
 
-  async evaluate(expression: string, timeoutMs: number): Promise<unknown> {
+  /** 原始 CDP 命令(带超时;evaluate/Page.navigate 共用 pending 路由)。 */
+  private async send(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<any> {
     await this.connect();
     const id = ++this.nextId;
-    return new Promise<unknown>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new FlowError("S103", `CDP evaluate 超时(>${Math.round(timeoutMs / 1000)}s)`, { flowStatus: 0 }));
+        reject(new FlowError("S103", `CDP ${method} 超时(>${Math.round(timeoutMs / 1000)}s)`, { flowStatus: 0, ...(method === "Runtime.evaluate" ? { evalTimeout: true } : {}) }));
       }, timeoutMs);
       this.pending.set(id, {
         resolve: (v) => { clearTimeout(timer); resolve(v); },
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
       try {
-        this.ws!.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression, awaitPromise: true, returnByValue: true } }));
+        this.ws!.send(JSON.stringify({ id, method, params }));
       } catch (e: any) {
         clearTimeout(timer); this.pending.delete(id);
         reject(new FlowError("S103", `CDP 发送失败: ${e?.message ?? e}`, { flowStatus: 0 }));
       }
     });
   }
+
+  async evaluate(expression: string, timeoutMs: number): Promise<unknown> {
+    const r = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, timeoutMs);
+    return r;
+  }
+
+  /** 导航当前页面(Page.navigate 命令响应在导航发起即返回,不受上下文销毁影响)。 */
+  navigate(url: string, timeoutMs = 15_000): Promise<void> {
+    return this.send("Page.navigate", { url }, timeoutMs).then(() => undefined);
+  }
+
+  /** 重载当前页面(Page.reload;命令 ack 不依赖 JS 上下文存活,401 自愈用)。 */
+  reloadPage(timeoutMs = 15_000): Promise<void> {
+    return this.send("Page.reload", {}, timeoutMs).then(() => undefined);
+  }
+
+  /** 立即断开(自愈临时连接用 —— WS 句柄是事件循环引用,不断开会挂住进程;主连接不调用)。 */
+  dispose(): void {
+    const ws = this.ws;
+    this.ws = null;
+    this.pending.clear();
+    if (ws) { try { ws.terminate(); } catch { /* 已断开 */ } }
+  }
+
 }
 
 /** 生产传输:CDP /json/version 探活 + /json/list 定位 labs.google page target + Runtime.evaluate。 */
 export class CdpFlowTransport implements FlowTransport {
   private conn: CdpConnection | null = null;
   private pageUrl = "";
+  /** 自愈 note 通道(provider 公共入口 drain 进结果 warnings;stderr 在 push 时已留痕)。 */
+  readonly notes: string[] = [];
+  /** 自愈时序(实例字段 = 测试注入缝调短;生产用模块常量默认 8s/3s/8s)。 */
+  healNewTabSettleMs = HEAL_NEWTAB_SETTLE_MS;
+  healEvalBackoffMs = HEAL_EVAL_BACKOFF_MS;
+  healReloadSettleMs = HEAL_RELOAD_SETTLE_MS;
 
   constructor(private readonly port: number = DEFAULT_CDP_PORT) {}
 
-  /** 前置检测 1/2:CDP 可连 + labs.google page target 存在。 */
-  async open(): Promise<{ pageUrl: string }> {
-    if (this.conn) return { pageUrl: this.pageUrl };
-    let targets: Array<{ type: string; url: string; webSocketDebuggerUrl?: string }>;
+  /** /json/list 探测(S100:CDP 不可连)。 */
+  private async listTargets(): Promise<Array<{ type: string; url: string; webSocketDebuggerUrl?: string }>> {
     try {
       const res = await fetch(`http://${CDP_HOST}:${this.port}/json/list`, {
         signal: AbortSignal.timeout(5_000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      targets = (await res.json()) as any;
+      return (await res.json()) as any;
     } catch (e: any) {
       throw new FlowError("S100", `CDP ${CDP_HOST}:${this.port} 不可连(${e?.message ?? e})`, { hint: LAUNCH_HINT, precondition: true });
     }
-    const pages = targets.filter((t) => t.type === "page" && t.url.startsWith(`${LABS_ORIGIN}/`));
-    if (!pages.length) {
-      throw new FlowError("S101", `CDP 可连但无 labs.google page target(现有 page:${targets.filter(t => t.type === "page").map(t => t.url.slice(0, 60)).join(" | ") || "无"})`, {
-        hint: `在 Chrome 打开 https://labs.google/fx/tools/flow 的任意 Flow 项目页(当前项目页 https://labs.google/fx/zh/tools/flow/project/c36ca3e2-192b-41e5-9e5b-700130e3d324)`,
-        precondition: true,
-      });
-    }
-    // 优先 Flow 项目页;否则任一 labs.google 页(同源即可发 tRPC/aisandbox 请求)
+  }
+
+  /** 从 labs.google page targets 里选 WS 连接对象(优先 Flow 项目页;否则任一 labs 页)。 */
+  private attachLabsPage(pages: Array<{ url: string; webSocketDebuggerUrl?: string }>): { pageUrl: string } {
     const page = pages.find((t) => t.url.includes("/tools/flow")) ?? pages[0];
     if (!page.webSocketDebuggerUrl) {
       throw new FlowError("S103", "page target 无 webSocketDebuggerUrl(页面可能正在关闭)");
@@ -295,7 +364,56 @@ export class CdpFlowTransport implements FlowTransport {
     return { pageUrl: this.pageUrl };
   }
 
-  private async eval(expr: string, timeoutMs: number): Promise<unknown> {
+  /**
+   * 自动开页自愈(日志#4):PUT /json/new?<flow 项目页 URL> 开 tab。
+   * 🔴 本机 Chrome 实证 /json/new 的 url 参数不落地导航(tab 停 about:blank)—— 开出 tab 后
+   * 主动经其 webSocketDebuggerUrl 发 Page.navigate 到目标 URL,再由 open() 复探确认。
+   */
+  private async openLabsTab(url: string): Promise<void> {
+    const res = await fetch(`http://${CDP_HOST}:${this.port}/json/new?${encodeURIComponent(url)}`, {
+      method: "PUT",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const tab = (await res.json()) as any;
+    const wsUrl = tab?.webSocketDebuggerUrl;
+    if (typeof wsUrl !== "string" || !wsUrl) throw new Error("新 tab 无 webSocketDebuggerUrl");
+    const tmp = new CdpConnection(wsUrl);
+    try {
+      await tmp.navigate(url);
+    } finally {
+      tmp.dispose(); // 导航已发起,临时连接立即断开(WS 是事件循环引用)
+    }
+  }
+
+  /** 前置检测 1/2:CDP 可连 + labs.google page target 存在(无 target 时自动开页自愈一次,日志#4)。 */
+  async open(opts: { newTabUrl?: string } = {}): Promise<{ pageUrl: string }> {
+    if (this.conn) return { pageUrl: this.pageUrl };
+    const targets = await this.listTargets(); // S100
+    const labsPages = (list: typeof targets) => list.filter((t) => t.type === "page" && t.url.startsWith(`${LABS_ORIGIN}/`));
+    let pages = labsPages(targets);
+    if (!pages.length) {
+      // 自愈(日志#4,带 warning):自动开 Flow 项目页 → 等页面出现 → 复探一次;仍无 → 原错误(hint 不变)
+      const tabUrl = opts.newTabUrl ?? DEFAULT_FLOW_TAB_URL;
+      pushHealNote(this, `无 labs.google 页面 target,已自动开新标签页 ${tabUrl} 并等待其就绪(自愈重试一次)`);
+      try {
+        await this.openLabsTab(tabUrl);
+      } catch { /* 开页自愈失败 → 复探后仍走原 S101 */ }
+      await sleep(this.healNewTabSettleMs);
+      const retryTargets = await this.listTargets(); // S100(不可连场景原样抛)
+      pages = labsPages(retryTargets);
+      if (!pages.length) {
+        throw new FlowError("S101", `CDP 可连但无 labs.google page target(现有 page:${retryTargets.filter(t => t.type === "page").map(t => t.url.slice(0, 60)).join(" | ") || "无"};已尝试自动开页未果)`, {
+          hint: `在 Chrome 打开 https://labs.google/fx/tools/flow 的任意 Flow 项目页(当前项目页 https://labs.google/fx/zh/tools/flow/project/c36ca3e2-192b-41e5-9e5b-700130e3d324)`,
+          precondition: true,
+        });
+      }
+    }
+    return this.attachLabsPage(pages);
+  }
+
+  /** 单次 evaluate(无重试)。 */
+  private async evalOnce(expr: string, timeoutMs: number): Promise<unknown> {
     if (!this.conn) throw new FlowError("S103", "CDP 未连接(先 open())");
     let r: any;
     try {
@@ -312,6 +430,26 @@ export class CdpFlowTransport implements FlowTransport {
       throw new FlowError("S103", `页面执行异常: ${String(d.exception?.description ?? d.text).slice(0, 300)}`, { hint: "页面可能已被导航/关闭;重开 Flow 项目页后重试", flowStatus: 0 });
     }
     return r?.result?.value;
+  }
+
+  private async eval(expr: string, timeoutMs: number): Promise<unknown> {
+    try {
+      return await this.evalOnce(expr, timeoutMs);
+    } catch (e) {
+      // 自愈(日志#7/#9,带 warning):仅「evaluate 超时」这一类瞬态(隐藏标签节流/页面忙,批产实测
+      // 重试即愈)自动退避重试一次;其余 S103(WS 断开/页面异常)与环境前置(S100/S102)绝不静默重试
+      // (03 清单「不静默重试」纪律:自愈必须带 warning 且限一次)。退避+重试计入外层 toolDeadline。
+      if (!(e instanceof FlowError) || !e.evalTimeout) throw e;
+      pushHealNote(this, `CDP 瞬态超时已自动退避 ${Math.round(this.healEvalBackoffMs / 1000)}s 重试一次(${(e as Error).message.replace(/^\[flow\] S103 /, "")})`);
+      await sleep(this.healEvalBackoffMs);
+      return await this.evalOnce(expr, timeoutMs);
+    }
+  }
+
+  /** 刷新 labs 页面(401 自愈:access_token ~1h 陈旧,reload 即恢复,无需重登 —— 日志#13/#14)。 */
+  async reload(): Promise<void> {
+    if (!this.conn) throw new FlowError("S103", "CDP 未连接(先 open())");
+    await this.conn.reloadPage();
   }
 
   async pageFetch(args: PageFetchArgs, timeoutMs = EVAL_TIMEOUT_MS): Promise<PageFetchResp> {
@@ -807,8 +945,25 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * B2-high 修复:确认令牌单次消费表(token → 过期时刻)。
    * verifyConfirmToken 是纯函数校验,无消费语义时同一令牌在 TTL 内可重放提交=重复扣积分;
    * 校验通过即消费(提交后续网络失败需重取令牌 —— 安全优先,重取成本一次往返)。
+   * 🔴 2026-08-31(日志#15):HMAC 密钥改安装级稳定密钥后,单次消费语义必须同步跨进程成立
+   * (否则令牌可跨进程重放)—— 本内存表与 ~/.media-gen-mcp/flow-confirm-consumed.json 双写:
+   * 校验前读盘合并(syncConsumedFromDisk,惰性清理过期),消费后原子写盘(persistConsumedTokens)。
+   * 诚实边界(B 白盒 2026-08-31):上表机制阻断的是【顺序】跨进程重放 —— 并发首消费存在毫秒级
+   * 理论 TOCTOU 窗口(两进程同窗口内都通过 has() 检查则双双放行)。威胁模型:单用户本地工具 +
+   * 毫秒窗口 + 重放需同 digest 同参数 + 重放后果=多扣一次积分,暴露面可接受;彻底封窗需 mkdir
+   * 锁文件,对本威胁模型属过度设计(判断依据:丢失更新已由 persistConsumedTokens 并集写盘封掉,
+   * 残留仅首消费竞态,不破坏已消费令牌的不可重放性)。
    */
   private consumedConfirmTokens = new Map<string, number>();
+  /**
+   * 确认令牌安装级密钥文件(测试注入缝,对齐 projectFile 先例):
+   * null = 默认 ~/.media-gen-mcp/flow-confirm-secret(32B 随机,0600,原子 tmp+rename,不存在则创建)。
+   */
+  confirmSecretFile: string | null = null;
+  /** 已消费令牌持久化文件(测试注入缝):null = 默认 ~/.media-gen-mcp/flow-confirm-consumed.json。 */
+  confirmConsumedFile: string | null = null;
+  /** 安装级密钥的进程内缓存(首用读盘/创建;同文件多实例各自缓存同值)。 */
+  private confirmSecretCache: Buffer | null = null;
   private cooldownError: Error | null = null;
   cooldownMs = 60_000; // 实例字段便于测试调短
   /** 动态目录缓存(projectInitialData 派生;10 分钟)。creditByKey 供计费确认门动态预估;inputByKey 供 r2v 上限动态校验(§14.1)。 */
@@ -930,6 +1085,19 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * C 任务:冷却窗口(notifyUnavailable 置位,60s)内直接抛缓存错误 —— 零探测快速失败,
    * 使优先级链在 Chrome 未开时每窗口至多付一次连接尝试。
    */
+  /**
+   * 自动开页自愈(日志#4)的目标 URL:flow-project.json 的 projectUrl(显式)或 projectId 推导的
+   * 项目页;文件缺省回落 labs.google/fx/tools/flow。纯本地读,不触发网络(无 ensureReady 循环)。
+   */
+  private flowTabUrl(): string {
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.projectFile ?? FLOW_PROJECT_FILE, "utf-8"));
+      if (typeof raw?.projectUrl === "string" && raw.projectUrl.startsWith(`${LABS_ORIGIN}/`)) return raw.projectUrl;
+      if (typeof raw?.projectId === "string" && raw.projectId) return `${LABS_ORIGIN}/fx/tools/flow/project/${raw.projectId}`;
+    } catch { /* 无项目文件 → 缺省 URL */ }
+    return DEFAULT_FLOW_TAB_URL;
+  }
+
   async ensureReady(force = false): Promise<{ pageUrl: string; email: string }> {
     if (this.cooldownUntil > Date.now() && this.cooldownError) {
       throw this.cooldownError;
@@ -938,7 +1106,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     if (!force && this.preflightCache && Date.now() - this.preflightCache.at < this.preflightTtlMs) {
       return this.preflightCache;
     }
-    const { pageUrl } = await this.transport.open(); // S100 / S101
+    const { pageUrl } = await this.transport.open({ newTabUrl: this.flowTabUrl() }); // S100 / S101(无 target 自动开页自愈)
     const sess = await this.fetchSession(); // S102
     const cached = { at: Date.now(), pageUrl, email: sess.email ?? "" };
     this.preflightCache = cached;
@@ -965,6 +1133,70 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     return (await this.fetchSession()).accessToken;
   }
 
+  // ── 401 自愈(日志#13/#14:access_token ~1h 陈旧 + 页面长时不刷新 → 携陈旧 token 调 API 得 401;页面 reload 即恢复,无需重登) ──
+
+  /**
+   * 带 401 自愈的 pageFetch(全部 tRPC/aisandbox 调用点共用;fetchSession 的 next-auth 端点除外):
+   * 响应 401 且本连接 ensureReady 曾通过(lastReadyAt 非空,排除「从未登录」的假自愈)→
+   * 自动 reload labs 页面一次 → 等 HEAL_RELOAD_SETTLE_MS → 重取 session 刷新 Bearer(带 authorization 的请求)
+   * → 重试一次(带 warning)。仍 401 → S201(hint 指向「刷新/重开 Flow 页即恢复,无需重登」)。
+   * 防递归:自愈内部的 session 重取走原始 transport(不入本包装)。reload+重试计入外层 toolDeadline。
+   * POST 重试安全性:401 = 认证在处理前被拒(上游 auth middleware 先于业务),重试不会造成
+   * 双重提交/双扣积分;确认门单次消费语义不受影响(门在提交前的独立调用里)。
+   */
+  private async pageFetchAuto(args: PageFetchArgs, timeoutMs?: number): Promise<PageFetchResp> {
+    const f = await this.transport.pageFetch(args, timeoutMs);
+    if (f.status !== 401 || this.lastReadyAt == null) return f; // 从未就绪过 → 不自愈(S102/S201 原语义)
+    const isFlowApi = args.url.startsWith(`${LABS_ORIGIN}/fx/api/trpc/`) || args.url.startsWith(`${AISANDBOX_ORIGIN}/`);
+    if (!isFlowApi) return f; // 仅 tRPC/aisandbox(任务边界);其余端点维持原语义
+    pushHealNote(this.transport, "access_token 陈旧(401):已自动刷新 Flow 页面重取会话并重试一次(通常无需重新登录)");
+    let reloaded = false;
+    try {
+      if (this.transport.reload) {
+        await this.transport.reload();
+        reloaded = true;
+      }
+    } catch { /* reload 失败 → 仍重试一次原请求(半过期场景可能已自愈) */ }
+    if (reloaded) await sleep((this.transport as { healReloadSettleMs?: number }).healReloadSettleMs ?? HEAL_RELOAD_SETTLE_MS);
+    const healed: PageFetchArgs = { ...args, headers: { ...args.headers } };
+    if (typeof healed.headers.authorization === "string" && healed.headers.authorization) {
+      try {
+        const sess = await this.transport.pageFetch({ url: `${LABS_ORIGIN}/fx/api/auth/session`, method: "GET", headers: {} });
+        if (sess.ok) {
+          const s = JSON.parse(bufToUtf8(sess.bodyB64));
+          if (typeof s?.access_token === "string" && s.access_token) healed.headers.authorization = `Bearer ${s.access_token}`;
+        }
+      } catch { /* session 重取失败 → 保持原 token 重试一次 */ }
+    }
+    const again = await this.transport.pageFetch(healed, timeoutMs);
+    if (again.status !== 401) return again;
+    throw new FlowError(
+      "S201",
+      `页面 API HTTP 401(自动刷新页面重试一次后仍 401;url: ${args.url.slice(0, 120)};body: ${bufToUtf8(again.bodyB64).slice(0, 160)})`,
+      {
+        flowStatus: 401,
+        hint: "页面会话可能已过期:通常刷新/重开 Flow 页面即恢复(无需重新登录);若仍失败请 lasso chrome-show → 打开 labs.google 检查登录状态",
+      },
+    );
+  }
+
+  /** drain 传输层自愈 note(S101 自动开页/S103 退避/401 刷新 —— stderr 已留痕,这里上浮进结果 warnings)。 */
+  private takeHealNotes(): string[] {
+    const notes = (this.transport as { notes?: string[] }).notes;
+    if (!Array.isArray(notes) || !notes.length) return [];
+    return notes.splice(0, notes.length);
+  }
+
+  /** 公共入口统一上浮自愈 note(与既有 warnings 合并,不覆盖 provider 业务告警)。 */
+  private attachHealNotes<T>(r: T): T {
+    const notes = this.takeHealNotes();
+    if (notes.length && r && typeof r === "object") {
+      const w = (r as { warnings?: string[] }).warnings;
+      (r as { warnings?: string[] }).warnings = [...(Array.isArray(w) ? w : []), ...notes];
+    }
+    return r;
+  }
+
   // ── 项目管理(契约 §2.7 / ~/.media-gen-mcp/flow-project.json) ──
 
   /** 解析 projectId:config → flow-project.json → 自动新建(POST project.createProject,零积分)。 */
@@ -983,7 +1215,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     // 列表看到的一串空项目即此残留)。CI 环境现已强制 skip 真连;此命名固定兜底防"日期家族"再犯。
     const PROJECT_TITLE = "media-gen-mcp";
     const body = JSON.stringify({ json: { projectTitle: PROJECT_TITLE, toolName: TOOL_INTERNAL_NAME } });
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${LABS_ORIGIN}/fx/api/trpc/project.createProject`,
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -998,8 +1230,8 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       const persistFile = this.projectFile ?? FLOW_PROJECT_FILE;
       fs.mkdirSync(path.dirname(persistFile), { recursive: true });
       fs.writeFileSync(persistFile, JSON.stringify({
-        provider: "flow", projectId: pid, createdAt: new Date().toISOString(),
-        note: "media-gen-mcp flow provider 自动新建(固定命名);复用此项目,失效再删让其重建",
+        provider: "flow", projectId: pid, projectUrl: `${LABS_ORIGIN}/fx/tools/flow/project/${pid}`, createdAt: new Date().toISOString(),
+        note: "media-gen-mcp flow provider 自动新建(固定命名);复用此项目,失效再删让其重建;projectUrl 供无 labs target 时自动开页自愈定位",
       }, null, 2));
     } catch { /* 落盘失败不阻断(下次会再新建);projectId 已在返回值里 */ }
     // 自动新建非常态(HOME 正常 + flow-project.json 在则永不走到)—— stderr 留痕,便于发现环境异常
@@ -1013,7 +1245,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   async getCredits(): Promise<{ credits?: number; serviceTier?: string; userPaygateTier?: string; subscriptionCredits?: number; sku?: string }> {
     await this.ensureReady();
     const token = await this.getAccessToken();
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${AISANDBOX_ORIGIN}/v1/credits?key=${FLOW_API_KEY}`,
       method: "GET",
       headers: { authorization: `Bearer ${token}` },
@@ -1027,7 +1259,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const pid = projectId ?? await this.ensureProjectId();
     await this.ensureReady();
     const input = encodeURIComponent(JSON.stringify({ json: { projectId: pid } }));
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${LABS_ORIGIN}/fx/api/trpc/flow.projectInitialData?input=${input}`,
       method: "GET",
       headers: {},
@@ -1114,7 +1346,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   private async getMediaBytesUnbounded(mediaId: string, opts: { thumbnail?: boolean } = {}): Promise<{ contentType: string; buf: Buffer }> {
     await this.ensureReady();
     const q = opts.thumbnail ? "&mediaUrlType=MEDIA_URL_TYPE_THUMBNAIL" : "";
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${LABS_ORIGIN}/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(mediaId)}${q}`,
       method: "GET",
       headers: {},
@@ -1187,7 +1419,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       requestContext: {},
       targetResolution,
     };
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${AISANDBOX_ORIGIN}/v1/flow/upsampleImage`,
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -1224,7 +1456,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       throw new FlowError("S400", `以下 mediaId 不在本项目(整批未删除):${unknown.join(", ")}`, { hint: "不带参数调 flow_status 可查看本项目全部 media" });
     }
     const token = await this.getAccessToken();
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${AISANDBOX_ORIGIN}/v1/flow:batchDeleteAssets`,
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -1267,7 +1499,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     }
     const shared: Array<{ mediaId: string; kind: string; mediaShareId: string; shareUrl: string }> = [];
     for (const id of mediaIds) {
-      const f = await this.transport.pageFetch({
+      const f = await this.pageFetchAuto({
         url: `${LABS_ORIGIN}/fx/api/trpc/flow.share.shareMedia`,
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1334,7 +1566,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     const token = await this.getAccessToken();
     const canceled: string[] = [];
     for (const id of toCancel) {
-      const f = await this.transport.pageFetch({
+      const f = await this.pageFetchAuto({
         url: `${AISANDBOX_ORIGIN}/v1/flowMedia:cancelGeneration`,
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -1368,7 +1600,9 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   async flowStatus(): Promise<Record<string, unknown>> {
     // 三审 finding-5:ensureReady + credits + 全量 projectInitialData 的只读快照同样受工具级截止
     // (CDP 半态下多个 eval 叠加可超 120s 红线;flow_status 是 CC 的主要自省入口,必须防 stall)
-    return this.withToolDeadline(this.flowStatusUnbounded(), "flow 状态快照");
+    // B-finding-5:自愈 note 统一经 attachHealNotes 上浮(消除与 generateImage/getVideo 入口的
+    // 手写重复合并,02 R-CI-08;泛型已覆盖 Record 返回形)。
+    return this.attachHealNotes(await this.withToolDeadline(this.flowStatusUnbounded(), "flow 状态快照"));
   }
   private async flowStatusUnbounded(): Promise<Record<string, unknown>> {
     const ready = await this.ensureReady();
@@ -1466,7 +1700,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       parentMediaGenerationId: "",
       workflowIdSeed: crypto.randomUUID(),
     };
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${AISANDBOX_ORIGIN}/v1/flow/uploadImage`,
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -1508,7 +1742,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   async generateImage(req: ImageRequest): Promise<ImageResult> {
     // 防 stall:生图轮询内部兜底 240s,超 120s 红线 —— 工具级截止 110s 封顶(S410 诚实降级;
     // 覆盖普通生图与 GEM_PIX_2_UPSAMPLE_2K 放大两条路径)
-    return this.withToolDeadline(this.generateImageUnbounded(req), "flow 生图");
+    return this.attachHealNotes(await this.withToolDeadline(this.generateImageUnbounded(req), "flow 生图"));
   }
   private async generateImageUnbounded(req: ImageRequest): Promise<ImageResult> {
     await this.ensureReady();
@@ -1608,7 +1842,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
         imageInputs,
       }],
     };
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${AISANDBOX_ORIGIN}/v1/projects/${pid}/flowMedia:batchGenerateImages`,
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -1669,7 +1903,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   async createVideo(req: VideoRequest): Promise<VideoTask> {
     // 防 stall:提交虽是 submit-only,但 r2v 逐张上传(abra 最多 7 张 / veo 3 张,§14.1 inputSpec)
     // 最坏路径超红线 —— 工具级截止 110s 封顶(S410;底层不取消,提交结果稍后经 flow_status 可达)
-    return this.withToolDeadline(this.createVideoUnbounded(req), "flow 视频提交");
+    return this.attachHealNotes(await this.withToolDeadline(this.createVideoUnbounded(req), "flow 视频提交"));
   }
 
   // ── 计费确认门(用户核心诉求;两段式 —— MCP 无交互回调,确认经 confirmToken 二次调用表达) ──
@@ -1930,18 +2164,93 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     return crypto.createHash("sha256").update(`${key}#${credits ?? "u"}#${promptFp}#${inputsFp}`).digest("hex").slice(0, 24);
   }
   private confirmMintSeq = 0; // 单调序号:同毫秒内多次 mint 不撞车(否则 token 逐字节相同会被单次消费误拒)
+  /**
+   * 安装级 HMAC 密钥(日志#15):读 ~/.media-gen-mcp/flow-confirm-secret;不存在则创建
+   * (32B 随机,0600,原子 tmp+rename)。创建后重读一次盘面值 —— 两进程首次并发创建时
+   * rename 后写者胜,重读使所有实例收敛到同一密钥(仅"创建-即-mint"的毫秒窗口存在理论竞态,
+   * 失败方向=校验失败重取,安全无害)。读/写均失败时退化为进程内随机(=旧版进程绑定行为)。
+   */
+  private confirmSecret(): Buffer {
+    if (this.confirmSecretCache?.length) return this.confirmSecretCache;
+    const file = this.confirmSecretFile ?? FLOW_CONFIRM_SECRET_FILE;
+    try {
+      const raw = fs.readFileSync(file);
+      if (raw.length >= 32) {
+        this.confirmSecretCache = raw;
+        return raw;
+      }
+    } catch { /* 不存在/不可读 → 走创建 */ }
+    let secret = crypto.randomBytes(32);
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
+      fs.writeFileSync(tmp, secret, { mode: 0o600 });
+      fs.renameSync(tmp, file);
+      // 竞态收敛:以 rename 落盘后的最终值为准(并发创建时后写者胜)
+      const settled = fs.readFileSync(file);
+      if (settled.length >= 32) secret = settled;
+    } catch { /* 落盘失败 → 进程内随机兜底(退化为旧版进程绑定行为,保守安全) */ }
+    this.confirmSecretCache = secret;
+    return secret;
+  }
   private mintConfirmToken(digest: string): string {
     const issuedAt = Date.now().toString(36);
     const seq = (this.confirmMintSeq++).toString(36);
-    const mac = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${issuedAt}.${seq}.${digest}`).digest("hex").slice(0, 32);
+    const mac = crypto.createHmac("sha256", this.confirmSecret()).update(`${issuedAt}.${seq}.${digest}`).digest("hex").slice(0, 32);
     return `${CONFIRM_TOKEN_PREFIX}.${issuedAt}.${seq}.${mac}`;
   }
-  /** 校验令牌:格式 → 时钟 sanity → TTL(S321 过期)→ HMAC 常量时间比较(S320 不匹配)。 */
+  /** 读盘合并已消费令牌(顺序跨进程重放阻断,日志#15 安全红线);过期条目惰性清理。 */
+  private syncConsumedFromDisk(): void {
+    const file = this.confirmConsumedFile ?? FLOW_CONFIRM_CONSUMED_FILE;
+    let raw: any;
+    try {
+      raw = JSON.parse(fs.readFileSync(file, "utf-8"));
+    } catch {
+      return; // 文件不存在/损坏 → 仅内存表(首次使用/并发写坏均可再生态)
+    }
+    const tokens = raw?.tokens;
+    if (!tokens || typeof tokens !== "object" || Array.isArray(tokens)) return;
+    const now = Date.now();
+    for (const [t, exp] of Object.entries(tokens)) {
+      if (typeof exp === "number" && exp > now) this.consumedConfirmTokens.set(t, exp);
+    }
+  }
+  /**
+   * 消费表原子写盘(tmp+rename;过期先清防文件膨胀)。失败不阻断(内存单次消费仍成立,仅跨进程降级)。
+   * 跨进程丢失更新防线(B 白盒 2026-08-31):写盘前重读磁盘,把「本进程上次 sync 之后、本次 persist
+   * 之前」其他进程落盘的未过期条目并入 —— 写的是【内存 ∪ 盘上未过期】的并集而非仅本进程内存表,
+   * 把 finding 所述 sync→persist 窗口的丢失更新收敛掉(rename 原子语义不变;残余仅 persist 内部
+   * read→rename 的微秒级窗口,与并发首消费同级 —— 威胁模型评估见字段注释)。
+   * 权限 0600(对齐 confirmSecret 的 tmp 写法):文件含 TTL 内仍有效的一次性令牌,防同机他用户可读。
+   */
+  private persistConsumedTokens(): void {
+    const file = this.confirmConsumedFile ?? FLOW_CONFIRM_CONSUMED_FILE;
+    const now = Date.now();
+    for (const [t, exp] of this.consumedConfirmTokens) if (exp <= now) this.consumedConfirmTokens.delete(t);
+    try {
+      const disk = JSON.parse(fs.readFileSync(file, "utf-8"))?.tokens;
+      if (disk && typeof disk === "object" && !Array.isArray(disk)) {
+        for (const [t, exp] of Object.entries(disk)) {
+          if (typeof exp === "number" && exp > now && !this.consumedConfirmTokens.has(t)) this.consumedConfirmTokens.set(t, exp);
+        }
+      }
+    } catch { /* 盘上无文件/损坏 → 并集退化为内存表(与 sync 的再生态一致) */ }
+    const tokens: Record<string, number> = {};
+    for (const [t, exp] of this.consumedConfirmTokens) tokens[t] = exp;
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
+      fs.writeFileSync(tmp, JSON.stringify({ version: 1, tokens }, null, 0), { mode: 0o600 });
+      fs.renameSync(tmp, file);
+    } catch { /* 见 doc:写失败保守为进程内单次消费 */ }
+  }
+  /** 校验令牌:格式 → 时钟 sanity → TTL(S321 过期)→ HMAC 常量时间比较(S320 不匹配)→ 跨进程单次消费(S320 已使用)。 */
   private verifyConfirmToken(token: string, digest: string): void {
     const reget = "不带 confirmToken 重新调用 create_video(原参数)即可获取新预估与令牌";
+    const crossProcess = "跨进程说明:旧版本(≤0.15.0)令牌绑定进程,若你在两个独立进程/连接里分别发起两段调用,须改为同一持久会话;本版本起为安装级令牌(密钥 ~/.media-gen-mcp/flow-confirm-secret),已支持跨进程 —— 仍失败请确认两次调用在同一 HOME 下";
     const m = new RegExp(`^${CONFIRM_TOKEN_PREFIX}\\.([0-9a-z]+)\\.([0-9a-z]+)\\.([0-9a-f]{32})$`).exec(token);
     if (!m) {
-      throw new FlowError("S320", `confirmToken 格式非法(应为 ${CONFIRM_TOKEN_PREFIX}.<时刻>.<序号>.<签名>,由确认门第一段返回)`, { hint: reget });
+      throw new FlowError("S320", `confirmToken 格式非法(应为 ${CONFIRM_TOKEN_PREFIX}.<时刻>.<序号>.<签名>,由确认门第一段返回)`, { hint: `${reget};${crossProcess}` });
     }
     const issuedAt = parseInt(m[1], 36);
     const age = Date.now() - issuedAt;
@@ -1949,18 +2258,21 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       throw new FlowError("S320", "confirmToken 签发时间非法(时钟异常)", { hint: reget });
     }
     if (age > this.confirmTtlMs()) {
-      throw new FlowError("S321", `confirmToken 已过期(TTL ${Math.round(this.confirmTtlMs() / 1000)}s,两段式确认窗口内未完成)`, { hint: reget });
+      throw new FlowError("S321", `confirmToken 已过期(TTL ${Math.round(this.confirmTtlMs() / 1000)}s,两段式确认窗口内未完成)`, { hint: `${reget};${crossProcess}` });
     }
-    const expect = crypto.createHmac("sha256", CONFIRM_SECRET).update(`${m[1]}.${m[2]}.${digest}`).digest("hex").slice(0, 32);
+    const expect = crypto.createHmac("sha256", this.confirmSecret()).update(`${m[1]}.${m[2]}.${digest}`).digest("hex").slice(0, 32);
     if (!crypto.timingSafeEqual(Buffer.from(m[3], "hex"), Buffer.from(expect, "hex"))) {
-      throw new FlowError("S320", "confirmToken 与当前请求不符(模型/时长/预估/prompt/输入引用(image/keyframes/images/videoMediaId/audioMediaIds)任一变化都会改变令牌绑定)", { hint: `${reget};确认后请勿改动参数` });
+      throw new FlowError("S320", "confirmToken 与当前请求不符(模型/时长/预估/prompt/输入引用(image/keyframes/images/videoMediaId/audioMediaIds)任一变化都会改变令牌绑定)", { hint: `${reget};确认后请勿改动参数;${crossProcess}` });
     }
-    // B2-high 修复:单次消费 —— 同一令牌只放行一次(防重放重复扣积分);顺手清理过期项防表膨胀
+    // B2-high 修复 + 日志#15 跨进程化:单次消费 —— 同一令牌只放行一次(防跨进程重放重复扣积分);
+    // 校验前读盘合并其他进程的消费记录,通过即消费并原子写盘。顺序重放已阻断;并发首消费的
+    // 毫秒级理论窗口为已知接受残留(见 consumedConfirmTokens 字段注释的威胁模型评估)。
+    this.syncConsumedFromDisk();
     if (this.consumedConfirmTokens.has(token)) {
-      throw new FlowError("S320", "confirmToken 已使用(单次消费语义,防重复扣积分)", { hint: reget });
+      throw new FlowError("S320", "confirmToken 已使用(单次消费语义,防重复扣积分;本表跨进程持久化)", { hint: reget });
     }
     this.consumedConfirmTokens.set(token, issuedAt + this.confirmTtlMs());
-    for (const [t, exp] of this.consumedConfirmTokens) if (exp <= Date.now()) this.consumedConfirmTokens.delete(t);
+    this.persistConsumedTokens();
   }
 
   private async createVideoUnbounded(req: VideoRequest): Promise<VideoTask> {
@@ -2099,7 +2411,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       ...(endpointMode !== "edit" ? { useV2ModelConfig: true } : {}), // §11.1:edit 是唯一不带 useV2ModelConfig 的端点
       requests: [requestItem],
     };
-    const f = await this.transport.pageFetch({
+    const f = await this.pageFetchAuto({
       url: `${AISANDBOX_ORIGIN}/v1/video:${apiPathname}`,
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -2133,7 +2445,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    */
   async getVideo(handle: VideoHandle): Promise<VideoResult> {
     // 防 stall:完成态下载内部兜底 180s,超 120s 红线 —— 工具级截止 110s 封顶(S410)
-    return this.withToolDeadline(this.getVideoUnbounded(handle), `flow 取件 ${handle.taskId ?? handle.videoId ?? ""}`.trim());
+    return this.attachHealNotes(await this.withToolDeadline(this.getVideoUnbounded(handle), `flow 取件 ${handle.taskId ?? handle.videoId ?? ""}`.trim()));
   }
   private async getVideoUnbounded(handle: VideoHandle): Promise<VideoResult> {
     const mediaId = handle.taskId ?? handle.videoId;
@@ -2214,8 +2526,8 @@ interface LoadedImage {
   fileName?: string;
 }
 
-/** magic bytes 嗅探 mime + 尺寸(PNG/GIF/JPEG/WEBP;嗅不出尺寸时留空,aspectRatio 字段可省)。 */
-function sniffImage(bytes: Buffer): { mimeType?: string; width?: number; height?: number } {
+/** magic bytes 嗅探 mime + 尺寸(PNG/GIF/JPEG/WEBP;嗅不出尺寸时留空,aspectRatio 字段可省)。index.ts 本地图片输入转 data: URI 复用。 */
+export function sniffImage(bytes: Buffer): { mimeType?: string; width?: number; height?: number } {
   const latin = (s: number, e: number) => bytes.subarray(s, e).toString("latin1");
   const be16 = (o: number) => bytes.readUInt16BE(o);
   const le16 = (o: number) => bytes.readUInt16LE(o);

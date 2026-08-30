@@ -37,10 +37,12 @@ async function portAlive(port) {
 }
 
 // ── MCP server stdio 客户端(同 flow-gate.integration.test.mjs 范式) ──
-function makeClient(cfgPath) {
+function makeClient(cfgPath, homeDir) {
+  // HOME 隔离:确认令牌的安装级密钥/消费表落 ~/.media-gen-mcp(日志#15)—— 测试进程指到
+  // writeCfg 的 tmp 目录,绝不写真实 HOME(与单测 CONFIRM_DIR 隔离同一纪律)。
   const proc = spawn("node", ["dist/index.js"], {
     stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT,
-    env: { ...process.env, MEDIA_GEN_MCP_CONFIG: cfgPath },
+    env: { ...process.env, MEDIA_GEN_MCP_CONFIG: cfgPath, ...(homeDir ? { HOME: homeDir } : {}) },
   });
   let buf = "", nextId = 0;
   const pending = new Map();
@@ -87,8 +89,8 @@ function writeCfg(flowSection) {
 describe("flow 计费确认门集成(死端口 CDP;确定性零积分)", { skip: await (async () => await portAlive(DEAD_CDP_PORT))() }, () => {
   const gateOn = writeCfg(null);            // 默认:确认门开
   const gateOff = writeCfg({ videoConfirm: false });
-  const c1 = makeClient(gateOn.cfgPath);
-  const c2 = makeClient(gateOff.cfgPath);
+  const c1 = makeClient(gateOn.cfgPath, gateOn.dir);
+  const c2 = makeClient(gateOff.cfgPath, gateOff.dir);
 
   before(async () => { await c1.start(); await c2.start(); });
   after(() => {
