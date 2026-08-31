@@ -154,7 +154,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 **是什么**:接入你已登录 Google Flow 的本机 Chrome,把 Flow 的生成能力变成工具 —— 免 API Key,生图 **0 积分**,视频按积分计费(7-100/条,提交前必经**计费确认门**:第一次调用只返回积分预估+确认令牌,你确认后才真提交)。
 
-**前置**(只需一次):本机 Chrome 登录 labs.google/fx —— `lasso launch-chrome --port 9223 --idle-ms 0` 启动并登录即可,MCP 自动经 CDP 调用。
+**前置**(只需一次;跨机器通用,lasso 非必需):一台开了调试端口的 Chrome 并登录 labs.google/fx —— `lasso launch-chrome --port 9223 --idle-ms 0`(推荐,静默),或裸 Chrome `--remote-debugging-port=9223 --user-data-dir=~/.media-gen-mcp/chrome-profile` 后在窗口登录;MCP 自动经 CDP 直连,不依赖 lasso 进程。
 
 **一句话能干什么**:
 

@@ -155,7 +155,7 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 
 **What it is**: wires your locally-logged-in Google Flow Chrome into tools — no API key; images are **0-credit**, videos bill credits (7-100/clip) behind a **billing confirm gate**: the first call only returns a cost estimate + confirm token; nothing submits until you confirm.
 
-**Prerequisite** (once): log into labs.google/fx in local Chrome — `lasso launch-chrome --port 9223 --idle-ms 0`, then log in; the MCP talks over CDP automatically.
+**Prerequisite** (once; portable across machines, lasso NOT required): a Chrome with the debug port open and labs.google/fx logged in — `lasso launch-chrome --port 9223 --idle-ms 0` (recommended, silent), or bare Chrome `--remote-debugging-port=9223 --user-data-dir=~/.media-gen-mcp/chrome-profile` then log in; the MCP connects over CDP directly with no lasso process needed.
 
 **What you can say**:
 

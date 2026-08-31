@@ -120,7 +120,7 @@ export const LOCAL_IMAGE_INPUT_MAX_BYTES = 15 * 1024 * 1024;
 // ①LAUNCH_HINT(默认,S100/S103 用):hidden 档零窗口 + --idle-ms 0 防 idle reaper,登录态在 profile 重启即恢复;
 // ②LOGIN_LAUNCH_HINT(仅 S102 未登录):可见登录,且带完整收回链(登录后 chrome-hide 回静默)。
 const LAUNCH_HINT =
-  "启动:lasso launch-chrome --port 9223 --idle-ms 0(hidden 档零窗口;登录态在 profile,重启即恢复;--idle-ms 0 防 60s idle 收割)。仅当提示未登录(S102)时才需要 visible 档人工登录";
+  "启动(任选其一;lasso 非必需,本工具只要求一台 9223 调试 Chrome):①lasso launch-chrome --port 9223 --idle-ms 0(hidden 零窗口;登录态在 profile,重启即恢复;--idle-ms 0 防 60s idle 收割) ②无 lasso 时裸 Chrome:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9223 --user-data-dir=$HOME/.media-gen-mcp/chrome-profile'(首次在窗口里登录 labs.google,此后复用)。仅当提示未登录(S102)时才需要可见窗口人工登录";
 const LOGIN_LAUNCH_HINT =
   "Chrome 未登录 labs.google:lasso launch-chrome --port 9223 --mode visible --idle-ms 0 → 在窗口里完成 labs.google 登录 → 登录后 lasso chrome-hide 收回后台(保持静默;后续拉起均 hidden 即可)";
 
