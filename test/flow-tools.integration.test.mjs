@@ -83,7 +83,10 @@ async function cdpAlive() {
 let proc = null, buf = "", nextId = 0;
 const pending = new Map();
 function startServer() {
-  proc = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT });
+  // 场景隔离 v2(2026-08-31):本测试 cwd=仓库 → scope=claude技能@media-gen-mcp(开发项目,空)。
+  // 用例断言依赖主项目既有资产(MEDIA_A 等)→ 用 MEDIA_GEN_FLOW_PROJECT_ID env 显式钉死主项目
+  // (最高优先级;本测试即该通道的首个消费者,顺带验证 env 钉死链路)。
+  proc = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT, env: { ...process.env, MEDIA_GEN_FLOW_PROJECT_ID: "c36ca3e2-192b-41e5-9e5b-700130e3d324" } });
   proc.stdout.on("data", (chunk) => {
     buf += chunk.toString();
     let i;
