@@ -54,6 +54,20 @@ import { getPdfPageCount } from "./pdf/render.js";
 import { parsePageRange } from "./pdf/page-range.js";
 import { readFileSync, existsSync as fsSyncExists } from "node:fs";
 import { fileURLToPath } from "node:url";
+// ── 进程级兜底(2026-08-31 E2E 发现):tesseract.js 对损坏图像的 worker 错误经 process.nextTick
+// 重抛为 uncaughtException —— 不兜底则**单个坏图输入击穿整个 server**,会话内全部工具瘫痪。
+// 只对可识别的"库级图像读取崩溃"保活(记日志,调用本身由客户端超时收尾);其余异常保持 Node
+// 默认语义(打印后退出),不做全局吞错。
+process.on("uncaughtException", (err: Error) => {
+  const msg = String(err?.message ?? err);
+  if (/Error attempting to read image|libpng|invalid code lengths|corrupt the queue/.test(msg)) {
+    console.error(`[guard] 识别引擎对损坏图像的库级异步崩溃已兜底(server 保活;该次识别调用将以失败/超时返回,请提供有效图像):${msg.slice(0, 160)}`);
+    return;
+  }
+  console.error("[guard] uncaughtException(未识别类型,进程将退出):", err);
+  process.exit(1);
+});
+
 
 // 版本从 package.json 读,杜绝发版时 serverInfo.version 漏改(dist/index.js → ../package.json)
 const PKG_VERSION = JSON.parse(
@@ -1224,6 +1238,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case "extract_text": {
         const image = requireString(a.image, "image");
         if (!isImageUri(image)) return err("`image` 须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
+        // 输入预检(E2E 发现:损坏图进 tesseract 会 worker 崩溃)—— data: URI 的字节先过 magic
+        // 嗅探,非 PNG/JPEG/GIF/WEBP 即结构化拒绝,不进引擎。
+        if (image.startsWith("data:")) {
+          const b64 = image.slice(image.indexOf(",") + 1);
+          try {
+            const bytes = Buffer.from(b64, "base64");
+            const { sniffImage } = await import("./providers/flow.js");
+            if (!sniffImage(bytes).mimeType) return err("image 不是有效的图像数据(PNG/JPEG/GIF/WEBP magic 校验未过)—— 损坏/截断的图片会使识别引擎崩溃,请在门口拒绝。");
+          } catch { /* 嗅探自身异常不阻断(交由引擎/进程兜底) */ }
+        }
         const resolved = resolveProvider(optString(a.provider), optString(a.model), "vision");
         let activeProvider = asVisionProvider(resolved.provider);
         if (!activeProvider.visionTasks().includes("extract-text")) {
