@@ -114,7 +114,7 @@ UNAVAILABLE = 当前 tier 不可用(4K/ultra 等)。
 - 视频请求侧 generation spec 字段名待重放确认(用响应结构推断同构)
 - access_token ~1h 过期 → 每次现取 session
 - FAILED 状态枚举值未观察(2026-08-23 E 轮修:非终态一律 in_progress —— SCHEDULED/PENDING/ACTIVE 三枚举 live 实证归 in_progress,仅 SUCCESSFUL=completed、FAILED=failed、缺状态(上传残留)=failed;详见 §10.5/§10.6/§10.7)
-- Chrome/页面必须活着:工具前置检测 + 清晰错误提示(`lasso launch-chrome --port 9223 --mode visible` + 登录 labs.google)
+- Chrome/页面必须活着:工具前置检测 + 清晰错误提示(拉起指引 2026-08-31 分层:默认 hidden+--idle-ms 0 零窗口;仅 S102 未登录才 visible 人工登录+chrome-hide 收回 —— 详见 doc/调研-Flow调试Chrome未静默问题.md)
 
 ## 6. 实施期实证补遗(2026-08-22,provider 落地时验证)
 

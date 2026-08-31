@@ -115,8 +115,14 @@ const HEAL_EVAL_BACKOFF_MS = 8_000;
 export const LOCAL_IMAGE_INPUT_MAX_BYTES = 15 * 1024 * 1024;
 
 
+// 拉起指引分层(2026-08-31 调研修复:hint 曾一律教 --mode visible —— 把"登录场景才需要可见"
+// 泛化到所有场景,叠加 lasso 的"visible 实例不被收割+端口复用"特性,导致浏览器多次常驻可见):
+// ①LAUNCH_HINT(默认,S100/S103 用):hidden 档零窗口 + --idle-ms 0 防 idle reaper,登录态在 profile 重启即恢复;
+// ②LOGIN_LAUNCH_HINT(仅 S102 未登录):可见登录,且带完整收回链(登录后 chrome-hide 回静默)。
 const LAUNCH_HINT =
-  "启动:lasso launch-chrome --port 9223 --mode visible,打开 https://labs.google/fx/tools/flow 项目页并确认已登录(Chrome 需保持运行)";
+  "启动:lasso launch-chrome --port 9223 --idle-ms 0(hidden 档零窗口;登录态在 profile,重启即恢复;--idle-ms 0 防 60s idle 收割)。仅当提示未登录(S102)时才需要 visible 档人工登录";
+const LOGIN_LAUNCH_HINT =
+  "Chrome 未登录 labs.google:lasso launch-chrome --port 9223 --mode visible --idle-ms 0 → 在窗口里完成 labs.google 登录 → 登录后 lasso chrome-hide 收回后台(保持静默;后续拉起均 hidden 即可)";
 
 // ── 错误类型:所有 flow 错误统一 [flow] S<code> 前缀(项目错误前缀规范) ──
 
@@ -1180,7 +1186,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       throw new FlowError("S202", "session 响应体非 JSON", { flowStatus: 0 });
     }
     if (!sess?.access_token) {
-      throw new FlowError("S102", "labs.google 会话未登录(session 无 access_token)", { hint: "在该 Chrome 里打开 https://labs.google/fx 完成登录(账号 wdong4036@gmail.com),再重试", precondition: true });
+      throw new FlowError("S102", "labs.google 会话未登录(session 无 access_token)", { hint: LOGIN_LAUNCH_HINT, precondition: true });
     }
     return { email: sess?.user?.email, accessToken: sess.access_token };
   }
@@ -1232,7 +1238,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       `页面 API HTTP 401(自动刷新页面重试一次后仍 401;url: ${args.url.slice(0, 120)};body: ${bufToUtf8(again.bodyB64).slice(0, 160)})`,
       {
         flowStatus: 401,
-        hint: "页面会话可能已过期:通常刷新/重开 Flow 页面即恢复(无需重新登录);若仍失败请 lasso chrome-show → 打开 labs.google 检查登录状态",
+        hint: "页面会话可能已过期:通常刷新/重开 Flow 页面即恢复(无需重新登录,本错误已自动 reload 重试过一次);确需人工检查时:lasso chrome-show → 检查 labs.google 登录 → 完成后 lasso chrome-hide 收回后台(保持静默)",
       },
     );
   }
