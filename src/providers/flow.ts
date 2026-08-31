@@ -1258,6 +1258,13 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       const pid = JSON.parse(raw)?.projectId;
       if (typeof pid === "string" && pid) return pid;
     } catch { /* 文件不存在/损坏 → 走新建 */ }
+    // 🔴 测试探针护栏(2026-08-31 同名项目根因):spawn 出的 server 若 HOME 被隔离,本方法会在
+    // CDP 活着时真实 createProject —— 补丁修密钥污染时曾意外打开项目污染(whitebox A-01,每次
+    // npm test 一个同名项目)。测试统一设 FLOW_NEVER_CREATE_PROJECT=1:文件 miss 即结构化拒绝,
+    // 绝不触达 Flow 账号;生产不设此 env,自愈新建语义不变(stderr 仍留痕)。
+    if (process.env.FLOW_NEVER_CREATE_PROJECT === "1") {
+      throw new FlowError("S101", `flow-project.json 不可读且 FLOW_NEVER_CREATE_PROJECT=1(测试探针模式,禁止自动新建项目;生产环境请勿设置此 env)`, { precondition: true });
+    }
     await this.ensureReady();
     // 项目命名规范(2026-08-28 用户裁决):固定名 media-gen-mcp —— 一个项目一个命名、明确标识。
     // 🔴 教训:旧命名 `media-gen-mcp <UTC日期>` 在 HOME 被换(CI-parity 门禁)导致 flow-project.json

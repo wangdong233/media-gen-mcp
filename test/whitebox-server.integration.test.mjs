@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), "whitebox-server-"));
 
-let proc = null, buf = "", nextId = 0;
+let proc = null, buf = "", nextId = 0, stderrLog = "";
 const pending = new Map();
 function send(method, params) {
   const myId = ++nextId;
@@ -37,7 +37,14 @@ function call(name, args) {
 before(async () => {
   // HOME 隔离:A-01 的 flow 确认门会签发令牌(日志#15 后密钥落 ~/.media-gen-mcp)—— 测试进程
   // 指到 tmp,绝不写真实 HOME(与 flow-confirm/flow-localinput 集成同一纪律)。
-  proc = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT, env: { ...process.env, HOME: tmpOut } });
+  // 🔴 三重防线(2026-08-31 同名项目根因修复):本测试 HOME 隔离后 A-01 的确认门路径曾在
+  // CDP 活着时真实 createProject(每次 npm test 一个同名项目,stderr 被吞三重静默)。
+  // ① 死端口(config cdpPort=9299,refreshCatalogIfStale 静默失败回落静态,needConfirm 语义保留)
+  // ② FLOW_NEVER_CREATE_PROJECT=1 探针护栏(文件 miss 即结构化拒,结构性不可建项目)
+  // ③ stderr 收集 + after 断言无「已自动新建」(把留痕从"日志"升级为"会红的门禁")
+  const probeCfg = path.join(tmpOut, "probe-config.json");
+  fs.writeFileSync(probeCfg, JSON.stringify({ providers: { flow: { settings: { cdpPort: 9299 } } } }));
+  proc = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT, env: { ...process.env, HOME: tmpOut, MEDIA_GEN_MCP_CONFIG: probeCfg, FLOW_NEVER_CREATE_PROJECT: "1" } });
   proc.stdout.on("data", (chunk) => {
     buf += chunk.toString();
     let i;
@@ -51,13 +58,16 @@ before(async () => {
       } catch { /* 忽略非 JSON 行 */ }
     }
   });
-  proc.stderr.on("data", () => { /* server 日志,不打断 */ });
+  proc.stderr.on("data", (chunk) => { stderrLog += chunk.toString(); /* 收集:after 断言无自动新建(门禁化) */ });
   await send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "whitebox-it", version: "1" } });
   proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
 });
 
-after(() => {
+after(async () => {
   try { proc?.kill(); } catch { /* ignore */ }
+  // 🔴 门禁化(根因修复第③层):本套件任何一次真实 createProject 都必须红 —— "自动新建"的
+  // stderr 留痕从"日志"升级为"会失败的断言"(此前被静默吞掉,是同名项目三重静默之一)。
+  assert.ok(!stderrLog.includes("已自动新建"), `测试期间发生 Flow 项目自动新建(账号污染)!stderr:\n${stderrLog.slice(-400)}`);
   fs.rmSync(tmpOut, { recursive: true, force: true });
 });
 

@@ -1518,6 +1518,29 @@ describe("项目解析与命名规范(2026-08-28 用户裁决:一个项目一个
   });
 });
 
+describe("FLOW_NEVER_CREATE_PROJECT 探针护栏(2026-08-31 同名项目根因修复)", () => {
+  test("env=1 且 flow-project.json 不可读 → S101 结构化拒绝,绝不 createProject", async () => {
+    const { t, p } = newProvider({ providerCfg: { projectId: undefined } });
+    (p as any).projectFile = path.join(os.tmpdir(), `no-such-${crypto.randomUUID()}.json`);
+    process.env.FLOW_NEVER_CREATE_PROJECT = "1";
+    try {
+      await assert.rejects(
+        () => p.ensureProjectId(),
+        (e: any) => e.code === "S101" && /FLOW_NEVER_CREATE_PROJECT/.test(e.message),
+      );
+      assert.ok(!t.calls.some((c: any) => c.url.includes("project.createProject")), "探针模式下零 createProject 请求");
+    } finally { delete process.env.FLOW_NEVER_CREATE_PROJECT; }
+  });
+  test("env 未设(生产语义)→ 照常自愈新建(零回归)", async () => {
+    const { t, p } = newProvider({ providerCfg: { projectId: undefined } });
+    (p as any).projectFile = path.join(os.tmpdir(), `fresh-${crypto.randomUUID()}.json`);
+    delete process.env.FLOW_NEVER_CREATE_PROJECT;
+    const pid = await p.ensureProjectId();
+    assert.ok(pid, "生产语义新建正常");
+    assert.ok(t.calls.some((c: any) => c.url.includes("project.createProject")), "发出 createProject");
+  });
+});
+
 describe("ratio × key 方向后缀守卫(2026-08-27 补:portrait key 未传 ratio 不再默认横屏)", () => {
   test("_portrait key 未传 ratio → wire PORTRAIT(按 key 后缀推导)", async () => {
     const { t, p } = newProvider({});
