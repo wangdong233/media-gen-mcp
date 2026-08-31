@@ -39,10 +39,20 @@ class StubTransport {
   notes: string[] = [];
   healReloadSettleMs = 10;
   reloadCount = 0;
+  /** 失败序列注入(自愈测试):sessionNetFailBefore 前 N 次 pageFetch(session) 抛 S200;openS100FailOnce / rcFailOnce / downloadBytesSeq */
+  sessionNetFailBefore = 0;
+  sessionCalls = 0;
+  openS100FailOnce = false;
+  rcFailOnce = false;
+  downloadBytesSeq: Buffer[] = [];
   /** projectInitialData 的脚本化状态序列(耗尽后沿用末位);默认 200。 */
   pidStatus: number[] = [];
   constructor(private readonly opts: any = {}) {}
   async open() {
+    if (this.openS100FailOnce) {
+      this.openS100FailOnce = false;
+      throw new FlowError("S100", "CDP 127.0.0.1:9223 不可连(stub 模拟)");
+    }
     if (this.opts.openError) throw this.opts.openError;
     return { pageUrl: "https://labs.google/fx/zh/tools/flow/project/test-project" };
   }
@@ -53,11 +63,19 @@ class StubTransport {
   async pageFetch(args: any) {
     this.calls.push(args);
     if (args.url.includes("/fx/api/auth/session")) {
+      this.sessionCalls++;
+      if (this.sessionCalls <= this.sessionNetFailBefore) {
+        throw new FlowError("S200", "页面 fetch 异常: Failed to fetch (stub 模拟 #21)");
+      }
       if (this.opts.sessionStatus) return this.json({}, this.opts.sessionStatus);
       return this.json({ user: { email: "tester@example.com" }, access_token: "ya29.stub" });
     }
     if (args.url.includes("credits?key=")) {
       return this.json({ credits: 868, serviceTier: "SERVICE_TIER_INTERMEDIATE" });
+    }
+    if (args.url.includes("media.getMediaUrlRedirect")) {
+      const buf = this.downloadBytesSeq.length > 1 ? this.downloadBytesSeq.shift()! : this.downloadBytesSeq[0] ?? Buffer.from("x");
+      return { ok: true, status: 200, contentType: "video/mp4", bodyB64: buf.toString("base64") };
     }
     if (args.url.includes("flow.projectInitialData")) {
       const status = this.pidStatus.length > 1 ? this.pidStatus.shift() : this.pidStatus[0] ?? 200;
@@ -68,7 +86,13 @@ class StubTransport {
     }
     return this.json({}, 404);
   }
-  async recaptchaToken() { return "stub-rc"; }
+  async recaptchaToken() {
+    if (this.rcFailOnce) {
+      this.rcFailOnce = false;
+      throw new FlowError("S104", "reCAPTCHA token 获取失败(stub 模拟)");
+    }
+    return "stub-rc";
+  }
   json(obj: any, status = 200) {
     return { ok: status < 400, status, contentType: "application/json", bodyB64: Buffer.from(JSON.stringify(obj)).toString("base64") };
   }
@@ -404,5 +428,87 @@ describe("S103 evaluate 瞬态超时自动退避一次(日志#7/#9;fake CDP WS)"
       (e: any) => e.code === "S103" && /超时/.test(e.message),
       "重试仍超时 → 原错误上抛",
     );
+  });
+});
+
+
+describe("网络/环境瞬态自愈四件(日志#21 系统性审计:可自愈不报人工)", () => {
+  function newP(opts: any = {}) {
+    const t = new StubTransport(opts);
+    const p = new FlowProvider({ transport: t as any, projectId: "proj-test" });
+    p.healNetBackoffMs = 5; p.healCdpBackoffMs = 5; (t as any).healRcBackoffMs = 5;
+    return { t, p };
+  }
+
+  test("① session 网络失败×1(Chrome 刚重启/代理握手窗口)→ 退避重试即愈(不再要人工)", async () => {
+    const { t, p } = newP();
+    t.sessionNetFailBefore = 1;
+    const r = await p.ensureReady();
+    assert.ok(r.email, "重试后就绪");
+    assert.ok(t.notes.some((n: string) => n.includes("退避") && n.includes("Flow 页面网络未就绪")), "自愈 note");
+  });
+
+  test("② session 网络失败×2 → 自动 reload Flow 页(=人工刷新自动化)后即愈", async () => {
+    const { t, p } = newP();
+    t.sessionNetFailBefore = 2;
+    const r = await p.ensureReady();
+    assert.ok(r.email);
+    assert.ok(t.reloadCount >= 1, "自动 reload 过页面");
+    assert.ok(t.notes.some((n: string) => n.includes("自动 reload Flow 页面")), "reload note");
+  });
+
+  test("③ session 网络失败持续 → 抛错带场景化 hint(Chrome 刚重启/代理可达性),非通用文案", async () => {
+    const { t, p } = newP();
+    t.sessionNetFailBefore = 99;
+    await assert.rejects(
+      () => p.ensureReady(),
+      (e: any) => e.code === "S200" && e.message.includes("已自动退避+刷新页面重试仍失败") && /Chrome 刚重启|代理/.test(e.message),
+    );
+  });
+
+  test("④ S100 CDP 瞬态不可连(Chrome 正在启动)→ 退避重探一次即愈", async () => {
+    const { t, p } = newP();
+    t.openS100FailOnce = true;
+    const r = await p.ensureReady();
+    assert.ok(r.email);
+    assert.ok(t.notes.some((n: string) => n.includes("CDP 瞬态不可连")), "重探 note");
+  });
+
+  test("⑤ S104 reCAPTCHA 瞬态失败 → 自动重取一次(提交前零副作用)", async () => {
+    const { t, p } = newP();
+    t.rcFailOnce = true;
+    const tok = await (p as any).recaptchaTokenAuto("site", "IMAGE_GENERATION");
+    assert.equal(tok, "stub-rc", "重取成功");
+    assert.ok(t.notes.some((n: string) => n.includes("reCAPTCHA token 获取瞬态失败")), "重取 note");
+  });
+
+  test("⑥ S402 下载截断 → 自动重下一次即愈;两次都截断才抛'下载不完整(两次)'", async () => {
+    const mkMedia = () => ({
+      result: { data: { json: {
+        projectContents: {
+          media: [{
+            name: "m-trunc",
+            mediaMetadata: { mediaStatus: { mediaGenerationStatus: "MEDIA_GENERATION_STATUS_SUCCESSFUL" }, mediaBlobSize: "100" },
+            video: { generatedVideo: { model: "abra_t2v_8s", seed: 1 } },
+          }],
+          modelConfig: { videoModelFamilies: [] },
+        },
+      } } },
+    });
+    // 一次截断 → 重下即愈
+    const a = newP();
+    a.t.downloadBytesSeq = [Buffer.alloc(50, 7), Buffer.alloc(100, 7)];
+    const fa = a.t.pageFetch.bind(a.t);
+    (a.t as any).pageFetch = async (args: any) => (args.url.includes("flow.projectInitialData") ? (a.t as any).json(mkMedia()) : fa(args));
+    const st = await a.p.getVideo({ taskId: "m-trunc" });
+    assert.equal(st.status, "completed", "重下后成功");
+    const healMsgs = [...(st as any).warnings ?? [], ...a.t.notes] as string[];
+    assert.ok(healMsgs.some((n: string) => n.includes("自动重新下载一次")), "重下 note(经 attachHealNotes 进 warnings 或留 transport.notes)");
+    // 两次都截断 → 抛
+    const b = newP();
+    b.t.downloadBytesSeq = [Buffer.alloc(50, 7), Buffer.alloc(60, 7)];
+    const fb = b.t.pageFetch.bind(b.t);
+    (b.t as any).pageFetch = async (args: any) => (args.url.includes("flow.projectInitialData") ? (b.t as any).json(mkMedia()) : fb(args));
+    await assert.rejects(() => b.p.getVideo({ taskId: "m-trunc" }), (e: any) => e.code === "S402" && e.message.includes("两次"));
   });
 });

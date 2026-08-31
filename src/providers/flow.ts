@@ -1106,8 +1106,17 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     if (!force && this.preflightCache && Date.now() - this.preflightCache.at < this.preflightTtlMs) {
       return this.preflightCache;
     }
-    const { pageUrl } = await this.transport.open({ newTabUrl: this.flowTabUrl() }); // S100 / S101(无 target 自动开页自愈)
-    const sess = await this.fetchSession(); // S102
+    // S100 自愈一次(CDP 刚不可连常是 Chrome 正在启动/重启的就绪窗口):退避重探;仍失败原错误(拉起指引不变)。
+    let pageUrl: string;
+    try {
+      ({ pageUrl } = await this.transport.open({ newTabUrl: this.flowTabUrl() })); // S100 / S101(无 target 自动开页自愈)
+    } catch (e) {
+      if (!(e instanceof FlowError) || e.code !== "S100") throw e;
+      pushHealNote(this.transport, `CDP 瞬态不可连(Chrome 可能正在启动/重启):退避 ${Math.round(this.healCdpBackoffMs / 1000)}s 自动重探一次`);
+      await sleep(this.healCdpBackoffMs);
+      ({ pageUrl } = await this.transport.open({ newTabUrl: this.flowTabUrl() }));
+    }
+    const sess = await this.fetchSession(); // S102(带 S200/S202 网络自愈链)
     const cached = { at: Date.now(), pageUrl, email: sess.email ?? "" };
     this.preflightCache = cached;
     this.lastReadyAt = cached.at;
@@ -1115,7 +1124,48 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   }
 
   /** GET /fx/api/auth/session(同源 cookie;契约 §2.1)。未登录抛 S102。 */
+  /** session 探测带网络自愈(日志#21:Chrome 刚重启/代理握手窗口,页面 fetch 瞬态 Failed to fetch)。 */
+  healNetBackoffMs = 10_000; // 测试缝(#21 session 网络自愈)
+  healCdpBackoffMs = 5_000; // 测试缝(S100 重探)
+  healRcBackoffMs = 5_000; // 测试缝(S104 重取)
+
+  /** S104 自愈(token 获取在提交前、零副作用):页面 enterprise 脚本随 Chrome 重启/导航可能未就绪 —— 退避重取一次。 */
+  private async recaptchaTokenAuto(siteKey: string, action: string): Promise<string> {
+    try {
+      return await this.transport.recaptchaToken(siteKey, action);
+    } catch (e) {
+      if (!(e instanceof FlowError) || e.code !== "S104") throw e;
+      pushHealNote(this.transport, `reCAPTCHA token 获取瞬态失败(${(e.message ?? "").slice(8, 70)}…):退避 ${Math.round(this.healRcBackoffMs / 1000)}s 自动重取一次`);
+      await sleep(this.healRcBackoffMs);
+      return await this.transport.recaptchaToken(siteKey, action);
+    }
+  }
   private async fetchSession(): Promise<{ email?: string; accessToken: string }> {
+    const HEAL_HINT = "Chrome 刚重启或代理未就绪时 Flow 页 fetch 会瞬态失败:通常 10-30s 后重试即恢复,或打开一次 Flow 页(通常无需重新登录);若持续失败,检查代理对 labs.google 的可达性";
+    const isNetErr = (e: unknown): e is FlowError => e instanceof FlowError && (e.code === "S200" || e.code === "S202");
+    try {
+      return await this.fetchSessionOnce();
+    } catch (e) {
+      if (!isNetErr(e)) throw e;
+      pushHealNote(this.transport, `Flow 页面网络未就绪(${e.code}):退避 ${Math.round(this.healNetBackoffMs / 1000)}s 自动重试一次`);
+      await sleep(this.healNetBackoffMs);
+      try {
+        return await this.fetchSessionOnce();
+      } catch (e2) {
+        if (!isNetErr(e2)) throw e2;
+        pushHealNote(this.transport, "仍未就绪:自动 reload Flow 页面后重试一次(等价人工刷新;Chrome 重启/代理切换后常见)");
+        try { if (this.transport.reload) await this.transport.reload(); } catch { /* reload 失败仍再试一次 fetch */ }
+        await sleep((this.transport as { healReloadSettleMs?: number }).healReloadSettleMs ?? HEAL_RELOAD_SETTLE_MS);
+        try {
+          return await this.fetchSessionOnce();
+        } catch (e3) {
+          if (!isNetErr(e3)) throw e3;
+          throw new FlowError(e3.code, `${e3.message} [已自动退避+刷新页面重试仍失败]`, { flowStatus: 0, hint: HEAL_HINT });
+        }
+      }
+    }
+  }
+  private async fetchSessionOnce(): Promise<{ email?: string; accessToken: string }> {
     const f = await this.transport.pageFetch({ url: `${LABS_ORIGIN}/fx/api/auth/session`, method: "GET", headers: {} });
     if (!f.ok) throw new FlowError("S201", `session 查询 HTTP ${f.status}`, { flowStatus: f.status });
     let sess: any;
@@ -1407,7 +1457,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   private async submitImageUpsample(mediaId: string, targetResolution: string): Promise<{ mediaId: string; raw: any }> {
     const pid = await this.ensureProjectId();
     const token = await this.getAccessToken();
-    const recaptcha = await this.transport.recaptchaToken(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_IMAGE); // §10.8: 放大与生图共用 action(IMAGE_UPSAMPLING 会 403)
+    const recaptcha = await this.recaptchaTokenAuto(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_IMAGE); // §10.8: 放大与生图共用 action(IMAGE_UPSAMPLING 会 403)
     const body = {
       clientContext: {
         recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
@@ -1822,7 +1872,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     imageInputs: Array<{ imageInputType: string; name: string }> = [],
   ): Promise<{ mediaIds: string[]; raw: any }> {
     const token = await this.getAccessToken();
-    const recaptcha = await this.transport.recaptchaToken(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_IMAGE);
+    const recaptcha = await this.recaptchaTokenAuto(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_IMAGE);
     const clientContext = {
       recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
       projectId: pid,
@@ -2370,7 +2420,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
 
     const pid = await this.ensureProjectId();
     const token = await this.getAccessToken();
-    const recaptcha = await this.transport.recaptchaToken(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_VIDEO);
+    const recaptcha = await this.recaptchaTokenAuto(RECAPTCHA_SITE_KEY, RECAPTCHA_ACTION_VIDEO);
     const clientContext = {
       recaptchaContext: { token: recaptcha, applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB" },
       projectId: pid,
@@ -2472,7 +2522,14 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       // 传输完整性(audit finding-18):字节数须精确等于 mediaBlobSize(实测已完成资产两者相等)
       const expected = Number(m?.mediaMetadata?.mediaBlobSize);
       if (Number.isFinite(expected) && expected > 0 && got.buf.length !== expected) {
-        throw new FlowError("S402", `下载不完整:${got.buf.length}B ≠ mediaBlobSize ${expected}B(疑似传输截断),请重试`, { flowStatus: 0 });
+        // 传输截断自愈一次(下载零副作用):重新走完整下载,二仍不完整才抛
+        pushHealNote(this.transport, `下载疑似截断(${got.buf.length}B ≠ ${expected}B):自动重新下载一次`);
+        const retry = await this.getMediaBytes(mediaId);
+        if (retry.buf.length === expected) {
+          Object.assign(got, retry);
+        } else {
+        throw new FlowError("S402", `下载不完整(两次):${got.buf.length}B/${retry.buf.length}B ≠ mediaBlobSize ${expected}B`, { flowStatus: 0 });
+        }
       }
       const mime = got.contentType.split(";")[0] || "video/mp4";
       return { status: "completed", url: `data:${mime};base64,${got.buf.toString("base64")}`, raw };
