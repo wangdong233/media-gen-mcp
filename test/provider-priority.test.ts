@@ -286,19 +286,20 @@ describe("flow 60s 软熔断(notifyUnavailable → ensureReady 零探测)", () =
     const t = new DeadCdpTransport();
     const p = new FlowProvider({ transport: t as any });
     p.cooldownMs = 50; // 实例字段,便于测试调短
+    p.healCdpBackoffMs = 1; // S100 自愈重探(日志#21)测试缝调短;首次失败=初次探测+自愈重探共 2 次
     const e1 = await p.ensureReady().then(() => null, (e: any) => e);
     assert.ok(e1 instanceof FlowError && e1.code === "S100");
     assert.equal(e1.precondition, true);
-    assert.equal(t.opens, 1);
+    assert.equal(t.opens, 2, "初次探测 + S100 自愈重探一次(仍失败才抛)");
     assert.equal(p.health().cooldown, false, "失败本身不打熔断(链 walk 的 notifyUnavailable 负责)");
     p.notifyUnavailable(e1);
     assert.equal(p.health().cooldown, true);
     const e2 = await p.ensureReady().then(() => null, (e: any) => e);
-    assert.equal(e2, e1, "冷却窗口内直抛缓存错误(零探测)");
-    assert.equal(t.opens, 1, "窗口内不重复探测 CDP");
+    assert.equal(e2, e1, "冷却窗口内直抛缓存错误(零探测,自愈重探也不发生)");
+    assert.equal(t.opens, 2, "窗口内不重复探测 CDP");
     await sleep(110);
     const e3 = await p.ensureReady().then(() => null, (e: any) => e);
-    assert.equal(t.opens, 2, "窗口过期重探");
+    assert.equal(t.opens, 4, "窗口过期重探(2=初探+自愈重探,同 S100 模式)");
     assert.ok(e3 instanceof FlowError);
   });
   test("registry flow 实例同语义(notifyUnavailable 后 health().cooldown,供链头跳过)", () => {
