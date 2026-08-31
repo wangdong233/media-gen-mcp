@@ -436,7 +436,7 @@ describe("网络/环境瞬态自愈四件(日志#21 系统性审计:可自愈不
   function newP(opts: any = {}) {
     const t = new StubTransport(opts);
     const p = new FlowProvider({ transport: t as any, projectId: "proj-test" });
-    p.healNetBackoffMs = 5; p.healCdpBackoffMs = 5; (t as any).healRcBackoffMs = 5;
+    p.healNetBackoffMs = 5; p.healCdpBackoffMs = 5; p.healRcBackoffMs = 5; // F1:缝在 provider(字段宿主),勿接到 transport stub
     return { t, p };
   }
 
@@ -502,8 +502,7 @@ describe("网络/环境瞬态自愈四件(日志#21 系统性审计:可自愈不
     (a.t as any).pageFetch = async (args: any) => (args.url.includes("flow.projectInitialData") ? (a.t as any).json(mkMedia()) : fa(args));
     const st = await a.p.getVideo({ taskId: "m-trunc" });
     assert.equal(st.status, "completed", "重下后成功");
-    const healMsgs = [...(st as any).warnings ?? [], ...a.t.notes] as string[];
-    assert.ok(healMsgs.some((n: string) => n.includes("自动重新下载一次")), "重下 note(经 attachHealNotes 进 warnings 或留 transport.notes)");
+    assert.ok(((st as any).warnings ?? []).some((n: string) => n.includes("自动重新下载一次")), "重下 note 必须上浮结果 warnings");
     // 两次都截断 → 抛
     const b = newP();
     b.t.downloadBytesSeq = [Buffer.alloc(50, 7), Buffer.alloc(60, 7)];

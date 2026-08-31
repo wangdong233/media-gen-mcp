@@ -1135,7 +1135,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       return await this.transport.recaptchaToken(siteKey, action);
     } catch (e) {
       if (!(e instanceof FlowError) || e.code !== "S104") throw e;
-      pushHealNote(this.transport, `reCAPTCHA token 获取瞬态失败(${(e.message ?? "").slice(8, 70)}…):退避 ${Math.round(this.healRcBackoffMs / 1000)}s 自动重取一次`);
+      pushHealNote(this.transport, `reCAPTCHA token 获取瞬态失败(${(e.message ?? "").replace(/^\[flow\] S104 /, "").slice(0, 62)}…):退避 ${Math.round(this.healRcBackoffMs / 1000)}s 自动重取一次`);
       await sleep(this.healRcBackoffMs);
       return await this.transport.recaptchaToken(siteKey, action);
     }
@@ -1160,7 +1160,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
           return await this.fetchSessionOnce();
         } catch (e3) {
           if (!isNetErr(e3)) throw e3;
-          throw new FlowError(e3.code, `${e3.message} [已自动退避+刷新页面重试仍失败]`, { flowStatus: 0, hint: HEAL_HINT });
+          throw new FlowError(e3.code, `${e3.message.replace(/^\[flow] S\d+ /, "")} [已自动退避+刷新页面重试仍失败]`, { flowStatus: 0, hint: HEAL_HINT });
         }
       }
     }
@@ -2528,7 +2528,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
         if (retry.buf.length === expected) {
           Object.assign(got, retry);
         } else {
-        throw new FlowError("S402", `下载不完整(两次):${got.buf.length}B/${retry.buf.length}B ≠ mediaBlobSize ${expected}B`, { flowStatus: 0 });
+          throw new FlowError("S402", `下载不完整(两次):${got.buf.length}B/${retry.buf.length}B ≠ mediaBlobSize ${expected}B`, { flowStatus: 0 });
         }
       }
       const mime = got.contentType.split(";")[0] || "video/mp4";
