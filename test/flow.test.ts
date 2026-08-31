@@ -1506,15 +1506,89 @@ describe("referenceAudio(§14.6 假 key 404 探针定型;v1 收窄 = r2v + 预�
 });
 
 describe("项目解析与命名规范(2026-08-28 用户裁决:一个项目一个命名)", () => {
-  test("自动新建的 projectTitle 固定为 media-gen-mcp(不含日期 —— 防日期家族残留再犯)", async () => {
+  test("default 场景新建 projectTitle=基础名 media-gen-mcp(2026-08-31 v2 规范:非 default 场景带 @scope 后缀;永不带日期)", async () => {
     const { t, p } = newProvider({ providerCfg: { projectId: undefined } }); // 覆盖默认 proj-test,逼出文件解析路径
     (p as any).projectFile = path.join(os.tmpdir(), `no-such-project-file-${crypto.randomUUID()}.json`); // 注入缝:文件不存在 → 走新建
+    (p as any).scopeKeyOverride = "default";
     const pid = await p.ensureProjectId();
     assert.ok(pid, "应返回 projectId");
     const create = t.calls.find((c: any) => c.url.includes("project.createProject"));
     assert.ok(create, "应发出 createProject");
     const body = JSON.parse(Buffer.from(create.bodyB64!, "base64").toString("utf8"));
-    assert.equal(body.json.projectTitle, "media-gen-mcp", "命名固定,不带日期后缀");
+    assert.equal(body.json.projectTitle, "media-gen-mcp", "default 场景=基础名,不带日期/不带 scope");
+  });
+});
+
+describe("场景隔离项目命名 v2(2026-08-31 用户裁决:按使用项目全路径层级)", () => {
+  const { flowScopeKeyOf } = require_(path.join(distDir, "providers/flow.js"));
+  const HOME = "/Users/tester";
+
+  test("scopeKey 推导:AIGC 深路径 → 末2段@连接(用户示例形态)", () => {
+    assert.equal(flowScopeKeyOf(`${HOME}/Documents/Project/AIGC/特辑_产品介绍/vscode状态插件`, HOME), "特辑_产品介绍@vscode状态插件");
+  });
+  test("scopeKey 推导:Project 根/home/外部路径 → default", () => {
+    assert.equal(flowScopeKeyOf(`${HOME}/Documents/Project`, HOME), "default");
+    assert.equal(flowScopeKeyOf(HOME, HOME), "default");
+    assert.equal(flowScopeKeyOf("/elsewhere", HOME), "default");
+  });
+  test("scopeKey 推导:仓库路径 → claude技能@media-gen-mcp;非法字符安全化", () => {
+    assert.equal(flowScopeKeyOf(`${HOME}/Documents/Project/claude技能/media-gen-mcp`, HOME), "claude技能@media-gen-mcp");
+    assert.equal(flowScopeKeyOf(`${HOME}/Documents/Project/a/b:c`, HOME), "a@b_c");
+  });
+
+  test("v1 文件自动迁移:单 projectId → default 场景继续复用(存量资产不动)", async () => {
+    const f = path.join(os.tmpdir(), `v1m-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(f, JSON.stringify({ provider: "flow", projectId: "legacy-pid" }));
+    const { p } = newProvider({ providerCfg: { projectId: undefined } });
+    (p as any).projectFile = f; (p as any).scopeKeyOverride = "default";
+    assert.equal(await p.ensureProjectId(), "legacy-pid", "default 场景命中 v1 迁移键");
+  });
+
+  test("新场景 miss → 按规范名新建 media-gen-mcp@<scope>;写盘 v2 且保留 default 映射", async () => {
+    const f = path.join(os.tmpdir(), `v2n-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(f, JSON.stringify({ provider: "flow", projectId: "legacy-pid" })); // v1 起点
+    const { t, p } = newProvider({ providerCfg: { projectId: undefined } });
+    (p as any).projectFile = f; (p as any).scopeKeyOverride = "特辑_产品介绍@vscode状态插件";
+    const pid = await p.ensureProjectId();
+    assert.ok(pid, "新建成功");
+    const create = t.calls.find((c: any) => c.url.includes("project.createProject"));
+    const body = JSON.parse(Buffer.from(create!.bodyB64!, "base64").toString("utf8"));
+    assert.equal(body.json.projectTitle, "media-gen-mcp@特辑_产品介绍@vscode状态插件", "规范命名(用户示例形态)");
+    const saved = JSON.parse(fs.readFileSync(f, "utf-8"));
+    assert.equal(saved.version, 2, "落盘 v2");
+    assert.equal(saved.projects["特辑_产品介绍@vscode状态插件"], pid, "新场景键指向新项目");
+    assert.equal(saved.projects.default, "legacy-pid", "default(存量主项目)映射保留不被抹");
+  });
+
+  test("同场景二次调用复用 v2 映射,零新建", async () => {
+    const f = path.join(os.tmpdir(), `v2r-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(f, JSON.stringify({ version: 2, projects: { "a@b": "pid-ab" } }));
+    const { t, p } = newProvider({ providerCfg: { projectId: undefined } });
+    (p as any).projectFile = f; (p as any).scopeKeyOverride = "a@b";
+    assert.equal(await p.ensureProjectId(), "pid-ab");
+    assert.ok(!t.calls.some((c: any) => c.url.includes("project.createProject")), "复用不新建");
+  });
+
+  test("flowTabUrl 场景优先:顶层 projectUrl 指向别的项目时,开本 scope 映射的页(live 发现的优先级缺陷)", async () => {
+    const f = path.join(os.tmpdir(), `tab-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(f, JSON.stringify({ version: 2, projects: { "a@b": "pid-ab", default: "pid-def" }, projectUrl: "https://labs.google/fx/tools/flow/project/pid-other" }));
+    const { p } = newProvider({ providerCfg: { projectId: undefined } });
+    (p as any).projectFile = f; (p as any).scopeKeyOverride = "a@b";
+    const url = (p as any).flowTabUrl();
+    assert.ok(url.endsWith("/pid-ab"), `应开本 scope 项目页,实际 ${url}`);
+    (p as any).scopeKeyOverride = "不存在的@场景";
+    assert.ok((p as any).flowTabUrl().endsWith("/pid-def"), "scope miss 时 default 兜底");
+  });
+
+  test("探针护栏对 v2 解析同样生效(文件 miss + NEVER_CREATE → S101 零请求)", async () => {
+    const { t, p } = newProvider({ providerCfg: { projectId: undefined } });
+    (p as any).projectFile = path.join(os.tmpdir(), `no-${crypto.randomUUID()}.json`);
+    (p as any).scopeKeyOverride = "x@y";
+    process.env.FLOW_NEVER_CREATE_PROJECT = "1";
+    try {
+      await assert.rejects(() => p.ensureProjectId(), (e: any) => e.code === "S101");
+      assert.ok(!t.calls.some((c: any) => c.url.includes("project.createProject")));
+    } finally { delete process.env.FLOW_NEVER_CREATE_PROJECT; }
   });
 });
 

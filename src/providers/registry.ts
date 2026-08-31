@@ -48,7 +48,7 @@ const registry: Record<string, MediaProvider> = {
     // (取代旧门禁「不实现 capabilities」,见 types.ts MediaProviderBase.requiresOptIn)。
     // 无默认视频模型:提交视频消耗积分,必须显式指定(或 config providers.flow.models.video.default)。
     cdpPort: config.providers.flow?.settings?.cdpPort,
-    projectId: config.providers.flow?.settings?.projectId,
+    projectId: config.providers.flow?.settings?.projectId ?? process.env.MEDIA_GEN_FLOW_PROJECT_ID, // env 通道:消费方(如 AIGC 产线脚本)可显式钉死项目,优先级最高
     models: config.providers.flow?.models,
     // 顶级 flow 段引用:toolDeadlineMs = 长操作防 stall 截止;videoConfirm/confirmTtlMs = 计费确认门。
     // 传对象引用供测试 live 修改。(原 enabled/S000 硬门已删,链即开关。)

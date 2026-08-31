@@ -1092,8 +1092,15 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   private flowTabUrl(): string {
     try {
       const raw = JSON.parse(fs.readFileSync(this.projectFile ?? FLOW_PROJECT_FILE, "utf-8"));
+      // v2 场景优先(2026-08-31 live 发现:顶层 projectUrl 恒指"最后新建"的项目,多场景下会开错页):
+      // 本 scope 映射 → default 兜底 → 顶层 projectUrl/v1 projectId(最后,防历史文件无 projects)
+      if (raw?.version === 2 && raw.projects && typeof raw.projects === "object") {
+        const scope = this.scopeKeyOverride ?? flowScopeKeyOf();
+        const pid2 = raw.projects[scope] ?? raw.projects.default;
+        if (typeof pid2 === "string" && pid2) return `${LABS_ORIGIN}/fx/tools/flow/project/${pid2}`;
+      }
       if (typeof raw?.projectUrl === "string" && raw.projectUrl.startsWith(`${LABS_ORIGIN}/`)) return raw.projectUrl;
-      if (typeof raw?.projectId === "string" && raw.projectId) return `${LABS_ORIGIN}/fx/tools/flow/project/${raw.projectId}`;
+      if (typeof raw?.projectId === "string" && raw.projectId) return `${LABS_ORIGIN}/fx/tools/flow/project/${raw.projectId}`; // v1
     } catch { /* 无项目文件 → 缺省 URL */ }
     return DEFAULT_FLOW_TAB_URL;
   }
@@ -1251,13 +1258,25 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
 
   /** 解析 projectId:config → flow-project.json → 自动新建(POST project.createProject,零积分)。 */
   projectFile: string | null = null; // 测试注入缝(对齐 preflightTtlMs/entitiesFile 先例;默认 ~/.media-gen-mcp/flow-project.json)
+  private pendingScopeKey: string | null = null; // ensureProjectId 解析时的本进程场景键(供新建命名与 v2 写盘)
+  scopeKeyOverride: string | null = null; // 测试注入缝:覆盖 flowScopeKeyOf(process.cwd) 的场景键
   async ensureProjectId(): Promise<string> {
     if (this.cfgProjectId) return this.cfgProjectId;
+    // v2 多场景解析(2026-08-31 用户裁决):flow-project.json = {version:2, projects:{<scopeKey>: projectId}};
+    // scopeKey = flowScopeKeyOf(cwd)(场景层级,如 特辑_产品宣传@vscode状态插件)。v1 单 projectId 自动迁移
+    // 为 projects.default(=既有主项目 —— CC 主会话/Project 根场景继续用,存量资产不动);
+    // 新场景 miss → 按规范名 media-gen-mcp@<scopeKey> 新建(此前全局单项目/固定名,用户点名按使用项目隔离)。
+    const scopeKey = this.scopeKeyOverride ?? flowScopeKeyOf();
+    const file = this.projectFile ?? FLOW_PROJECT_FILE;
+    let projects: Record<string, string> = {};
     try {
-      const raw = fs.readFileSync(this.projectFile ?? FLOW_PROJECT_FILE, "utf-8");
-      const pid = JSON.parse(raw)?.projectId;
-      if (typeof pid === "string" && pid) return pid;
+      const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (raw?.version === 2 && raw.projects && typeof raw.projects === "object") projects = { ...raw.projects };
+      else if (typeof raw?.projectId === "string" && raw.projectId) projects = { default: raw.projectId }; // v1 → v2
     } catch { /* 文件不存在/损坏 → 走新建 */ }
+    this.pendingScopeKey = scopeKey; // 供新建命名与 v2 写盘
+    const hit = projects[scopeKey];
+    if (typeof hit === "string" && hit) return hit;
     // 🔴 测试探针护栏(2026-08-31 同名项目根因):spawn 出的 server 若 HOME 被隔离,本方法会在
     // CDP 活着时真实 createProject —— 补丁修密钥污染时曾意外打开项目污染(whitebox A-01,每次
     // npm test 一个同名项目)。测试统一设 FLOW_NEVER_CREATE_PROJECT=1:文件 miss 即结构化拒绝,
@@ -1266,11 +1285,11 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
       throw new FlowError("S101", `flow-project.json 不可读且 FLOW_NEVER_CREATE_PROJECT=1(测试探针模式,禁止自动新建项目;生产环境请勿设置此 env)`, { precondition: true });
     }
     await this.ensureReady();
-    // 项目命名规范(2026-08-28 用户裁决):固定名 media-gen-mcp —— 一个项目一个命名、明确标识。
-    // 🔴 教训:旧命名 `media-gen-mcp <UTC日期>` 在 HOME 被换(CI-parity 门禁)导致 flow-project.json
-    // 读不到时被 integration 测试真实触发,每次跑门禁都在 Flow 账号新建一个日期项目(用户在项目
-    // 列表看到的一串空项目即此残留)。CI 环境现已强制 skip 真连;此命名固定兜底防"日期家族"再犯。
-    const PROJECT_TITLE = "media-gen-mcp";
+    // 项目命名规范(2026-08-31 用户裁决升级):**按使用项目全路径层级**命名 media-gen-mcp@<场景@层级>
+    // (示例 media-gen-mcp@特辑_产品宣传@vscode状态插件);default 场景保留基础名。
+    // 历史教训链:日期家族(P0-17)→ 同名家族(P0-22)→ 本规范=场景隔离,一眼可辨"哪个使用方在哪个项目"。
+    const scopeKey2 = this.pendingScopeKey ?? flowScopeKeyOf();
+    const PROJECT_TITLE = flowProjectTitleOf(scopeKey2);
     const body = JSON.stringify({ json: { projectTitle: PROJECT_TITLE, toolName: TOOL_INTERNAL_NAME } });
     const f = await this.pageFetchAuto({
       url: `${LABS_ORIGIN}/fx/api/trpc/project.createProject`,
@@ -1286,13 +1305,24 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     try {
       const persistFile = this.projectFile ?? FLOW_PROJECT_FILE;
       fs.mkdirSync(path.dirname(persistFile), { recursive: true });
+      // v2 合并写:重读盘取最新 map(防多场景并发互抹),本 scope 键指向新 projectId;v1/v2 兼容迁移
+      let merged: Record<string, string> = {};
+      try {
+        const cur = JSON.parse(fs.readFileSync(persistFile, "utf-8"));
+        if (cur?.version === 2 && cur.projects && typeof cur.projects === "object") merged = { ...cur.projects };
+        else if (typeof cur?.projectId === "string" && cur.projectId) merged = { default: cur.projectId };
+      } catch { /* 首建无文件 */ }
+      merged[scopeKey2] = pid;
       fs.writeFileSync(persistFile, JSON.stringify({
-        provider: "flow", projectId: pid, projectUrl: `${LABS_ORIGIN}/fx/tools/flow/project/${pid}`, createdAt: new Date().toISOString(),
-        note: "media-gen-mcp flow provider 自动新建(固定命名);复用此项目,失效再删让其重建;projectUrl 供无 labs target 时自动开页自愈定位",
+        version: 2,
+        projects: merged,
+        projectUrl: `${LABS_ORIGIN}/fx/tools/flow/project/${pid}`,
+        createdAt: new Date().toISOString(),
+        note: "media-gen-mcp flow 项目映射(scopeKey=cwd 末2段@连接;default=迁移前主项目);新场景 miss 按规范名 media-gen-mcp@<scopeKey> 新建",
       }, null, 2));
     } catch { /* 落盘失败不阻断(下次会再新建);projectId 已在返回值里 */ }
     // 自动新建非常态(HOME 正常 + flow-project.json 在则永不走到)—— stderr 留痕,便于发现环境异常
-    console.error(`[flow] 已自动新建 Flow 项目 "${PROJECT_TITLE}"(${pid});若非预期,请检查 HOME 与 ~/.media-gen-mcp/flow-project.json`);
+    console.error(`[flow] 已自动新建 Flow 项目 "${PROJECT_TITLE}"(scope=${scopeKey2}, ${pid});若非预期,请检查 HOME 与 ~/.media-gen-mcp/flow-project.json`);
     return pid;
   }
 
@@ -2591,6 +2621,27 @@ interface LoadedImage {
 }
 
 /** magic bytes 嗅探 mime + 尺寸(PNG/GIF/JPEG/WEBP;嗅不出尺寸时留空,aspectRatio 字段可省)。index.ts 本地图片输入转 data: URI 复用。 */
+/**
+ * 场景键(2026-08-31 用户裁决:新项目按"使用项目"全路径层级命名,如 media-gen-mcp@特辑_产品宣传@vscode状态插件)。
+ * 规则:server 进程 cwd 相对 home 的路径段,剥去通用容器前缀 Documents/Project(如存在),取**末 2 段**用 @ 连接;
+ * 剥后为空(cwd 恰为 home 或 Project 根)→ "default"。段名仅做文件名安全化,不译不改。
+ */
+export function flowScopeKeyOf(cwd: string = process.cwd(), home: string = os.homedir()): string {
+  const rel = path.relative(home, cwd);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return "default";
+  let segs = rel.split(path.sep).filter(Boolean);
+  if (segs[0] === "Documents" && segs[1] === "Project") segs = segs.slice(2);
+  segs = segs.slice(-2); // 末 2 段(用户示例:特辑_产品宣传@vscode状态插件)
+  const safe = segs.map((x) => x.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim()).filter(Boolean);
+  return safe.length ? safe.join("@") : "default";
+}
+
+/** 按 scopeKey 生成 Flow 项目标题(截断 60 字符防超平台限制)。 */
+function flowProjectTitleOf(scopeKey: string): string {
+  const base = scopeKey === "default" ? "media-gen-mcp" : `media-gen-mcp@${scopeKey}`;
+  return base.length > 60 ? base.slice(0, 60) : base;
+}
+
 export function sniffImage(bytes: Buffer): { mimeType?: string; width?: number; height?: number } {
   const latin = (s: number, e: number) => bytes.subarray(s, e).toString("latin1");
   const be16 = (o: number) => bytes.readUInt16BE(o);
