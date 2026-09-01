@@ -1,6 +1,5 @@
 import { Resvg } from "@resvg/resvg-js";
 import { withBrowser, BrowserUnavailableError, type BrowserLike } from "./browser-pool.js";
-import { maybeRenderOrphanWarning } from "./render-selfcheck.js";
 
 /**
  * SVG → PNG 渲染(双后端:resvg 轻量默认 + Chrome 高保真可选)。
@@ -62,18 +61,10 @@ export function renderSvgDiscardWarnings(req: RenderSvgRequest, backendUsed: Bac
 }
 
 // ── Chrome 检测与生命周期 ──
-// 类型与池实现迁至 browser-pool.ts(2026-09-01 P0 根治);此处 re-export 保持
-// 既有导入方(render-video/测试)兼容。getBrowser 为 probe 语义(不加引用计数);
-// 渲染主路径用 withBrowser/acquireBrowser。
-export {
-  getBrowser,
-  withBrowser,
-  acquireBrowser,
-  releaseBrowser,
-  shutdownBrowser,
-  BrowserUnavailableError,
-} from "./browser-pool.js";
-export type { BrowserLike, PageLike, CDPSessionLike, ElementHandleLike } from "./browser-pool.js";
+// 类型与池实现迁至 browser-pool.ts(2026-09-01 P0 根治)。getBrowser re-export 保留给
+// 既有测试消费方(test/render-video-determinism.test.mjs 经 dist/render-svg.js,probe 语义);
+// 其余名字零消费方已裁 —— 渲染方/测试直连 browser-pool.js 导入。
+export { getBrowser } from "./browser-pool.js";
 
 /** 检测 SVG 是否含滤镜块(需 Chrome 才能 100% 渲染)。 */
 function hasSvgFilters(svg: string): boolean {
@@ -151,11 +142,7 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
   let png: Buffer | undefined;
   let backendUsed: BackendUsed = "resvg";
   let warning: string | undefined;
-  // P0 §8.3 看门狗自愈:Chrome 路径入口自省孤儿计数(节流 5min、失败静默、不阻塞渲染;
-  // 节流窗天然形成「上次渲染后/本次渲染前」的括约 —— 渲染序列间持续可见泄漏状态)。
-  let orphanWarning: string | undefined;
   if (wantsChrome) {
-    orphanWarning = await maybeRenderOrphanWarning();
     try {
       // withBrowser:acquire(引用计数+1,抑制空闲回收)→ 渲染 → finally release
       png = await withBrowser((b) => renderWithChrome(b, req.svg, req.scale ?? 2));
@@ -179,6 +166,5 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
 
   // B10:按最终后端归拢丢弃告警(chrome 失败回落 resvg 时 backendUsed 已是 resvg,scale 判丢弃正确)
   const warnings = renderSvgDiscardWarnings(req, backendUsed);
-  if (orphanWarning) warnings.push(orphanWarning); // P0 §8.3:孤儿告警上浮(不阻塞)
   return { svg: req.svg, png, backendUsed, warning, warnings };
 }

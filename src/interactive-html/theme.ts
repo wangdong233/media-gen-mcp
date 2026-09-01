@@ -92,12 +92,3 @@ export const PREPAINT_RESOLVER_JS = `(function(){
     try { document.documentElement.dataset.theme = 'light'; } catch(_){}
   }
 })();`;
-
-/**
- * 从 HTML 中提取 <svg>...</svg> 子串(S3 几何 byte-identical 断言用)。
- * 切主题只翻 viewer CSS 变量,D2 SVG 子串必须 byte-identical。
- */
-export function extractSvg(html: string): string {
-  const m = /<svg[\s\S]*?<\/svg>/.exec(html);
-  return m ? m[0] : "";
-}

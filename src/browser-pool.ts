@@ -5,6 +5,12 @@ import path from "node:path";
 /**
  * browser-pool.ts —— render 管线共享 Chrome 的进程级单例池(2026-09-01 P0 根治)。
  *
+ * 🔴 定位(2026-09-01 用户裁决):**legacy 自管池 —— 保留为运行现实基线**。
+ * 后续方向 = lasso 渲染档(lasso 侧先行更新):lasso 落地后本池经 MEDIA_GEN_RENDER_MODE
+ * 切换为 attach 既有浏览器并整体退役。原「SIGKILL 外置兜底体系」(render-watchdog.mjs +
+ * render-selfcheck.ts + LaunchAgent 指引)同日整体废弃删除 —— 本池自身的 exit 钩子 +
+ * 固定前缀 profile(§9 自救命令仍可用)即当前全部防线。
+ *
  * 事故背景(doc/2026-09-01-Chrome泄漏致整机冻结-P0根因报告.md):
  *  旧实现「每次调用 launch 新 Chrome + 30s 空闲定时器关停」——spawner(MCP server)被
  *  SIGKILL 时定时器随宿主消亡,清理路径永不执行 → 两天 83 孤儿 Chrome(+599 族进程,
@@ -17,13 +23,13 @@ import path from "node:path";
  *     best-effort 清理(SIGKILL 主进程 + rmSync profile 目录 —— exit 钩子内零 await);
  *     SIGTERM/SIGINT 异步 close 后退出;launch 显式 handleSIGTERM/handleSIGHUP/handleSIGINT
  *     + timeout 防挂死;渲染方一律 acquire/release(try/finally)配对。
- *     (SIGKILL 本身无解 —— 由看门狗兜底,见报告 §8.3。)
+ *     (宿主被 SIGKILL 时钩子不执行 —— 该残余风险由 lasso 渲染档 attach 模式最终消除。)
  *  3. 可识别性:profile 目录固定前缀 media-gen-mcp-render-<pid>-<rand>,命令行含
  *     `--user-data-dir=…/media-gen-mcp-render-…` —— 复发时
  *     `pgrep -f media-gen-mcp-render` 可精确侦察/清理,永不误伤用户真身 Chrome。
  *
  * 确定性承诺(不回归):DETERMINISTIC_FLAGS 八旗标原样保留 —— 同输入同输出是
- * render 管线的核心承诺(2026-08-27 live 验证)。
+ * render 管线的核心承诺(2026-08-27 live 验证);lasso attach 档落地后须等价继承。
  *
  * 注意:本文件含 Date/process.pid 等「生命周期」时源(空闲计时/profile 命名),
  * 不参与渲染产物 —— determinism.test.ts 的时源扫描范围(6 个渲染文件)刻意不含本文件,

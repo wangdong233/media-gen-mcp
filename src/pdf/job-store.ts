@@ -152,17 +152,3 @@ export function pushPageResult(id: string, page: PdfPageResult): PdfJob | undefi
   j.updatedAt = Date.now();
   return j;
 }
-
-/** 显式删除(测试用,API 层不调用)。 */
-export function deletePdfJob(id: string): void {
-  store.delete(id);
-}
-
-/** 测试用:停 sweeper 防 pin 事件循环。 */
-export function shutdownPdfJobStoreForTest(): void {
-  if (sweeperTimer) {
-    clearInterval(sweeperTimer);
-    sweeperTimer = null;
-  }
-  store.clear();
-}

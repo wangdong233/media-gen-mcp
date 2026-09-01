@@ -149,9 +149,3 @@ export function buildPdfDocParams(bytes: Uint8Array, cmapsDir: string, fontsDir:
     isEvalSupported: false,
   };
 }
-
-/** 测试用:重置 workerConfigured / cachedPaths(隔离测试)。 */
-export function resetPdfjsLoaderForTest(): void {
-  workerConfigured = false;
-  cachedPaths = null;
-}

@@ -34,9 +34,6 @@ export const DIAGRAM_TYPES: readonly DiagramType[] = [
   "flowchart",
 ];
 
-/** diagramType 缺省值(V4:producer 省略时 viewer 按 architecture 渲染)。 */
-export const DEFAULT_DIAGRAM_TYPE: DiagramType = "architecture";
-
 /**
  * Manifest 树节点 —— 一个抽象层(对齐 01 §2.1 航母分层)。
  *

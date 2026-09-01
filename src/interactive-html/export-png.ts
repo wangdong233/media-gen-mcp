@@ -16,7 +16,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Resvg } from "@resvg/resvg-js";
 import { withBrowser } from "../browser-pool.js";
-import { maybeRenderOrphanWarning } from "../render-selfcheck.js";
 
 /**
  * 把 SVG 导成 PNG 落盘。
@@ -40,10 +39,6 @@ export async function exportPngFromSvg(
   // 1. 首选 puppeteer-core(CSS 变量自动解析,色彩与 viewer 一致)
   //    经 browser-pool 进程级单例池(2026-09-01 P0 根治):不再每次调用 launch 新 Chrome ——
   //    单例复用 + 引用计数 + 5min 空闲回收 + exit 钩子兜底 + media-gen-mcp-render-* 可识别 profile。
-  //    P0 §8.3 自愈:Chrome 路径自省孤儿计数 —— 本函数返回值是纯路径无 warnings 通道,
-  //    告警走 stderr(可见于 MCP 宿主日志;节流、失败静默、不阻塞)。
-  const orphanWarning = await maybeRenderOrphanWarning();
-  if (orphanWarning) console.warn(orphanWarning);
   try {
     await withBrowser(async (browser) => {
       const page = await browser.newPage();

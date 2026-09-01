@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { acquireBrowser, releaseBrowser, BrowserUnavailableError, type BrowserLike, type PageLike, type CDPSessionLike } from "./browser-pool.js";
-import { maybeRenderOrphanWarning } from "./render-selfcheck.js";
 
 /**
  * 确定性视频渲染(HTML/CSS/GSAP 动画 → MP4/GIF/WebM)。
@@ -316,11 +315,7 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
     // 清理 tmp
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
 
-    // P0 §8.3 看门狗自愈:渲染后自省孤儿计数(节流 5min、失败静默;超阈值告警上浮不阻塞)
-    const orphanWarning = await maybeRenderOrphanWarning();
-    const warning = [videoWarning, orphanWarning].filter(Boolean).join("; ") || undefined;
-
-    return { video, mimeType, ext, frameCount: totalFrames, elapsedMs, ...(warning ? { warning } : {}) };
+    return { video, mimeType, ext, frameCount: totalFrames, elapsedMs, ...(videoWarning ? { warning: videoWarning } : {}) };
   } finally {
     // 异常/成功路径都归还借用(引用计数 -1;归零后 browser-pool 接管空闲回收)
     releaseBrowser();

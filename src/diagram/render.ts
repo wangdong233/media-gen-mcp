@@ -25,7 +25,3 @@ export function getDiagramEngine(name?: string): DiagramEngine | undefined {
   if (name === "graphviz") return graphviz;
   return undefined; // mermaid 等交 handler 给清晰提示
 }
-
-export function listDiagramEngines(): DiagramEngine[] {
-  return [d2, graphviz];
-}

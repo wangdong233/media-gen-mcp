@@ -125,8 +125,3 @@ export async function renderIcon(req: IconRequest): Promise<IconRenderOutput> {
   }
   return { svg, png, warnings: iconDiscardWarnings(req) };
 }
-
-/** 仅供测试:清空图标缓存。 */
-export function _clearIconCache(): void {
-  cache.clear();
-}
