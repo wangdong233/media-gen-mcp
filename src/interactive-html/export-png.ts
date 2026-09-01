@@ -15,6 +15,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Resvg } from "@resvg/resvg-js";
+import { withBrowser } from "../browser-pool.js";
+import { maybeRenderOrphanWarning } from "../render-selfcheck.js";
 
 /**
  * 把 SVG 导成 PNG 落盘。
@@ -36,29 +38,36 @@ export async function exportPngFromSvg(
   const outPath = path.join(outDir, safeName + ".png");
 
   // 1. 首选 puppeteer-core(CSS 变量自动解析,色彩与 viewer 一致)
+  //    经 browser-pool 进程级单例池(2026-09-01 P0 根治):不再每次调用 launch 新 Chrome ——
+  //    单例复用 + 引用计数 + 5min 空闲回收 + exit 钩子兜底 + media-gen-mcp-render-* 可识别 profile。
+  //    P0 §8.3 自愈:Chrome 路径自省孤儿计数 —— 本函数返回值是纯路径无 warnings 通道,
+  //    告警走 stderr(可见于 MCP 宿主日志;节流、失败静默、不阻塞)。
+  const orphanWarning = await maybeRenderOrphanWarning();
+  if (orphanWarning) console.warn(orphanWarning);
   try {
-    const puppeteer = await import("puppeteer-core");
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    });
-    try {
+    await withBrowser(async (browser) => {
       const page = await browser.newPage();
-      // 装载 SVG 进一个最小 HTML(viewer chrome 不参与截图,仅 SVG 内容)
-      const htmlDoc =
-        "<!doctype html><html><head><meta charset=\"utf-8\">" +
-        "<style>html,body{margin:0;padding:0;background:#ffffff;}svg{display:block;}</style>" +
-        "</head><body>" + svg + "</body></html>";
-      await page.setContent(htmlDoc, { waitUntil: "load", timeout: 15000 });
-      const svgHandle = await page.$("svg");
-      if (svgHandle) {
-        await svgHandle.screenshot({ path: outPath, omitBackground: false });
-      } else {
-        await page.screenshot({ path: outPath, fullPage: true, omitBackground: false });
+      try {
+        // 装载 SVG 进一个最小 HTML(viewer chrome 不参与截图,仅 SVG 内容)
+        const htmlDoc =
+          "<!doctype html><html><head><meta charset=\"utf-8\">" +
+          "<style>html,body{margin:0;padding:0;background:#ffffff;}svg{display:block;}</style>" +
+          "</head><body>" + svg + "</body></html>";
+        await page.setContent(htmlDoc, { waitUntil: "load", timeout: 15000 });
+        if (page.$) {
+          const svgHandle = await page.$("svg");
+          if (svgHandle) {
+            await svgHandle.screenshot({ path: outPath, omitBackground: false });
+          } else {
+            await page.screenshot({ path: outPath, fullPage: true, omitBackground: false });
+          }
+        } else {
+          await page.screenshot({ path: outPath, fullPage: true, omitBackground: false });
+        }
+      } finally {
+        await page.close();
       }
-    } finally {
-      await browser.close();
-    }
+    });
     return outPath;
   } catch {
     // puppeteer 不可用(Chrome 未装/launch 失败)→ 降级 resvg

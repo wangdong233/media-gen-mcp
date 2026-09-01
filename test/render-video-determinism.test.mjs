@@ -20,6 +20,7 @@ const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 const { renderVideo } = require_(path.join(distDir, "render-video.js"));
 const { getBrowser } = require_(path.join(distDir, "render-svg.js"));
+const { shutdownBrowser } = require_(path.join(distDir, "browser-pool.js"));
 
 let chromeOk = false;
 // 顶层探测(须在 test() 注册前完成 —— skip 选项在定义时求值,before() 里赋值太晚)
@@ -28,9 +29,9 @@ let chromeOk = false;
   chromeOk = !!b;
 }
 after(async () => {
-  // 关闭浏览器单例,免测试进程挂着 Chrome 不退出
-  const b = await getBrowser().catch(() => null);
-  await b?.close?.().catch(() => {});
+  // 经 browser-pool 自己的收尾路径关停单例(2026-09-01 P0 根治后 Chrome 生命周期归 pool),
+  // 免测试进程挂着 Chrome 不退出
+  await shutdownBrowser().catch(() => {});
 });
 
 const HTML = `<!DOCTYPE html><html><body style="margin:0;background:#000"><div style="width:200px;height:100px;background:linear-gradient(90deg,red,yellow);animation:w 1s linear infinite alternate;position:absolute;top:40px"></div><style>@keyframes w{from{transform:translateX(0)}to{transform:translateX(500px)}}</style></body></html>`;

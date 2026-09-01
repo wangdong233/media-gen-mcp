@@ -21,6 +21,8 @@
     "test": "npm run build && npm run build:tests && node --test dist-test/*.test.js test/*.mjs && node scripts/check-error-text.mjs && node scripts/check-schema.mjs && node scripts/check-readme-sync.mjs && MEDIA_GEN_CHECK_PROFILE=strict node scripts/check-render-output.mjs test/golden/expected/qr/url.png",
     "render:golden": "npm run build && npm run build:tests && node scripts/render-golden.mjs",
     "check:render": "node scripts/check-render-output.mjs",
+    "watchdog:render": "node scripts/render-watchdog.mjs",
+    "watchdog:render:clean": "node scripts/render-watchdog.mjs --clean",
     "build:fixtures": "node scripts/build-p04-fixtures.mjs",
     "prepublishOnly": "npm run build && chmod +x dist/index.js && npm test"
   },

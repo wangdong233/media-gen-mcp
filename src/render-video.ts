@@ -2,11 +2,13 @@ import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:chil
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import type { BrowserLike, PageLike, CDPSessionLike } from "./render-svg.js";
+import { acquireBrowser, releaseBrowser, BrowserUnavailableError, type BrowserLike, type PageLike, type CDPSessionLike } from "./browser-pool.js";
+import { maybeRenderOrphanWarning } from "./render-selfcheck.js";
 
 /**
  * 确定性视频渲染(HTML/CSS/GSAP 动画 → MP4/GIF/WebM)。
- * DIY seek+screenshot+ffmpeg 管线,复用系统 Chrome(render-svg.ts 的 getBrowser 单例)。
+ * DIY seek+screenshot+ffmpeg 管线,复用 browser-pool.ts 进程级 Chrome 单例池
+ * (2026-09-01 P0 根治:单例 + 引用计数 + 5min 空闲回收 + exit 钩子 + 固定前缀 profile)。
  *
  * 原理(doc_v4/v5 调研):每帧 seek 到精确时间点 → 截图 → 串成帧序列 → ffmpeg 拼成视频。
  * 同输入→同输出:每帧时间点有理化(frameIdx/fps),不依赖实时时钟或 rAF 时序。
@@ -217,98 +219,110 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
   const outputPath = path.join(tmpDir, `output.${ext}`);
   const startTime = Date.now();
 
-  // 获取 Chrome(复用 render-svg.ts 的 browser 单例)
-  const { getBrowser } = await import("./render-svg.js");
-  const browser: BrowserLike | null = await getBrowser();
-  if (!browser) throw new Error("Chrome/Edge not available — needed for video frame capture (install Google Chrome or Microsoft Edge)");
-
-  // ffmpeg
-  const ffmpeg = await getFFmpegPath();
-  if (!ffmpeg) throw new Error("ffmpeg not available — install ffmpeg-static (npm dependency) or system ffmpeg");
-
-  // ffmpeg 参数:image2pipe 读 stdin → 目标编码
-  const codec = format === "gif" ? "gif" : format === "webm" ? "libvpx-vp9" : "libx264";
-  const extraArgs: string[] =
-    format === "mp4"
-      ? ["-pix_fmt", "yuv420p", "-crf", "18", "-preset", "veryfast", "-movflags", "+faststart"]
-      : format === "webm"
-        ? ["-b:v", "1M", "-crf", "32", "-row-mt", "1"]
-        : ["-filter_complex", "split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5", "-loop", "0"]; // gif:palette 两 pass 优化(大幅减体积/提质量)
-
-  const proc: ChildProcessWithoutNullStreams = spawn(ffmpeg, [
-    "-y",
-    "-framerate", String(fps),
-    "-f", "image2pipe",
-    "-c:v", "mjpeg",
-    "-i", "-",
-    "-c:v", codec,
-    ...extraArgs,
-    outputPath,
-  ], { stdio: ["pipe", "pipe", "pipe"] });
-
-  let stderr = "";
-  proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-  const ffmpegDone: Promise<void> = new Promise((resolve, reject) => {
-    proc.on("close", (code: number) => {
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-400)}`));
-    });
-    proc.on("error", reject);
+  // 获取 Chrome(browser-pool 进程级单例;acquire 引用计数 +1,渲染全程抑制空闲回收)
+  const browser: BrowserLike = await acquireBrowser().catch((e: unknown) => {
+    if (e instanceof BrowserUnavailableError) {
+      throw new Error("Chrome/Edge not available — needed for video frame capture (install Google Chrome or Microsoft Edge)");
+    }
+    throw e;
   });
 
-  const page = await browser.newPage();
-  let framesPiped = false;
   try {
-    await page.setViewport({ width, height, deviceScaleFactor: scale });
+    // ffmpeg
+    const ffmpeg = await getFFmpegPath();
+    if (!ffmpeg) throw new Error("ffmpeg not available — install ffmpeg-static (npm dependency) or system ffmpeg");
 
-    // 包裹 HTML:补 DOCTYPE + 重置默认外边距 + 防滚动条
-    // 完整 HTML 文档(带 doctype/<html>)原样透传,尊重用户 head/样式;仅片段才包裹兜底
-    const html = /^\s*<(?:!doctype\s+html|html[\s>])/i.test(req.html.trim())
-      ? req.html
-      : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;box-sizing:border-box;overflow:hidden;background:#000;}*{margin:0;padding:0;box-sizing:border-box;}</style></head><body>${req.html}</body></html>`;
-    await page.setContent(html, { waitUntil: "load" }); // networkidle0 在 setContent 下会超时,用 load
+    // ffmpeg 参数:image2pipe 读 stdin → 目标编码
+    const codec = format === "gif" ? "gif" : format === "webm" ? "libvpx-vp9" : "libx264";
+    const extraArgs: string[] =
+      format === "mp4"
+        ? ["-pix_fmt", "yuv420p", "-crf", "18", "-preset", "veryfast", "-movflags", "+faststart"]
+        : format === "webm"
+          ? ["-b:v", "1M", "-crf", "32", "-row-mt", "1"]
+          : ["-filter_complex", "split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5", "-loop", "0"]; // gif:palette 两 pass 优化(大幅减体积/提质量)
 
-    // 就绪:字体 + 图片 + 首帧 paint
-    await waitForReady(page);
+    const proc: ChildProcessWithoutNullStreams = spawn(ffmpeg, [
+      "-y",
+      "-framerate", String(fps),
+      "-f", "image2pipe",
+      "-c:v", "mjpeg",
+      "-i", "-",
+      "-c:v", codec,
+      ...extraArgs,
+      outputPath,
+    ], { stdio: ["pipe", "pipe", "pipe"] });
 
-    // CDP session(HyperFrames 偏好的底层截图通道)
-    const client = await page.createCDPSession();
+    let stderr = "";
+    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
 
-    // 逐帧:seek → double-rAF → 截图 → pipe 到 ffmpeg
-    for (let i = 0; i < totalFrames; i++) {
-      const timeSec = i / fps; // 有理化时间,杜绝浮点漂移
-      await seekToTime(page, timeSec);
-      await waitForDraw(page);
-      const frame = await captureFrame(client, width, height, scale, "jpeg", quality);
-      await writeFrame(proc.stdin, frame);
-      if (req.onProgress && (i % 3 === 0 || i === totalFrames - 1)) {
-        req.onProgress(Math.round(((i + 1) / totalFrames) * 100));
+    const ffmpegDone: Promise<void> = new Promise((resolve, reject) => {
+      proc.on("close", (code: number) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-400)}`));
+      });
+      proc.on("error", reject);
+    });
+
+    const page = await browser.newPage();
+    let framesPiped = false;
+    try {
+      await page.setViewport({ width, height, deviceScaleFactor: scale });
+
+      // 包裹 HTML:补 DOCTYPE + 重置默认外边距 + 防滚动条
+      // 完整 HTML 文档(带 doctype/<html>)原样透传,尊重用户 head/样式;仅片段才包裹兜底
+      const html = /^\s*<(?:!doctype\s+html|html[\s>])/i.test(req.html.trim())
+        ? req.html
+        : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;box-sizing:border-box;overflow:hidden;background:#000;}*{margin:0;padding:0;box-sizing:border-box;}</style></head><body>${req.html}</body></html>`;
+      await page.setContent(html, { waitUntil: "load" }); // networkidle0 在 setContent 下会超时,用 load
+
+      // 就绪:字体 + 图片 + 首帧 paint
+      await waitForReady(page);
+
+      // CDP session(HyperFrames 偏好的底层截图通道)
+      const client = await page.createCDPSession();
+
+      // 逐帧:seek → double-rAF → 截图 → pipe 到 ffmpeg
+      for (let i = 0; i < totalFrames; i++) {
+        const timeSec = i / fps; // 有理化时间,杜绝浮点漂移
+        await seekToTime(page, timeSec);
+        await waitForDraw(page);
+        const frame = await captureFrame(client, width, height, scale, "jpeg", quality);
+        await writeFrame(proc.stdin, frame);
+        if (req.onProgress && (i % 3 === 0 || i === totalFrames - 1)) {
+          req.onProgress(Math.round(((i + 1) / totalFrames) * 100));
+        }
       }
+      // 帧序列正常结束,关 stdin 让 ffmpeg 收尾
+      proc.stdin.end();
+      framesPiped = true;
+    } catch (e) {
+      // 帧捕获中途失败:必须终止 ffmpeg,否则 stdin 不 end → 进程挂死 + 泄漏
+      try { proc.stdin.destroy(); } catch { /* ignore */ }
+      try { proc.kill("SIGKILL"); } catch { /* ignore */ }
+      throw e;
+    } finally {
+      await page.close().catch(() => {});
     }
-    // 帧序列正常结束,关 stdin 让 ffmpeg 收尾
-    proc.stdin.end();
-    framesPiped = true;
-  } catch (e) {
-    // 帧捕获中途失败:必须终止 ffmpeg,否则 stdin 不 end → 进程挂死 + 泄漏
-    try { proc.stdin.destroy(); } catch { /* ignore */ }
-    try { proc.kill("SIGKILL"); } catch { /* ignore */ }
-    throw e;
+
+    await ffmpegDone;
+
+    // 防御:framesPiped=false 时 ffmpegDone 可能因 kill 已 reject,上面 throw 已抛,这里不应到达
+    if (!framesPiped) throw new Error("frame capture produced no output");
+
+    const video = fs.readFileSync(outputPath);
+    const elapsedMs = Date.now() - startTime;
+    const mimeType = format === "gif" ? "image/gif" : format === "webm" ? "video/webm" : "video/mp4";
+
+    // 清理 tmp
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+
+    // P0 §8.3 看门狗自愈:渲染后自省孤儿计数(节流 5min、失败静默;超阈值告警上浮不阻塞)
+    const orphanWarning = await maybeRenderOrphanWarning();
+    const warning = [videoWarning, orphanWarning].filter(Boolean).join("; ") || undefined;
+
+    return { video, mimeType, ext, frameCount: totalFrames, elapsedMs, ...(warning ? { warning } : {}) };
   } finally {
-    await page.close().catch(() => {});
+    // 异常/成功路径都归还借用(引用计数 -1;归零后 browser-pool 接管空闲回收)
+    releaseBrowser();
   }
-
-  await ffmpegDone;
-
-  // 防御:framesPiped=false 时 ffmpegDone 可能因 kill 已 reject,上面 throw 已抛,这里不应到达
-  if (!framesPiped) throw new Error("frame capture produced no output");
-
-  const video = fs.readFileSync(outputPath);
-  const elapsedMs = Date.now() - startTime;
-  const mimeType = format === "gif" ? "image/gif" : format === "webm" ? "video/webm" : "video/mp4";
-
-  // 清理 tmp
-  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
-
-  return { video, mimeType, ext, frameCount: totalFrames, elapsedMs, ...(videoWarning ? { warning: videoWarning } : {}) };
 }

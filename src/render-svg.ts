@@ -1,5 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
-import { existsSync } from "node:fs";
+import { withBrowser, BrowserUnavailableError, type BrowserLike } from "./browser-pool.js";
+import { maybeRenderOrphanWarning } from "./render-selfcheck.js";
 
 /**
  * SVG → PNG 渲染(双后端:resvg 轻量默认 + Chrome 高保真可选)。
@@ -7,6 +8,10 @@ import { existsSync } from "node:fs";
  * 不再需要跳过工具手动调 Chrome。
  *
  * 自动后端选择:SVG 含 <filter> + Chrome 可用 → Chrome(100%);否则 resvg(92%,进程内)。
+ *
+ * Chrome 生命周期(2026-09-01 P0 根治):全部收敛到 browser-pool.ts 进程级单例池 ——
+ * 首次 launch 后复用、引用计数 + 5min 空闲回收、exit 钩子兜底、固定前缀 profile
+ * (media-gen-mcp-render-*)可识别。本文件只消费,不再自管浏览器。
  */
 
 export interface RenderSvgRequest {
@@ -57,119 +62,18 @@ export function renderSvgDiscardWarnings(req: RenderSvgRequest, backendUsed: Bac
 }
 
 // ── Chrome 检测与生命周期 ──
-export interface BrowserLike {
-  newPage(): Promise<PageLike>;
-  close(): Promise<void>;
-}
-export interface PageLike {
-  setViewport(opts: any): Promise<void>;
-  setContent(html: string, opts: any): Promise<void>;
-  evaluateHandle(expr: string): Promise<unknown>;
-  evaluate<T>(fn: string | ((...args: any[]) => T), ...args: any[]): Promise<T>;
-  createCDPSession(): Promise<CDPSessionLike>;
-  screenshot(opts: any): Promise<Uint8Array | string>;
-  close(): Promise<void>;
-}
-export interface CDPSessionLike {
-  send(method: string, params?: any): Promise<any>;
-}
-
-let browser: BrowserLike | null = null;
-let browserIdleTimer: ReturnType<typeof setTimeout> | null = null;
-let launching: Promise<BrowserLike | null> | null = null;
-const BROWSER_IDLE_MS = 30 * 1000; // 独立脚本渲染后最长 30s 释放 Chrome → 进程退出;server 持续渲染会重置定时器保持热(30s 空闲才冷启,tradeoff 换取独立调用不 hang)
-
-// 确定性渲染 flags(SVG 截图 + 视频帧捕获共用;HyperFrames 同款):
-// --force-color-profile=srgb:颜色一致;--run-all-compositor-stages-before-draw:截图前合成器刷完;
-// --disable-background-timer-throttling:GSAP ticker 不被节流;--disable-backgrounding-occluded-windows:防后台化。
-const DETERMINISTIC_FLAGS = [
-  "--no-sandbox",
-  "--disable-gpu",
-  "--font-render-hinting=full",
-  "--force-color-profile=srgb",
-  "--run-all-compositor-stages-before-draw",
-  "--disable-background-timer-throttling",
-  "--disable-backgrounding-occluded-windows",
-  "--disable-renderer-backgrounding",
-];
-
-/** 探测系统 Edge 路径(跨平台,Chrome 不可用时的回退)。 */
-function findEdgePath(): string | undefined {
-  const candidates = [
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "/usr/bin/microsoft-edge",
-    "/usr/bin/microsoft-edge-stable",
-    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  ];
-  return candidates.find((p) => {
-    try { return existsSync(p); } catch { return false; }
-  });
-}
-
-export async function getBrowser(): Promise<BrowserLike | null> {
-  if (browser) { resetIdleTimer(); return browser; }
-  if (launching) return launching; // 单飞锁:防并发 launch 泄漏 Chrome 进程
-  launching = (async (): Promise<BrowserLike | null> => {
-    const puppeteer = await import("puppeteer-core").catch(() => null);
-    if (!puppeteer) return null;
-    // 尝试 Chrome(channel:'chrome' 找标准路径)
-    try {
-      const b = await puppeteer.default.launch({
-        channel: "chrome",
-        headless: true,
-        args: DETERMINISTIC_FLAGS,
-      });
-      browser = b as BrowserLike;
-      resetIdleTimer();
-      return browser;
-    } catch (e) {
-      console.error("[render-svg] Chrome launch failed, trying Edge:", (e as Error)?.message);
-    }
-    // 回退 Edge
-    const edgePath = findEdgePath();
-    if (edgePath) {
-      try {
-        const b = await puppeteer.default.launch({
-          headless: true,
-          args: DETERMINISTIC_FLAGS,
-          executablePath: edgePath,
-        });
-        browser = b as BrowserLike;
-        resetIdleTimer();
-        return browser;
-      } catch (e) {
-        console.error("[render-svg] Edge launch failed:", (e as Error)?.message);
-      }
-    }
-    browser = null;
-    return null;
-  })().finally(() => { launching = null; });
-  return launching;
-}
-
-function resetIdleTimer(): void {
-  if (browserIdleTimer) clearTimeout(browserIdleTimer);
-  browserIdleTimer = setTimeout(async () => {
-    if (browser) {
-      try { await browser.close(); } catch { /* ignore */ }
-      browser = null;
-    }
-    browserIdleTimer = null;
-  }, BROWSER_IDLE_MS);
-  browserIdleTimer.unref(); // 定时器自身不 pin 事件循环(server 由 stdio 保活;独立脚本靠 idle 关 Chrome 后自然退出)
-}
-
-// 进程信号:关 Chrome 后立即 exit(防 Ctrl+C/SIGTERM 后 browser.close 异步未完成 hang)。
-// server 模式必需;独立脚本/测试可设 MEDIA_GEN_NO_SIGNAL_HANDLERS=1 禁用(避免全局 handler 干扰其他 shutdown 逻辑)。
-if (!process.env.MEDIA_GEN_NO_SIGNAL_HANDLERS) {
-  const exitHandler = () => {
-    if (browser) browser.close().catch(() => {}).finally(() => process.exit(0));
-    else process.exit(0);
-  };
-  process.on("SIGINT", exitHandler);
-  process.on("SIGTERM", exitHandler);
-}
+// 类型与池实现迁至 browser-pool.ts(2026-09-01 P0 根治);此处 re-export 保持
+// 既有导入方(render-video/测试)兼容。getBrowser 为 probe 语义(不加引用计数);
+// 渲染主路径用 withBrowser/acquireBrowser。
+export {
+  getBrowser,
+  withBrowser,
+  acquireBrowser,
+  releaseBrowser,
+  shutdownBrowser,
+  BrowserUnavailableError,
+} from "./browser-pool.js";
+export type { BrowserLike, PageLike, CDPSessionLike, ElementHandleLike } from "./browser-pool.js";
 
 /** 检测 SVG 是否含滤镜块(需 Chrome 才能 100% 渲染)。 */
 function hasSvgFilters(svg: string): boolean {
@@ -198,10 +102,8 @@ function extractSvgSize(svg: string): { width: number; height: number } {
   };
 }
 
-/** Chrome 渲染 SVG → PNG(puppeteer-core + 系统 Chrome/Edge)。 */
-async function renderWithChrome(svg: string, scale: number): Promise<Buffer> {
-  const b = await getBrowser();
-  if (!b) throw new Error("Chrome/Edge not available — install Google Chrome or Microsoft Edge, or use backend:'resvg' for lightweight rendering (92% filter fidelity).");
+/** Chrome 渲染 SVG → PNG(经 browser-pool 单例;withBrowser 持引用防渲染中被空闲回收)。 */
+async function renderWithChrome(b: BrowserLike, svg: string, scale: number): Promise<Buffer> {
   const { width: svgW, height: svgH } = extractSvgSize(svg);
   const page = await b.newPage();
   try {
@@ -249,30 +151,34 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
   let png: Buffer | undefined;
   let backendUsed: BackendUsed = "resvg";
   let warning: string | undefined;
-
+  // P0 §8.3 看门狗自愈:Chrome 路径入口自省孤儿计数(节流 5min、失败静默、不阻塞渲染;
+  // 节流窗天然形成「上次渲染后/本次渲染前」的括约 —— 渲染序列间持续可见泄漏状态)。
+  let orphanWarning: string | undefined;
   if (wantsChrome) {
-    const b = await getBrowser();
-    if (b) {
-      try {
-        png = await renderWithChrome(req.svg, req.scale ?? 2);
-        backendUsed = "chrome";
-      } catch (e) {
-        console.error("[render-svg] Chrome render failed, fallback to resvg:", (e as Error)?.message);
-        png = renderWithResvg(req.svg, targetWidth);
-        backendUsed = "resvg";
-        warning = "Chrome render failed, used resvg fallback.";
-      }
-    } else {
+    orphanWarning = await maybeRenderOrphanWarning();
+    try {
+      // withBrowser:acquire(引用计数+1,抑制空闲回收)→ 渲染 → finally release
+      png = await withBrowser((b) => renderWithChrome(b, req.svg, req.scale ?? 2));
+      backendUsed = "chrome";
+    } catch (e) {
       png = renderWithResvg(req.svg, targetWidth);
       backendUsed = "resvg";
-      warning = req.backend === "chrome"
-        ? "Chrome/Edge not available; used resvg instead."
-        : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : (hasExternalResources(req.svg) || hasForeignObject(req.svg) ? "SVG contains external resources/foreignObject but Chrome unavailable; resvg cannot fetch/render them (will be blank). Use backend=chrome or inline as data URI." : undefined));
+      if (e instanceof BrowserUnavailableError) {
+        // Chrome/Edge 不可用(与旧 probe 空判同语义,警告文案不变)
+        warning = req.backend === "chrome"
+          ? "Chrome/Edge not available; used resvg instead."
+          : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : (hasExternalResources(req.svg) || hasForeignObject(req.svg) ? "SVG contains external resources/foreignObject but Chrome unavailable; resvg cannot fetch/render them (will be blank). Use backend=chrome or inline as data URI." : undefined));
+      } else {
+        console.error("[render-svg] Chrome render failed, fallback to resvg:", (e as Error)?.message);
+        warning = "Chrome render failed, used resvg fallback.";
+      }
     }
   } else {
     png = renderWithResvg(req.svg, targetWidth);
   }
 
   // B10:按最终后端归拢丢弃告警(chrome 失败回落 resvg 时 backendUsed 已是 resvg,scale 判丢弃正确)
-  return { svg: req.svg, png, backendUsed, warning, warnings: renderSvgDiscardWarnings(req, backendUsed) };
+  const warnings = renderSvgDiscardWarnings(req, backendUsed);
+  if (orphanWarning) warnings.push(orphanWarning); // P0 §8.3:孤儿告警上浮(不阻塞)
+  return { svg: req.svg, png, backendUsed, warning, warnings };
 }
