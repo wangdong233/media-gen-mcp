@@ -241,6 +241,8 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "Make a 3-second product intro animation, gradient colors + particles"
 > Get: an MP4 / GIF / WebM video (product intros / brand animations / motion demos — frame-by-frame rendering, same input always produces the same output)
 
+> **Render browser dependency**: motion videos and 100%-fidelity filter-SVG rendering recommend the **lasso render tier** (deterministic flags built in, auto-reaps after 10 idle minutes, fully isolated from your everyday Chrome) — install once via `npm i -g lasso-mcp` then run `npx -y lasso-mcp render-chrome --ensure`; `MEDIA_GEN_RENDER_MODE=attach` pins the tier (CI/acceptance), `MEDIA_GEN_RENDER_MODE=legacy` keeps the self-managed pool as an escape hatch (removed 2026-12-01). Without lasso, filter SVGs fall back to resvg (~92% fidelity) and motion videos return a structured error with fix guidance.
+
 > **Tip**: Generation / recognition goes through online AI; drawing / cards / QR codes / animations are local engines — **they work on install, are vector-sharp, and the same input always produces the same image**.
 
 ---
@@ -254,6 +256,7 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 | What you want to do | What to configure | Works the moment you configure it |
 |---|---|---|
 | Draw architecture diagrams / data charts / cards / QR codes / formulas | **Nothing** | Local engine, works on install |
+| Cool motion videos / 100%-fidelity filter SVGs (`render_video` / `render_svg` Chrome backend) | Recommended: install the **lasso render tier** — `npm i -g lasso-mcp`, then run `npx -y lasso-mcp render-chrome --ensure` once (auto-reaps after 10 idle minutes) | Works on install; without lasso, filter SVGs fall back to resvg (~92% fidelity) and motion videos return a structured error; escape hatch: `MEDIA_GEN_RENDER_MODE=legacy` (removed 2026-12-01) |
 | AI photorealistic images / AI video (text-to-image, text-to-video) | One free API Key (Agnes or Zhipu, pick one) | Online generation, saved to `output/` |
 | Generate images via Google Flow (0 credits) / manage Flow assets | **No key needed**: just log into Flow in local Chrome (launch via `lasso launch-chrome`) | Images / upscaling / upload / delete / share / cancel / queries all 0-credit; video bills credits (7–100 per clip) |
 | OCR text recognition (English / captchas / digits / simple documents) | **Nothing** | Falls back to the in-process lightweight engine by default, works on install |

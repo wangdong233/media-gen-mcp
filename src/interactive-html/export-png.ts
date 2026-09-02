@@ -60,7 +60,9 @@ export async function exportPngFromSvg(
           await page.screenshot({ path: outPath, fullPage: true, omitBackground: false });
         }
       } finally {
-        await page.close();
+        // zombie page 防护(红队点):attach 档浏览器跨会话共享长存,page 用毕即关;
+        // best-effort —— close 抛错不得吞掉截图结果,也不得让本页沦为共享浏览器里的僵尸页
+        await page.close().catch(() => {});
       }
     });
     return outPath;

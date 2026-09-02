@@ -1,5 +1,5 @@
 import { Resvg } from "@resvg/resvg-js";
-import { withBrowser, BrowserUnavailableError, type BrowserLike } from "./browser-pool.js";
+import { withBrowser, BrowserUnavailableError, RENDER_UNAVAILABLE_CODE, type BrowserLike } from "./browser-pool.js";
 
 /**
  * SVG → PNG 渲染(双后端:resvg 轻量默认 + Chrome 高保真可选)。
@@ -109,7 +109,9 @@ async function renderWithChrome(b: BrowserLike, svg: string, scale: number): Pro
     });
     return Buffer.from(buf);
   } finally {
-    await page.close();
+    // zombie page 防护(红队点):attach 档浏览器跨会话共享长存,page 必须用毕即关;
+    // best-effort —— close 抛错(页已死)不得吞掉渲染结果,也不得让本页沦为共享浏览器里的僵尸页
+    await page.close().catch(() => {});
   }
 }
 
@@ -151,10 +153,15 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
       png = renderWithResvg(req.svg, targetWidth);
       backendUsed = "resvg";
       if (e instanceof BrowserUnavailableError) {
-        // Chrome/Edge 不可用(与旧 probe 空判同语义,警告文案不变)
-        warning = req.backend === "chrome"
-          ? "Chrome/Edge not available; used resvg instead."
-          : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : (hasExternalResources(req.svg) || hasForeignObject(req.svg) ? "SVG contains external resources/foreignObject but Chrome unavailable; resvg cannot fetch/render them (will be blank). Use backend=chrome or inline as data URI." : undefined));
+        // attach/auto 档(lasso 渲染档 ensure 失败):降级 resvg 但带上结构化修复指引
+        if ((e as BrowserUnavailableError & { code?: string }).code === RENDER_UNAVAILABLE_CODE) {
+          warning = `渲染档(lasso render-chrome)不可用,已降级 resvg(滤镜保真 ~92%)。修复:${e.message}`;
+        } else {
+          // Chrome/Edge 不可用(legacy 档,与旧 probe 空判同语义,警告文案不变)
+          warning = req.backend === "chrome"
+            ? "Chrome/Edge not available; used resvg instead."
+            : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : (hasExternalResources(req.svg) || hasForeignObject(req.svg) ? "SVG contains external resources/foreignObject but Chrome unavailable; resvg cannot fetch/render them (will be blank). Use backend=chrome or inline as data URI." : undefined));
+        }
       } else {
         console.error("[render-svg] Chrome render failed, fallback to resvg:", (e as Error)?.message);
         warning = "Chrome render failed, used resvg fallback.";

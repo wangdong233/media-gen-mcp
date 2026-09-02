@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:chil
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { acquireBrowser, releaseBrowser, BrowserUnavailableError, type BrowserLike, type PageLike, type CDPSessionLike } from "./browser-pool.js";
+import { acquireBrowser, releaseBrowser, BrowserUnavailableError, RENDER_UNAVAILABLE_CODE, type BrowserLike, type PageLike, type CDPSessionLike } from "./browser-pool.js";
 
 /**
  * 确定性视频渲染(HTML/CSS/GSAP 动画 → MP4/GIF/WebM)。
@@ -218,9 +218,12 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
   const outputPath = path.join(tmpDir, `output.${ext}`);
   const startTime = Date.now();
 
-  // 获取 Chrome(browser-pool 进程级单例;acquire 引用计数 +1,渲染全程抑制空闲回收)
+  // 获取 Chrome(attach/auto 档 = lasso 渲染档 ensure→connect;legacy 档 = 自管池 launch)
   const browser: BrowserLike = await acquireBrowser().catch((e: unknown) => {
     if (e instanceof BrowserUnavailableError) {
+      // attach/auto 档:池已携带结构化降级模板(RENDER_BROWSER_UNAVAILABLE,含 lasso 自愈命令)
+      // → 原样上抛不失结构;legacy 档维持旧文案(视频帧捕获必需 Chrome)
+      if ((e as BrowserUnavailableError & { code?: string }).code === RENDER_UNAVAILABLE_CODE) throw e;
       throw new Error("Chrome/Edge not available — needed for video frame capture (install Google Chrome or Microsoft Edge)");
     }
     throw e;

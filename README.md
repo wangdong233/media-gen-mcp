@@ -240,6 +240,8 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 > 你:"做一个 3 秒的产品片头动画,渐变色 + 粒子"
 > 得到:MP4 / GIF / WebM 视频(产品片头 / 品牌动画 / 动效演示,逐帧渲染,同输入永远同输出)
 
+> **渲染浏览器依赖**:动效视频与滤镜 SVG 的 100% 保真渲染推荐 **lasso 渲染档**(确定性旗标内置、空闲 10 分钟自动回收、与本工具的日常 Chrome 完全隔离)——`npm i -g lasso-mcp` 后跑一次 `npx -y lasso-mcp render-chrome --ensure` 即装;`MEDIA_GEN_RENDER_MODE=attach` 钉死该档(CI/验收),`MEDIA_GEN_RENDER_MODE=legacy` 为自管池逃生门(2026-12-01 移除)。未装 lasso 时滤镜 SVG 自动降级 resvg(~92% 保真),动效视频返回带修复指引的结构化错误。
+
 > **小提示**:造图 / 读图走联网 AI;画图 / 卡片 / 二维码 / 动画是本地引擎 —— **装上就能用、矢量高清、同样的输入永远出同样的图**。
 
 ---
@@ -253,6 +255,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | 你想干什么 | 要配什么 | 配了立刻能用 |
 |---|---|---|
 | 画架构图 / 数据图表 / 卡片 / 二维码 / 公式 | **什么都不用配** | 本地引擎,装完即用 |
+| 酷炫动效视频 / 滤镜 SVG 100% 保真(`render_video` / `render_svg` Chrome 后端) | 推荐装 **lasso 渲染档**:`npm i -g lasso-mcp` 后跑一次 `npx -y lasso-mcp render-chrome --ensure`(空闲 10 分钟自动回收) | 装上即用;未装时滤镜 SVG 自动降级 resvg(~92% 保真)、动效视频返回结构化错误;逃生门 `MEDIA_GEN_RENDER_MODE=legacy`(2026-12-01 移除) |
 | AI 写实图 / AI 视频(文生图、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
 | 用 Google Flow 生图(0 积分)/ 管理生成资产 | **不用配 Key**:本机 Chrome 登录 Flow 即可(`lasso launch-chrome` 启动) | 生图 / 放大 / 上传 / 删除 / 分享 / 取消 / 查询全 0 积分;视频按积分计费(7–100 积分/条) |
 | OCR 文字识别(英文 / 验证码 / 数字 / 简单文档) | **什么都不用配** | 默认走进程内轻量引擎,装完即用 |
