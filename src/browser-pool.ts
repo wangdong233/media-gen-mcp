@@ -108,10 +108,16 @@ export function resolveRenderMode(env: { MEDIA_GEN_RENDER_MODE?: string | undefi
 export const RENDER_UNAVAILABLE_CODE = "RENDER_BROWSER_UNAVAILABLE";
 /** legacy 逃生门退役日 = attach 发布(2026-09-02)+ 90 天。 */
 export const LEGACY_ESCAPE_REMOVAL_DATE = "2026-12-01";
+/**
+ * 自愈命令短语唯一来源(F7 收敛,2026-09-03):降级模板与 connect 失败两处此前内联复述,
+ * 漂移即误导用户。🔴 文案变更须同步 lasso 验收比对文案(对接契约 §二.d)与
+ * test/browser-pool-attach.test.ts 断言;模块私有不扩导出面。
+ */
+const ENSURE_SELF_HEAL_COMMAND = "npx -y lasso-mcp render-chrome --ensure";
 
 export function renderBrowserUnavailableMessage(ensureDetail: string): string {
   return (
-    `确定性渲染需 lasso 渲染档:先运行 \`npx -y lasso-mcp render-chrome --ensure\` 后重试` +
+    `确定性渲染需 lasso 渲染档:先运行 \`${ENSURE_SELF_HEAL_COMMAND}\` 后重试` +
     `(未装 lasso 见其 README);或临时设 MEDIA_GEN_RENDER_MODE=legacy 回退自管池` +
     `(逃生门,${LEGACY_ESCAPE_REMOVAL_DATE} 移除)。ensure stderr: ${ensureDetail}`
   );
@@ -380,7 +386,7 @@ async function ensureAttached(): Promise<BrowserLike> {
     } catch (e) {
       // ensure 成功但 connect 失败(渲染档瞬死/网络抖动)→ 同码降级,指引自愈命令
       throw new BrowserUnavailableError(
-        `渲染档连接失败(${(e as Error)?.message ?? e});可运行 \`npx -y lasso-mcp render-chrome --ensure\` 自愈后重试`,
+        `渲染档连接失败(${(e as Error)?.message ?? e});可运行 \`${ENSURE_SELF_HEAL_COMMAND}\` 自愈后重试`,
         RENDER_UNAVAILABLE_CODE,
       );
     }
@@ -408,9 +414,13 @@ async function ensureAttached(): Promise<BrowserLike> {
   return attaching;
 }
 
-/** 归还 attach 连接(= disconnect,严禁杀共享渲染档);等待在飞单飞锁落定后再清态。 */
-async function releaseAttach(): Promise<void> {
-  if (attaching) { try { await attaching.catch(() => {}); } catch { /* ignore */ } }
+/**
+ * 归还 attach 连接(= disconnect,严禁杀共享渲染档);默认等待在飞单飞锁落定后再清态
+ * (异步 API/测试复位路径语义正确)。信号路径传 false:在飞 ensure 含 npx 兜底 90s 预算,
+ * 等它 = SIGTERM 后滞留至多 90s;不等则连接随进程消亡,共享渲染档无损(生命周期归 lasso)。
+ */
+async function releaseAttach(awaitInFlight = true): Promise<void> {
+  if (attaching && awaitInFlight) { try { await attaching.catch(() => {}); } catch { /* ignore */ } }
   stopHeartbeatTimer();
   const entry = attachedEntry;
   attachedEntry = null;
@@ -565,6 +575,15 @@ async function ensureLaunched(): Promise<BrowserLike | null> {
 }
 
 // ══════════════════ 公共 API ══════════════════
+
+// F3 导出面盘点(2026-09-03,机械钉死见 test/browser-pool.test.ts「导出面」):本模块导出
+// 24 个符号(18 值 + 6 类型),运行时消费面只有 6 符号 API 子集 ——
+// withBrowser / acquireBrowser / releaseBrowser / BrowserUnavailableError / RENDER_UNAVAILABLE_CODE /
+// BrowserLike(render-video 另用 PageLike/CDPSessionLike 类型),由三个渲染消费方使用:
+// render-svg.ts(withBrowser 全套)、render-video.ts(acquire/release 逐帧长会话)、
+// interactive-html/export-png.ts(仅 withBrowser)。其余导出(resolveRenderMode/常量/测试注入
+// set*ForTests/诊断 getBrowserPoolState/shutdownBrowser/syncCleanupOnExit/legacy 专属面)
+// 只被 test 与诊断脚本消费 —— 新增运行时导出前先核这三消费方,防导出面无主增长。
 
 /**
  * 借用浏览器(引用计数 +1,渲染主路径用)。配对 releaseBrowser(try/finally)。
@@ -730,7 +749,9 @@ function registerExitHooks(): void {
   // (避免全局 handler 干扰其他 shutdown 逻辑 —— 沿用旧 render-svg 同名开关与语义)。
   if (!process.env.MEDIA_GEN_NO_SIGNAL_HANDLERS) {
     const exitHandler = () => {
-      releaseAttach()
+      // 信号路径不等在飞 ensure(2026-09-03 项1:npx 兜底 90s 预算,等它=SIGTERM 滞留);
+      // 既有连接仍 disconnect 后退出(对接契约 §一.5)
+      releaseAttach(false)
         .catch(() => {})
         .finally(() => {
           closeBrowser().catch(() => {}).finally(() => process.exit(0));

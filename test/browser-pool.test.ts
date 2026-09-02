@@ -11,13 +11,17 @@
  *  7. exit 钩子 —— 模块加载即注册('exit' 必注册;SIGINT/SIGTERM 受
  *     MEDIA_GEN_NO_SIGNAL_HANDLERS 门控,子进程验证);syncCleanupOnExit 同步 SIGKILL + rm 目录
  *  8. getBrowser probe 兼容语义 —— 不加引用计数;不可用返回 null
+ *  9. F6 legacy 退役日程(2026-09-03)—— 今天必须早于 LEGACY_ESCAPE_REMOVAL_DATE,
+ *     翻红 = 退役窗口到期机械触发(非 bug)
+ * 10. F3 导出面盘点钉死(2026-09-03)—— 值导出恰 18 符号;三渲染消费方值导入并集恰
+ *     5 符号且无第四消费方(与 src/browser-pool.ts 公共 API 节 F3 注释互为钉死)
  *
  * License:本文件为 P0 根治自研。
  */
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -265,5 +269,56 @@ describe("browser-pool:exit 钩子(P0 §8.2 —— 堵 SIGKILL 以外的孤儿�
     const st = pool.getBrowserPoolState();
     assert.equal(st.exitEntries, 0);
     assert.equal(st.launched, false, "清理后池内不得残留已杀实例(幂等)");
+  });
+});
+
+describe("browser-pool:legacy 逃生门退役日程(F6 机械触发,2026-09-03)", () => {
+  test(`今天必须早于退役日 LEGACY_ESCAPE_REMOVAL_DATE —— 本测试翻红 ≠ bug,是退役窗口到期`, () => {
+    const removal = new Date(`${pool.LEGACY_ESCAPE_REMOVAL_DATE}T00:00:00Z`).getTime();
+    assert.ok(
+      Date.now() < removal,
+      `退役日 ${pool.LEGACY_ESCAPE_REMOVAL_DATE} 已到 —— 执行 legacy 退役:删除 browser-pool 的 legacy 池路径与 ` +
+        `MEDIA_GEN_RENDER_MODE=legacy 分支(MEDIA_GEN_BROWSER_IDLE_MS 一并移除;退役后设 legacy → warn 后按 auto),` +
+        `同步降级模板去掉逃生门文案,然后删除本测试。契约依据:doc/渲染档对接契约-lasso要点摘录.md §四`,
+    );
+  });
+});
+
+describe("browser-pool:导出面盘点钉死(F3,2026-09-03 —— 注释在 src/browser-pool.ts 公共 API 节)", () => {
+  /** 递归收集 dist 下全部 .js(找 browser-pool 的运行时 import 方,测试在 dist-test 不算)。 */
+  function walkJs(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) out.push(...walkJs(p));
+      else if (e.name.endsWith(".js")) out.push(p);
+    }
+    return out;
+  }
+
+  test("运行时值导出恰 18 符号(24 含类型);三渲染消费方值导入并集恰 5 符号且无第四消费方", () => {
+    const runtimeExports = Object.keys(pool);
+    assert.equal(runtimeExports.length, 18, "运行时值导出面变化必须是有意为之:同步 F3 注释 + 本断言 + 三消费方核查");
+
+    // 值导入并集(类型在编译期擦除,BrowserLike/PageLike/CDPSessionLike 不出现在 dist import 行)
+    const allowed = ["BrowserUnavailableError", "RENDER_UNAVAILABLE_CODE", "acquireBrowser", "releaseBrowser", "withBrowser"];
+    const importers = walkJs(distDir)
+      .filter((f) => /from\s+"[^"]*browser-pool\.js"/.test(readFileSync(f, "utf8")))
+      .map((f) => path.relative(distDir, f));
+    assert.deepEqual(
+      [...importers].sort(),
+      ["interactive-html/export-png.js", "render-svg.js", "render-video.js"],
+      "browser-pool 的运行时消费方必须恰为三渲染文件 —— 出现第四消费方即 F3 盘点失效",
+    );
+    const imported = new Set<string>();
+    for (const rel of importers) {
+      const m = readFileSync(path.join(distDir, rel), "utf8").match(/import\s+\{([^}]*)\}\s+from\s+"[^"]*browser-pool\.js"/);
+      assert.ok(m, `${rel} 应有具名 import(上述过滤器按 import 语句命中)`);
+      for (const name of (m?.[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+        assert.ok(allowed.includes(name), `${rel} 导入新符号 "${name}" —— 运行时 API 子集扩张,须同步 F3 注释与本用例`);
+        imported.add(name);
+      }
+    }
+    assert.deepEqual([...imported].sort(), allowed, "5 个值符号必须全部在用(出现死符号=该清理而非扩面)");
   });
 });

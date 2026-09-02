@@ -13,11 +13,14 @@
  *  6. 归还 = disconnect 严禁 close —— shutdownBrowser 后 disconnect 被调、close 零调用;
  *     idle 定时器在 attach 下不武装(MEDIA_GEN_BROWSER_IDLE_MS 不生效)
  *  7. render_svg/render-video 降级联动 —— ensure 失败 → resvg 降级告警带修复指引 / 结构化错误上抛
+ *  8. SIGTERM 信号路径不等在飞 ensure(2026-09-03 项1)—— 子进程在飞慢 ensure(15s)期间收
+ *     SIGTERM 必须 <8s 退出(修复前形态=滞留满 npx 90s 预算类等待)
  *
  * License:本文件为 attach 切换自研。
  */
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtempSync, statSync, utimesSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -385,6 +388,39 @@ describe("browser-pool attach:归还 = disconnect 严禁 close(对接 §一.5)",
     assert.equal(pool.getBrowserPoolState().attached, false);
     assert.equal(conn.state.closeCalls, 0, "exit 路径绝不能触碰共享渲染档");
     assert.equal(conn.state.disconnectCalls, 0, "exit(同步)不发起异步 disconnect,连接随进程消亡");
+  });
+});
+
+describe("browser-pool attach:SIGTERM 信号路径不等在飞 ensure(2026-09-03 项1)", () => {
+  test("在飞 ensure(慢二进制 15s)期间收 SIGTERM:子进程快速退出(<8s,不等 90s npx 预算类滞留)", async () => {
+    const fake = writeFakeLasso(`sleep 15; echo '{"wsEndpoint":"ws://127.0.0.1:9224/devtools/browser/slow"}'`);
+    const modUrl = pathToFileURL(path.join(distDir, "browser-pool.js")).href;
+    const script = `
+      import(${JSON.stringify(modUrl)}).then((m) => {
+        m.withBrowser(() => Promise.resolve()).catch(() => {}); // 触发在飞 ensure(fake 二进制 sleep 15s)
+        console.log("ARMED");
+      });
+    `;
+    const childEnv: NodeJS.ProcessEnv = { ...process.env, MEDIA_GEN_LASSO_BIN: fake };
+    delete childEnv.MEDIA_GEN_NO_SIGNAL_HANDLERS; // 信号钩子必须在(否则默认 SIGTERM 即杀,测不出等待路径)
+    const child = spawn(process.execPath, ["-e", script], {
+      env: childEnv,
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    let armed = false;
+    child.stdout.on("data", (d: Buffer) => { if (d.toString().includes("ARMED")) armed = true; });
+    const deadline = Date.now() + 10_000;
+    while (!armed && Date.now() < deadline) await delay(50);
+    assert.ok(armed, "子进程必须先进入在飞 ensure 状态(ARMED)");
+    await delay(250); // 让 execFileAsync 真正拉起慢二进制
+    const exit = new Promise<{ code: number | null }>((r) => child.on("exit", (c) => r({ code: c })));
+    const t0 = Date.now();
+    child.kill("SIGTERM");
+    const { code } = await exit;
+    const elapsed = Date.now() - t0;
+    rmSync(path.dirname(fake), { recursive: true, force: true });
+    assert.equal(code, 0, "信号钩子路径 exit 0(断连后退出)");
+    assert.ok(elapsed < 8_000, `SIGTERM 后 ${elapsed}ms 才退出 —— 信号路径在等在飞 ensure(修复前形态=滞留满 ensure 预算)`);
   });
 });
 
