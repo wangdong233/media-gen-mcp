@@ -313,8 +313,12 @@ function stopHeartbeatTimer(): void {
 function syncHeartbeat(): void {
   const want = refCount > 0 && attachedEntry?.touchPath != null;
   if (want && heartbeatTimer == null) {
-    const touchPath = attachedEntry!.touchPath!;
-    heartbeatTimer = setInterval(() => touchRender(touchPath), heartbeatIntervalMs());
+    // F1(02 审查):tick 读现值而非闭包捕获 —— 断连重 attach(touchPath 可能变化)后旧定时器
+    // 自动 touch 新路径,消除"长渲染中途回收"窗口(attach 核心承诺:长渲染不误判空闲)
+    heartbeatTimer = setInterval(() => {
+      const tp = attachedEntry?.touchPath;
+      if (tp) touchRender(tp);
+    }, heartbeatIntervalMs());
     heartbeatTimer.unref?.();
   } else if (!want && heartbeatTimer != null) {
     stopHeartbeatTimer();
@@ -390,7 +394,10 @@ async function ensureAttached(): Promise<BrowserLike> {
       (raw as { once?: (ev: string, cb: () => void) => unknown })?.once?.("disconnected", () => {
         // CDP 断连只做消费方侧自清理(契约 §一.5):短渲染间隙频繁连断是常态,
         // lasso 不因断连回收,本池也不杀不删(浏览器/profile 归 lasso)
-        if (attachedEntry === entry) attachedEntry = null;
+        if (attachedEntry === entry) {
+          attachedEntry = null;
+          syncHeartbeat(); // F1:断连即停旧 heartbeat,下次 acquire 重 attach 后按新 touchPath 重臂
+        }
       });
     } catch { /* ignore */ }
     attachedEntry = entry;

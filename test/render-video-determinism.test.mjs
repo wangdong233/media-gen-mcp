@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 const { renderVideo } = require_(path.join(distDir, "render-video.js"));
-const { getBrowser } = require_(path.join(distDir, "render-svg.js"));
+const { getBrowser } = require_(path.join(distDir, "browser-pool.js")); // 02 F2:直连池(原 render-svg re-export shim 已删)
 const { shutdownBrowser } = require_(path.join(distDir, "browser-pool.js"));
 
 let chromeOk = false;

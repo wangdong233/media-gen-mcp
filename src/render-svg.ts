@@ -61,10 +61,9 @@ export function renderSvgDiscardWarnings(req: RenderSvgRequest, backendUsed: Bac
 }
 
 // ── Chrome 检测与生命周期 ──
-// 类型与池实现迁至 browser-pool.ts(2026-09-01 P0 根治)。getBrowser re-export 保留给
+// 类型与池实现迁至 browser-pool.ts(2026-09-01 P0 根治;02 审查 F2:re-export shim 已删,消费方直连 pool)。
 // 既有测试消费方(test/render-video-determinism.test.mjs 经 dist/render-svg.js,probe 语义);
 // 其余名字零消费方已裁 —— 渲染方/测试直连 browser-pool.js 导入。
-export { getBrowser } from "./browser-pool.js";
 
 /** 检测 SVG 是否含滤镜块(需 Chrome 才能 100% 渲染)。 */
 function hasSvgFilters(svg: string): boolean {
