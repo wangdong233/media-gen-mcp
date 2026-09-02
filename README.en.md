@@ -3,7 +3,7 @@
 > The all-in-one image toolkit for Claude Code — generate, draw, and understand images in a single sentence. Free.
 
 <p align="center">
- <img src="https://img.shields.io/badge/version-0.17.1-blue">
+ <img src="https://img.shields.io/badge/version-0.18.0-blue">
  <img src="https://img.shields.io/badge/license-MIT-green">
  <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
