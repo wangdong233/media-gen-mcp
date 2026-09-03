@@ -290,6 +290,14 @@ describe("resolveVideoModelKey", () => {
     assert.equal(r.key, "veo_3_1_t2v_fast_4s");
     assert.ok(r.warnings.length >= 1);
   });
+  test("#3 veo key 无 4s 变体 + durationSeconds=4 → 回落默认时长,告警含吸附/回落说明", () => {
+    const r = resolveVideoModelKey("veo_3_1_r2v_lite", 4);
+    assert.equal(r.key, "veo_3_1_r2v_lite", "r2v_lite 无 _4s 变体 → key 原样(默认 8s)");
+    assert.ok(
+      r.warnings.some((w: string) => w.includes("未生效") && /回落/.test(w)),
+      `告警应明说请求时长未生效已回落,实际:${r.warnings.join(" | ")}`,
+    );
+  });
   test("veo + 10s → S301(veo 家族无 10s)", () => {
     assert.throws(() => resolveVideoModelKey("veo_3_1_t2v_lite", 10), (e: any) => e.code === "S301");
   });

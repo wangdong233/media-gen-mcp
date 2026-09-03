@@ -266,14 +266,24 @@ async function runEnsure(): Promise<LassoEnsureInfo> {
   };
 }
 
-/** heartbeat 周期:默认 60s(契约封顶);env MEDIA_GEN_RENDER_HEARTBEAT_MS 供测试调短(封顶 60s 不违约)。 */
-function heartbeatIntervalMs(): number {
-  const raw = process.env.MEDIA_GEN_RENDER_HEARTBEAT_MS;
+/**
+ * 夹取整数 env 单源(#6 收敛,2026-09-03):读 env 字符串 → Number → 有限则截断小数并夹到
+ * [min, max],非有限/未设 → fallback。此前 heartbeatIntervalMs 与 idleMs 两处同形散写(读字符串
+ * → Number.isFinite → 各自 min/max),漂移即两种写法 —— 现共用本 helper,各自只声明夹取域。
+ * 全仓 grep 结论:env 字符串→数字夹取仅此两处(config.ts num() 是 file>env 优先级解析且 float 域,
+ * 非同形,不收敛)。负值语义 = 夹到 min(idle 域 min=0 → 立即回收;旧行为是回落默认,夹取语义更诚实)。
+ */
+function clampIntEnv(raw: string | undefined, fallback: number, min: number, max = Number.POSITIVE_INFINITY): number {
   if (raw != null && raw.trim() !== "") {
     const v = Number(raw);
-    if (Number.isFinite(v)) return Math.max(50, Math.min(v, DEFAULT_HEARTBEAT_INTERVAL_MS));
+    if (Number.isFinite(v)) return Math.max(min, Math.min(Math.trunc(v), max));
   }
-  return DEFAULT_HEARTBEAT_INTERVAL_MS;
+  return fallback;
+}
+
+/** heartbeat 周期:默认 60s(契约封顶);env MEDIA_GEN_RENDER_HEARTBEAT_MS 供测试调短(夹取域 [50, 60s],封顶 60s 不违约)。 */
+function heartbeatIntervalMs(): number {
+  return clampIntEnv(process.env.MEDIA_GEN_RENDER_HEARTBEAT_MS, DEFAULT_HEARTBEAT_INTERVAL_MS, 50, DEFAULT_HEARTBEAT_INTERVAL_MS);
 }
 
 /**
@@ -453,14 +463,9 @@ const liveForExit = new Set<LiveBrowser>();
 /** 测试注入点:替换 launch 实现(mock browser);null = 恢复默认真 launch。注入前若已有实例会先立即关停。 */
 let launcherOverride: (() => Promise<{ browser: BrowserLike; profileDir: string } | null>) | null = null;
 
-/** 空闲回收时长:env MEDIA_GEN_BROWSER_IDLE_MS 覆盖(读取时机 = 每次武装定时器,测试可动态设)。legacy 档专属。 */
+/** 空闲回收时长:env MEDIA_GEN_BROWSER_IDLE_MS 覆盖(读取时机 = 每次武装定时器,测试可动态设;夹取域 [0,∞))。legacy 档专属。 */
 function idleMs(): number {
-  const raw = process.env.MEDIA_GEN_BROWSER_IDLE_MS;
-  if (raw != null && raw.trim() !== "") {
-    const v = Number(raw);
-    if (Number.isFinite(v) && v >= 0) return v;
-  }
-  return DEFAULT_BROWSER_IDLE_MS;
+  return clampIntEnv(process.env.MEDIA_GEN_BROWSER_IDLE_MS, DEFAULT_BROWSER_IDLE_MS, 0);
 }
 
 function clearIdleTimer(): void {
@@ -679,7 +684,10 @@ export function getBrowserPoolState(): {
   wsEndpoint: string | null;
 } {
   return {
-    mode: resolveRenderMode(),
+    // 诊断口径 = 行为档(#5,2026-09-03):launcher 测试注入 → 实际走 legacy launch 路径,
+    // 如实报 legacy 而非 env 档(与 useLegacyPool 同一真源)—— 快照描述「现在会怎么跑」,
+    // 不是「env 写了什么」;误报 env 档会让 attach 语义的断言在注入态下悄悄失真。
+    mode: useLegacyPool() ? "legacy" : resolveRenderMode(),
     refCount,
     launched: current !== null,
     launchCount,

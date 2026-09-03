@@ -861,7 +861,7 @@ export function resolveVideoModelKey(
       warnings.push(`按 durationSeconds=${duration}s 自动切换到变体 "${variant}"(原 key "${model}" 默认 8s)。`);
       return { key: variant, duration, warnings };
     }
-    warnings.push(`模型 "${model}" 无 ${duration}s 变体,按默认时长生成(Flow 端决定)。`);
+    warnings.push(`模型 "${model}" 无 ${duration}s 变体,请求时长 ${duration}s 未生效,已回落该 key 默认时长生成(Flow 端决定;时长与 key 一致请直接用带 _Ns 后缀的变体 key)。`);
   } else if (duration === 10 && model.startsWith("veo_")) {
     throw new FlowError("S301", `veo 家族无 10s 时长(仅 4/6/8s 或默认);abra 家族支持 4/6/8/10s`);
   }
@@ -2140,7 +2140,8 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     // 目录新增 key(静态快照无)在门口即可解析,价目取实时 creditMapping。
     await this.withToolDeadline(this.refreshCatalogIfStale(), "flow 确认门目录刷新");
     const resolved = this.resolveBillingKey(req);
-    this.assertVideoInputShape(resolved.key, videoModeOfKey(resolved.key), req);
+    const shape = this.assertVideoInputShape(resolved.key, videoModeOfKey(resolved.key), req);
+    resolved.warnings.push(...shape.warnings); // 对抗 C-gap:确认挑战的知情摘要须含输入形状丢弃类告警(与提交点 flow.ts:2398 同源同通道,非新机制)
     const cost = await this.withToolDeadline(this.lookupVideoCost(resolved.key), "flow 确认门预估");
     this.assertTierAvailable(resolved.key, cost); // D-4:注定失败的请求不发确认令牌(用户确认了也只会碰壁)
     if (cost.credits === 0) return undefined;
@@ -2158,6 +2159,9 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
           : {}),
         confirmToken: this.mintConfirmToken(digest),
         expiresInSeconds: Math.round(this.confirmTtlMs() / 1000),
+        // key 解析的丢弃/吸附告警随挑战透出(#3,契约 §行为发现):veo+durationSeconds=4 无 4s 变体
+        // 回落默认 8s 之类的情况,用户确认的是一个知情摘要而非裸价 —— 与提交点 warnings 同一通道。
+        ...(resolved.warnings.length ? { warnings: resolved.warnings } : {}),
         hint: `本次 create_video(provider=flow)将提交 Flow 视频生成,预计消耗 ${credits ?? "未知"} 积分(${cost.source === "dynamic" ? "动态目录实时价" : cost.source === "static-tier" ? "静态 per-tier 价(契约 §14.4)" : "tier 盲静态估算,flow_status 可查动态价"}${credits == null ? ";该 key 无静态价,提交后以实际扣减为准" : ""})。确认请用原参数加 confirmToken 重新调用;模型/时长/预估/prompt/输入引用(image/keyframes/images/videoMediaId/audioMediaIds)任一变化都会使令牌失效。0 积分操作(如 veo_3_1_upsampler_1080p)不触发本门;config 顶级 flow.videoConfirm=false 可关闭本门。`,
       };
     }

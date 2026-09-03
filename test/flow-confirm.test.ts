@@ -45,7 +45,7 @@ class StubTransport {
       return this.json({ user: { email: "tester@example.com" }, access_token: "ya29.stub" });
     }
     if (args.url.includes("credits?key=")) {
-      return this.json({ credits: 868, serviceTier: "SERVICE_TIER_INTERMEDIATE" });
+      return this.json({ credits: 868, serviceTier: this.opts.serviceTier ?? "SERVICE_TIER_INTERMEDIATE" });
     }
     if (args.url.includes("flow.projectInitialData")) {
       return this.json({ result: { data: { json: {
@@ -281,8 +281,7 @@ describe("digest 绑定 prompt(F4:参数变化令牌失效)", () => {
   });
 });
 
-describe("digest 绑定输入引用(三审 finding-3:确认后换输入引用不能复用令牌)", () => {
-  test("同 key 同价但 videoMediaId 变化(extension)→ S320 不符", async () => {
+describe("digest 绑定输入引用(三审 finding-3:确认后换输入引用不能复用令牌)", () => {  test("同 key 同价但 videoMediaId 变化(extension)→ S320 不符", async () => {
     const { p } = newProvider();
     const c1 = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_extension_lite", videoMediaId: "vid-src-1" });
     await assert.rejects(
@@ -315,4 +314,42 @@ describe("digest 绑定输入引用(三审 finding-3:确认后换输入引用不
     const pass = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: ["https://example.com/b.png", "https://example.com/a.png"] }, c1!.confirmToken!);
     assert.equal(pass, undefined, "顺序无关的参考图集合不应使令牌失效");
   });
+});
+
+// ═══ #3 确认挑战透出 key 解析告警(时长吸附/回落不静默进确认流程;契约 §行为发现) ═══
+
+describe("确认挑战透出时长吸附/回落告警(#3)", () => {
+  test("veo key + durationSeconds=4(目录无 4s 变体)→ challenge.warnings 含回落说明", async () => {
+    const { p } = newProvider();
+    const c = await p.beginSubmissionConfirm({
+      prompt: "x", model: "veo_3_1_r2v_lite", durationSeconds: 4,
+      images: ["https://example.com/a.png"],
+    });
+    assert.ok(c, "应返回挑战(r2v_lite 静态价 10 点)");
+    assert.equal(c.model, "veo_3_1_r2v_lite", "无 _4s 变体 → key 原样(默认 8s)");
+    assert.ok(
+      c.warnings?.some((w: string) => w.includes("未生效") && /回落/.test(w)),
+      `挑战应携带时长回落告警,实际:${c.warnings?.join(" | ")}`,
+    );
+  });
+  test("变体切换路径(t2v_lite + 4s,_4s 变体 ADVANCED 档专属 → stub 报 ADVANCED)→ 挑战携带变体切换告警", async () => {
+    const { p } = newProvider({}, { serviceTier: "SERVICE_TIER_ADVANCED" });
+    const c = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite", durationSeconds: 4 });
+    assert.ok(c);
+    assert.equal(c.model, "veo_3_1_t2v_lite_4s");
+    assert.ok(c.warnings?.some((w: string) => w.includes("自动切换到变体")), `实际:${c.warnings?.join(" | ")}`);
+  });
+  test("时长与 key 一致(无吸附/回落)→ 挑战无 warnings 字段(默认调用不添噪声)", async () => {
+    const { p } = newProvider();
+    const c = await p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    assert.ok(c);
+    assert.equal(c.warnings, undefined, "无告警不应挂空数组");
+  });
+test("知情摘要完备(对抗 C-gap):upsampler+prompt 挑战即含『不消费 prompt』丢弃告警", async () => {
+  const { p } = newProvider({});
+  const PNG_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  // 收费 key 才有挑战对象(0 积分 upsampler 免确认);用 ratio×key 方向不一致(收费 r2v key)验证
+  const c = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_r2v_fast_portrait", images: [PNG_1PX], ratio: "16:9" }); // ratio 与 _portrait 后缀不一致 → shape.warnings
+  assert.ok((c?.warnings ?? []).some((w: string) => w.includes("内嵌 9:16") || w.includes("不一致")), `挑战应透出 shape 丢弃类告警(方向不一致),实得:${JSON.stringify(c?.warnings)}`);
+});
 });

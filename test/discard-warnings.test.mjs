@@ -156,7 +156,7 @@ describe("B10 render_svg scale/width 后端专属丢弃告警", () => {
   });
 });
 
-// ─────────────────────────── 7. describe_image question(paddle 不消费) ───────────────────────────
+// ─────────────────────────── 7. describe_image question / analyze_chart chartType(paddle 不消费) ───────────────────────────
 describe("B10 describe_image question 在 paddle 的丢弃告警(127.0.0.1 mock PaddleX,零外网)", () => {
   let server, baseUrl;
   before(async () => {
@@ -177,6 +177,16 @@ describe("B10 describe_image question 在 paddle 的丢弃告警(127.0.0.1 mock 
     const p = new PaddleocrProvider({ baseUrl });
     const r = await p.recognize({ image: "data:image/png;base64,aGk=", task: "describe-image" });
     assert.ok(!r.warnings?.length, `不该告警:${r.warnings?.join(" | ")}`);
+  });
+  test("#4 analyze-chart + chartType=bar → 警告「paddle 不支持 chartType」", async () => {
+    const p = new PaddleocrProvider({ baseUrl });
+    const r = await p.recognize({ image: "data:image/png;base64,aGk=", task: "analyze-chart", hints: { chartType: "bar" } });
+    assert.ok(r.warnings?.some((w) => w.includes("paddle 不支持 chartType=bar,已忽略")), `实际:${r.warnings?.join(" | ")}`);
+  });
+  test("#4 analyze-chart + chartType=auto(让 provider 决定,无意图被丢)→ 无 chartType 丢弃警告", async () => {
+    const p = new PaddleocrProvider({ baseUrl });
+    const r = await p.recognize({ image: "data:image/png;base64,aGk=", task: "analyze-chart", hints: { chartType: "auto" } });
+    assert.ok(!r.warnings?.some((w) => w.includes("chartType")), `auto 不该告警:${r.warnings?.join(" | ")}`);
   });
 });
 

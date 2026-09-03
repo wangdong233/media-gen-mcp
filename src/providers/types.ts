@@ -187,6 +187,11 @@ export interface SubmissionConfirm {
   /** 令牌有效期(秒)。 */
   expiresInSeconds: number;
   hint: string;
+  /**
+   * key 解析期间的丢弃/吸附告警(同款 warnings.push 通道,如「请求时长与 key 不一致已回落默认」)——
+   * 挑战阶段即透出,用户确认的是一个知情摘要而非裸价(#3;契约 §行为发现:时长吸附进确认流程未见告警)。
+   */
+  warnings?: string[];
   /** 渠道补充字段(当前余额/预估余额等)。 */
   [key: string]: unknown;
 }

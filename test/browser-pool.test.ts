@@ -221,6 +221,55 @@ describe("browser-pool:异常与不可用路径", () => {
   });
 });
 
+describe("browser-pool:诊断口径与 env 夹取单源(#5/#6,2026-09-03)", () => {
+  test("#5 getBrowserPoolState().mode 报行为档:launcher 注入 → legacy(与 useLegacyPool 同真源),不误报 env 档", async () => {
+    const savedMode = process.env.MEDIA_GEN_RENDER_MODE;
+    try {
+      const { launcher } = makeLauncher();
+      await pool.setLauncherForTests(launcher);
+      for (const envVal of [undefined, "auto", "attach"]) {
+        if (envVal === undefined) delete process.env.MEDIA_GEN_RENDER_MODE;
+        else process.env.MEDIA_GEN_RENDER_MODE = envVal;
+        assert.equal(
+          pool.getBrowserPoolState().mode, "legacy",
+          `env=${envVal ?? "(未设)"} + launcher 注入 → 实际走 legacy launch 路径,快照必须如实报行为档`,
+        );
+      }
+      // 对照:无注入时恢复 env 档口径(attach 档诊断不因本测试失真)
+      await pool.setLauncherForTests(null);
+      delete process.env.MEDIA_GEN_RENDER_MODE;
+      assert.equal(pool.getBrowserPoolState().mode, "auto", "无注入 + env 未设 → auto");
+      process.env.MEDIA_GEN_RENDER_MODE = "attach";
+      assert.equal(pool.getBrowserPoolState().mode, "attach", "无注入 + env=attach → attach");
+      process.env.MEDIA_GEN_RENDER_MODE = "legacy";
+      assert.equal(pool.getBrowserPoolState().mode, "legacy", "无注入 + env=legacy → legacy");
+    } finally {
+      if (savedMode === undefined) delete process.env.MEDIA_GEN_RENDER_MODE;
+      else process.env.MEDIA_GEN_RENDER_MODE = savedMode;
+      await pool.shutdownBrowser();
+    }
+  });
+
+  test("#6 idle env 夹取域 [0,∞):负值 → 夹到 0(立即回收),不再回落默认 5min", async () => {
+    process.env[IDLE_ENV] = "-1";
+    const { launcher, state } = makeLauncher();
+    await pool.setLauncherForTests(launcher);
+    await pool.withBrowser(() => Promise.resolve(1));
+    await delay(30); // 夹 0 → 归还即回收(旧写法 -1 非法回落 5min,实例滞留)
+    assert.equal(state.closed, true, "idle=-1 夹到 0 → 立即回收");
+    assert.equal(pool.getBrowserPoolState().launched, false);
+  });
+
+  test("#6 idle env 小数 → 截断取整(clampIntEnv 单源语义,小数值不再带小数 ms 进定时器)", async () => {
+    process.env[IDLE_ENV] = "0.9";
+    const { launcher, state } = makeLauncher();
+    await pool.setLauncherForTests(launcher);
+    await pool.withBrowser(() => Promise.resolve(1));
+    await delay(30); // 0.9 截断为 0 → 立即回收
+    assert.equal(state.closed, true, "idle=0.9 截断 0 → 立即回收");
+  });
+});
+
 describe("browser-pool:exit 钩子(P0 §8.2 —— 堵 SIGKILL 以外的孤儿路径)", () => {
   test("模块加载即注册 'exit' 钩子(本测试进程内已加载)", () => {
     assert.ok(process.listenerCount("exit") >= 1, "'exit' 钩子必须无条件注册");

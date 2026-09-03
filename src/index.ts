@@ -21,7 +21,8 @@ import {
 import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, getProviderPriority, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
-import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList, sniffImage, LOCAL_IMAGE_INPUT_MAX_BYTES } from "./providers/flow.js";
+import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList, sniffImage } from "./providers/flow.js";
+import { isImageUri, localizeImageInput } from "./local-image.js";
 import { isFallbackWorthy, isChainAdvanceable, isRequestPinned } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
 import { waitVideo } from "./poll.js";
@@ -97,48 +98,6 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
-/** URI 校验(http(s): / data:),generate_image images / create_video image+keyframes / vision image 共用(pares5 抽取,消除重复正则,R-CI-01)。 */
-const isImageUri = (u: string) => /^(https?:|data:)/i.test(u);
-
-/**
- * 本地图片输入支持(日志#16,2026-08-31):image/keyframes/images 支持绝对本地路径 —— 工具侧读文件
- * + magic-bytes 嗅探 mime(jpg/png/webp/gif)转 data: URI,消除客户端被迫 base64 的 stdio 开销
- * (1MB JPG → ~1.4MB data URI 文本,单条 JSON-RPC 消息暴涨)。上限 LOCAL_IMAGE_INPUT_MAX_BYTES(15MB,
- * 超出结构化拒绝);相对路径拒绝并提示转绝对;http(s)/data: 原样透传。
- */
-async function localizeImageInput(
-  u: string,
-  label: string,
-  warnings: string[],
-): Promise<{ ok: true; uri: string } | { ok: false; error: string }> {
-  if (isImageUri(u)) return { ok: true, uri: u };
-  if (!path.isAbsolute(u)) {
-    return { ok: false, error: `${label} 须为 http(s): / data: URI 或绝对本地路径(收到 "${u.slice(0, 60)}";相对路径请转为绝对路径,工具侧会读文件转 data: URI)` };
-  }
-  let bytes: Buffer;
-  try {
-    const st = await fs.stat(u);
-    if (!st.isFile()) return { ok: false, error: `${label} 本地路径不是常规文件:"${u}"` };
-    if (st.size > LOCAL_IMAGE_INPUT_MAX_BYTES) {
-      return { ok: false, error: `${label} 本地文件 ${Math.round(st.size / 1024 / 1024)}MB 超上限 ${Math.round(LOCAL_IMAGE_INPUT_MAX_BYTES / 1024 / 1024)}MB(工具侧服务端读取;请压缩或改传 http(s) URL)` };
-    }
-    bytes = Buffer.from(await fs.readFile(u));
-    // 纵深防御(B 白盒 2026-08-31):stat→read 窗口内文件被替换/增长时,以实际读入字节复查
-    // (data: URI 化还会再膨胀 ~1.33x,超限必须在进内存转 URI 前拦下)
-    if (bytes.length > LOCAL_IMAGE_INPUT_MAX_BYTES) {
-      return { ok: false, error: `${label} 本地文件 ${Math.round(bytes.length / 1024 / 1024)}MB 超上限 ${Math.round(LOCAL_IMAGE_INPUT_MAX_BYTES / 1024 / 1024)}MB(工具侧服务端读取;请压缩或改传 http(s) URL)` };
-    }
-  } catch (e: any) {
-    return { ok: false, error: `${label} 本地文件读取失败:"${u}"(${e?.code ?? e?.message ?? e})` };
-  }
-  const sniffed = sniffImage(bytes);
-  if (!sniffed.mimeType) {
-    return { ok: false, error: `${label} 本地文件无法识别图片格式(前 8 字节非 PNG/JPEG/GIF/WEBP):"${u}"` };
-  }
-  warnings.push(`${label} 本地文件已由工具侧读取转 data: URI(${sniffed.mimeType},${Math.round(bytes.length / 1024)}KB):${u}`);
-  return { ok: true, uri: `data:${sniffed.mimeType};base64,${bytes.toString("base64")}` };
-}
-
 /**
  * pares6: PDF source URI 校验。
  * 接受:http(s):// / data:application/pdf / file:// / 本地路径(.pdf 后缀,CC 可直接传本地文件)。
@@ -148,9 +107,10 @@ const isPdfSource = (u: string) =>
   /^(https?:|data:application\/pdf|file:)/i.test(u) || /\.pdf$/i.test(u);
 
 /**
- * pares5 M2: vision task 通用执行(provider 解析 + 能力门禁 + fallback 链)。
+ * pares5 M2: vision task 通用执行(provider 解析 + 能力门禁 + fallback 链 + 输入本地化)。
  * extract_table/analyze_chart/describe_image 共用,避 3 处重复 fallback 逻辑(R-CI-08 DRY)。
- * extract_text(M1)因 hints/outputFormat 特殊保持独立,但 fallback 语义与此一致。
+ * extract_text(M1)因 hints/outputFormat 特殊保持独立,但 fallback/输入面语义与此一致。
+ * 图片输入经 localizeImageInput 单源(#2):绝对本地路径 → data: URI,与生成域同一实现。
  */
 async function runVisionTask(
   task: VisionTask,
@@ -158,13 +118,11 @@ async function runVisionTask(
   providerName: string | undefined,
   hints?: ExtractTextHints | ExtractTableHints | AnalyzeChartHints | DescribeImageHints,
 ): Promise<{ result: VisionResult; providerUsed: string; warnings: string[] }> {
-  // TODO(日志#16 后续独立小改动,B-finding-5 登记):vision 路径(extract_text/extract_table/
-  // analyze_chart/describe_image)暂不支持本地路径,与 generate_image/create_video 的输入面不一致 ——
-  // 后续把本行校验换成 localizeImageInput 同款本地化(独立 PR,不与本次 Flow 门修复捆绑)。
-  if (!isImageUri(image)) throw new Error("`image` 须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
+  const warnings: string[] = [];
+  const loc = await localizeImageInput(image, "`image`", warnings);
+  if (!loc.ok) throw new Error(loc.error);
   const resolved = resolveProvider(providerName, undefined, "vision");
   let activeProvider = asVisionProvider(resolved.provider);
-  const warnings: string[] = [];
   if (!activeProvider.visionTasks().includes(task)) {
     // 门禁失败 ≠ 终局(审计 B-01 critical):默认头(如 tesseract)不支持该 task 时,按 tier 链
     // 自动路由到「已配置且支持该 task」的 provider(与 recognize 失败的 fallback 同语义)。
@@ -181,7 +139,7 @@ async function runVisionTask(
   }
   let result: VisionResult;
   try {
-    result = await activeProvider.recognize({ image, task, hints });
+    result = await activeProvider.recognize({ image: loc.uri, task, hints });
   } catch (e: any) {
     if (!isFallbackWorthy(e)) throw e;
     const fb = getFallbackProvider(activeProvider.name, "vision", { task });
@@ -190,7 +148,7 @@ async function runVisionTask(
     warnings.push(`provider "${resolved.provider.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"。`);
     activeProvider = asVisionProvider(fb);
     if (!activeProvider.visionTasks().includes(task)) throw e;
-    result = await activeProvider.recognize({ image, task, hints });
+    result = await activeProvider.recognize({ image: loc.uri, task, hints });
   }
   // 透传 provider 返回的 warnings(对称 extract_text handler)
   if (result.warnings?.length) warnings.push(...result.warnings);
@@ -315,7 +273,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          image: { type: "string", description: "Image URI: http(s):// or data: URI. Read local files into a data URI before passing." },
+          image: { type: "string", description: "Image source: http(s):// or data: URI, or an absolute local file path (read server-side, ≤15MB, converted to a data: URI; relative paths are rejected — use absolute)." },
           languages: { type: "array", items: { type: "string" }, description: "BCP-47 language codes (e.g. en / zh-Hans / zh-Hant / ja / ko). Default [en]; use [zh-Hans,en] for Chinese." },
           digitOnly: { type: "boolean", description: "Recognize digits only (verification code / digit readout) → whitelist 0-9." },
           segmentation: { type: "string", enum: ["auto", "single-line", "single-char", "sparse-text"], default: "auto", description: "Layout assumption: auto=fully automatic / single-line=one line of text (captcha) / single-char=one character / sparse-text=scattered text." },
@@ -337,7 +295,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          image: { type: "string", description: "Image URI: http(s):// or data: URI. Read local files into a data URI before passing." },
+          image: { type: "string", description: "Image source: http(s):// or data: URI, or an absolute local file path (read server-side, ≤15MB, converted to a data: URI; relative paths are rejected — use absolute)." },
           format: { type: "string", enum: ["html", "markdown", "json", "latex"], default: "html", description: "Output format for the table content. html/markdown: all supporting providers; json/latex: model-output formats honored by glm-vision/vlm — paddle falls back to html with a warning (the file gets the extension of the format ACTUALLY returned)." },
           provider: { type: "string", description: "Vision provider for extract-table: glm-vision (zero-deploy, free cloud key) or paddle (self-hosted). Omit = defaultVisionProvider with task-aware auto-routing to a configured provider that supports this task; explicit name pins it. See list_vision_capabilities." },
           name: { type: "string", description: "Output filename (no extension; extension follows the format actually returned, e.g. .html/.md)." },
@@ -354,8 +312,8 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          image: { type: "string", description: "Chart image URI: http(s):// or data: URI." },
-          chartType: { type: "string", enum: ["bar", "line", "pie", "scatter", "auto"], default: "auto", description: "Chart type hint (auto lets provider decide). Honored by glm-vision/vlm (fed into the extraction prompt); paddle ignores it." },
+          image: { type: "string", description: "Chart image source: http(s):// or data: URI, or an absolute local file path (read server-side, ≤15MB, converted to a data: URI; relative paths are rejected — use absolute)." },
+          chartType: { type: "string", enum: ["bar", "line", "pie", "scatter", "auto"], default: "auto", description: "Chart type hint (auto lets provider decide). Honored by glm-vision/vlm (fed into the extraction prompt); paddle ignores it with a runtime warning (useChartRecognition auto-detects)." },
           provider: { type: "string", description: "Vision provider for analyze-chart: glm-vision (zero-deploy, free cloud key; structured JSON output) or paddle (markdown description; chart field is a placeholder). Omit = defaultVisionProvider with task-aware auto-routing to a configured provider that supports this task; explicit name pins it. See list_vision_capabilities." },
           name: { type: "string", description: "Output filename (no extension; saved as .json)." },
           outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task); change globally via config outDir" },
@@ -371,7 +329,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          image: { type: "string", description: "Image URI: http(s):// or data: URI." },
+          image: { type: "string", description: "Image source: http(s):// or data: URI, or an absolute local file path (read server-side, ≤15MB, converted to a data: URI; relative paths are rejected — use absolute)." },
           question: { type: "string", description: "Optional VQA question; empty = default description. paddle ignores the question with a runtime warning (default description only); glm-vision (zero-deploy free cloud key) and vlm honor it for full VQA." },
           provider: { type: "string", description: "Vision provider for describe-image: glm-vision (zero-deploy, free cloud key; full VQA via question) / vlm (self-hosted; full VQA) / paddle (default description only). Omit = defaultVisionProvider with task-aware auto-routing to a configured provider that supports this task; explicit name pins it. See list_vision_capabilities." },
           name: { type: "string", description: "Output filename (no extension; saved as .md)." },
@@ -1236,15 +1194,19 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 
       case "extract_text": {
-        const image = requireString(a.image, "image");
-        if (!isImageUri(image)) return err("`image` 须为 http(s): 或 data: URI;本地文件请先读取为 data URI 再传入。");
+        const rawImage = requireString(a.image, "image");
+        const warnings: string[] = [];
+        // 输入本地化单源(#2):绝对本地路径 → data: URI(与生成域/其余 vision 工具同一实现)。
+        const loc = await localizeImageInput(rawImage, "`image`", warnings);
+        if (!loc.ok) return err(loc.error);
+        const image = loc.uri;
         // 输入预检(E2E 发现:损坏图进 tesseract 会 worker 崩溃)—— data: URI 的字节先过 magic
-        // 嗅探,非 PNG/JPEG/GIF/WEBP 即结构化拒绝,不进引擎。
+        // 嗅探,非 PNG/JPEG/GIF/WEBP 即结构化拒绝,不进引擎(本地路径转来的 data: URI 在门口
+        // 已嗅探过,此处复查幂等无开销)。
         if (image.startsWith("data:")) {
           const b64 = image.slice(image.indexOf(",") + 1);
           try {
             const bytes = Buffer.from(b64, "base64");
-            const { sniffImage } = await import("./providers/flow.js");
             if (!sniffImage(bytes).mimeType) return err("image 不是有效的图像数据(PNG/JPEG/GIF/WEBP magic 校验未过)—— 损坏/截断的图片会使识别引擎崩溃,请在门口拒绝。");
           } catch { /* 嗅探自身异常不阻断(交由引擎/进程兜底) */ }
         }
@@ -1269,7 +1231,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           ignoreAreas: ignoreAreas as ExtractTextHints["ignoreAreas"],
         };
         const outputFormat = optString(a.outputFormat) ?? "text";
-        const warnings: string[] = [];
         let result: VisionResult;
         try {
           result = await activeProvider.recognize({ image, task: "extract-text", hints });

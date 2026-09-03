@@ -11,7 +11,8 @@
  * M2 审查修复:
  * - extractText 解析:ocrResults[] 每元素是「一图」含并行数组 rec_texts[]/rec_scores[],展开(原假设每元素一行→真实接入空串)
  * - errorCode 检查:PaddleX 应用层错误是 HTTP 200 + body.errorCode!=0(原只判 !res.ok 漏掉)
- * - hints 处理:extract-table 按 hints.format 返回(html 提 <table> / markdown 返 md 段);chartType/question paddle 不支持(PaddleOCR-VL 是文档解析非 VQA),schema 标注 M3 vlm 支持
+ * - hints 处理:extract-table 按 hints.format 返回(html 提 <table> / markdown 返 md 段);chartType/question
+ *   paddle 不消费(PaddleOCR-VL 是文档解析非 VQA)→ 丢弃必告警(B10 同款,告警在丢弃方),schema 标注 M3 vlm 支持
  * - fileType 删(uriToPaddleFile 只返 file;PaddleX server 自动识别 URL/base64)
  */
 import { withRetry } from "./http.js";
@@ -29,6 +30,7 @@ import type {
   ChartOut,
   ExtractTableHints,
   DescribeImageHints,
+  AnalyzeChartHints,
 } from "./types.js";
 
 interface PaddleConfig {
@@ -192,13 +194,20 @@ export class PaddleocrProvider implements MediaProviderBase, VisionProvider {
     }
     if (req.task === "analyze-chart") {
       // useChartRecognition 输出格式待真实响应精确确认;M2 返回 markdown 描述 + 占位 chart 结构
+      // B10 丢弃必告警(与 question 同款,告警在丢弃方):chartType 提示 paddle 不消费
+      // (useChartRecognition 自行判定图表类型)→ 显式告警,不静默;"auto" = 让 provider 决定,无意图被丢,不告警。
+      const warnings = ["chart 数据为占位结构,真实 PaddleX chart 响应格式待用户部署验证。"];
+      const chartType = (req.hints as AnalyzeChartHints | undefined)?.chartType;
+      if (chartType && chartType !== "auto") {
+        warnings.push(`paddle 不支持 chartType=${chartType},已忽略(useChartRecognition 自动判定图表类型;要显式类型提示请用 glm-vision/vlm provider)。`);
+      }
       const chartOut: ChartOut = { type: "auto", axes: {}, series: [] };
       return {
         task: "analyze-chart",
         chart: chartOut,
         description: md,
         raw: r,
-        warnings: ["chart 数据为占位结构,真实 PaddleX chart 响应格式待用户部署验证。"],
+        warnings,
       };
     }
     // describe-image(PaddleOCR-VL markdown 描述;VQA question 由 M3 vlm provider 支持,paddle 仅默认描述)
