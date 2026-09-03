@@ -6,8 +6,8 @@
  * 核心承诺。修复:先 pause() 再 currentTime=ms(与 GSAP 分支同序)。
  *
  * 断言:同一自播放 CSS 动画连跑 2 次,输出 mp4 Buffer sha256 完全一致。
- * Chrome/Edge 不可用时整套 skip(同 nested-viewer.e2e 范式,CI 无 Chrome 不 fail)。
- * 纯本地:headless Chrome 帧捕获 + ffmpeg-static,零网络零积分。
+ * lasso 渲染档不可用时整套 skip(同 nested-viewer.e2e 范式,机器缺 lasso 不 fail)。
+ * 纯本地:lasso 渲染档(经 browser-pool attach)帧捕获 + ffmpeg-static,零网络零积分。
  */
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
@@ -22,22 +22,23 @@ const { renderVideo } = require_(path.join(distDir, "render-video.js"));
 const { getBrowser } = require_(path.join(distDir, "browser-pool.js")); // 02 F2:直连池(原 render-svg re-export shim 已删)
 const { shutdownBrowser } = require_(path.join(distDir, "browser-pool.js"));
 
-let chromeOk = false;
-// 顶层探测(须在 test() 注册前完成 —— skip 选项在定义时求值,before() 里赋值太晚)
+let renderOk = false;
+// 顶层探测(须在 test() 注册前完成 —— skip 选项在定义时求值,before() 里赋值太晚);
+// getBrowser 探针 auto 档走 lasso attach → null = lasso 渲染档不可用(装:npm i -g lasso-mcp)
 {
   const b = await getBrowser().catch(() => null);
-  chromeOk = !!b;
+  renderOk = !!b;
 }
 after(async () => {
-  // 经 browser-pool 自己的收尾路径关停单例(2026-09-01 P0 根治后 Chrome 生命周期归 pool),
-  // 免测试进程挂着 Chrome 不退出
+  // 经 browser-pool 自己的收尾路径归还 attach 连接(生命周期归 lasso 渲染档),
+  // 免测试进程挂着连接不退出
   await shutdownBrowser().catch(() => {});
 });
 
 const HTML = `<!DOCTYPE html><html><body style="margin:0;background:#000"><div style="width:200px;height:100px;background:linear-gradient(90deg,red,yellow);animation:w 1s linear infinite alternate;position:absolute;top:40px"></div><style>@keyframes w{from{transform:translateX(0)}to{transform:translateX(500px)}}</style></body></html>`;
 
 describe("D-01 render_video CSS @keyframes 确定性(pause 先于 currentTime)", () => {
-  test("同一自播放 CSS 动画连跑 2 次 → mp4 byte-identical", { skip: !chromeOk && "Chrome/Edge 不可用,skip(非 fail)" }, async () => {
+  test("同一自播放 CSS 动画连跑 2 次 → mp4 byte-identical", { skip: !renderOk && "lasso 渲染档不可用,skip(非 fail;装:npm i -g lasso-mcp)" }, async () => {
     // 顺序执行(非并发):并发两页共享启动时刻,墙钟漂移会被相关性掩盖,串行才能暴露首帧冻结漂移
     const run = () => renderVideo({ html: HTML, duration: 1, fps: 10, width: 320, height: 180, format: "mp4" });
     const a = await run();

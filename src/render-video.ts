@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:chil
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { acquireBrowser, releaseBrowser, BrowserUnavailableError, RENDER_UNAVAILABLE_CODE, type BrowserLike, type PageLike, type CDPSessionLike } from "./browser-pool.js";
+import { acquireBrowser, releaseBrowser, type BrowserLike, type PageLike, type CDPSessionLike } from "./browser-pool.js";
 
 /**
  * 确定性视频渲染(HTML/CSS/GSAP 动画 → MP4/GIF/WebM)。
@@ -218,16 +218,11 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
   const outputPath = path.join(tmpDir, `output.${ext}`);
   const startTime = Date.now();
 
-  // 获取 Chrome(attach/auto 档 = lasso 渲染档 ensure→connect;legacy 档 = 自管池 launch)
-  const browser: BrowserLike = await acquireBrowser().catch((e: unknown) => {
-    if (e instanceof BrowserUnavailableError) {
-      // attach/auto 档:池已携带结构化降级模板(RENDER_BROWSER_UNAVAILABLE,含 lasso 自愈命令)
-      // → 原样上抛不失结构;legacy 档维持旧文案(视频帧捕获必需 Chrome)
-      if ((e as BrowserUnavailableError & { code?: string }).code === RENDER_UNAVAILABLE_CODE) throw e;
-      throw new Error("Chrome/Edge not available — needed for video frame capture (install Google Chrome or Microsoft Edge)");
-    }
-    throw e;
-  });
+  // 获取浏览器(lasso 渲染档 ensure→connect)。失败 = code=RENDER_BROWSER_UNAVAILABLE 的
+  // 结构化降级模板(含自愈命令)由池直接上抛,原样透传不失结构。
+  // (2026-09-03 legacy 自管池退役:旧 acquire 包装的唯一存在理由是把 legacy 无码错误
+  //  转译为「install Chrome」文案 —— 无码抛点已物理删除,直取即终形态)
+  const browser: BrowserLike = await acquireBrowser();
 
   try {
     // ffmpeg
@@ -320,7 +315,7 @@ export async function renderVideo(req: RenderVideoRequest): Promise<RenderVideoO
 
     return { video, mimeType, ext, frameCount: totalFrames, elapsedMs, ...(videoWarning ? { warning: videoWarning } : {}) };
   } finally {
-    // 异常/成功路径都归还借用(引用计数 -1;归零后 browser-pool 接管空闲回收)
+    // 异常/成功路径都归还借用(引用计数 -1;归零停 heartbeat,idle 回收归 lasso 渲染档)
     releaseBrowser();
   }
 }

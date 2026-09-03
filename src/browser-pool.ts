@@ -1,15 +1,16 @@
-import { accessSync, constants, existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { accessSync, constants, utimesSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import os from "node:os";
 import path from "node:path";
 
 /**
- * browser-pool.ts —— render 管线浏览器生命周期(2026-09-01 P0 根治 → 2026-09-02 attach 切换)。
+ * browser-pool.ts —— render 管线浏览器生命周期(2026-09-01 P0 根治 → 2026-09-02 attach 切换
+ * → 2026-09-03 legacy 自管池提前退役,原定 2026-12-01)。
  *
- * 两档运行形态,由 MEDIA_GEN_RENDER_MODE 三态选择(auto/attach/legacy,非法值 warn 按 auto):
+ * 单档运行形态,由 MEDIA_GEN_RENDER_MODE 二态选择(auto/attach,非法值与已退役的 legacy 值
+ * 均 warn 后按 auto):
  *
- *  ▸ attach/auto 档(默认,lasso 渲染档):**不再自管 launch** —— 经 `lasso-mcp render-chrome --ensure`
+ *  ▸ attach/auto 档(默认,lasso 渲染档):**不自管 launch** —— 经 `lasso-mcp render-chrome --ensure`
  *    拿 wsEndpoint 后 puppeteer.connect 附着到 lasso 治理的确定性渲染档 Chrome(确定性 8 旗标 +
  *    headless=new 由 lasso 渲染档 profile 保证,责任移交)。P0 事故根因「浏览器生命周期归属了会死的
  *    消费方进程」就此消除:消费方(含宿主会话)被 SIGKILL,渲染档照常存活、照常被 lasso idle 回收。
@@ -20,24 +21,17 @@ import path from "node:path";
  *        CDP 指令直接杀掉共享渲染档 —— 池语义 close 已映射为 disconnect)
  *      - heartbeat:acquire/release 引用计数驱动 —— acquire 前后各 touch 一次(ensure 下发的
  *        touchPath,mtime 即「在用」信号)+ 渲染存续期间每 ≤60s touch;unref 不 pin 事件循环
- *      - 旁路(attach 下全部不武装):自管 launch / exit 钩子杀 / idle 定时器(MEDIA_GEN_BROWSER_IDLE_MS
- *        不生效,idle 归 lasso);SIGTERM 钩子仅断连后退出
  *      - 失配降级:ensure 非零退出/超时/不可解析 → 结构化错误 RENDER_BROWSER_UNAVAILABLE
  *        (🔴 绝不静默回落自管 launch,泄漏路径不复活)
  *
- *  ▸ legacy 档(逃生门,MEDIA_GEN_RENDER_MODE=legacy 唯一可达):原 2026-09-01 P0 根治的自管池
- *    全量语义(launch + exit 钩子 + idle 5min),自 attach 发布日(2026-09-02)起 90 天后
- *    (2026-12-01)随逃生门一并退役删除。
+ * 退役史:2026-09-01 P0 根治的自管池(launch + exit 钩子 + idle 5min)曾以
+ * MEDIA_GEN_RENDER_MODE=legacy 逃生门保留,原定 2026-12-01 退役,经用户裁决于
+ * 2026-09-03 提前彻底移除(方案:doc/legacy清除-方案与判定.md);设 legacy 现产生
+ * warning 并按 auto 处理,MEDIA_GEN_BROWSER_IDLE_MS 随之一并移除。
  *
- * 事故背景(doc/2026-09-01-Chrome泄漏致整机冻结-P0根因报告.md):
- *  旧实现「每次调用 launch 新 Chrome + 30s 空闲定时器关停」——spawner(MCP server)被
- *  SIGKILL 时定时器随宿主消亡,清理路径永不执行 → 两天 83 孤儿 Chrome(+599 族进程,
- *  18.8GB RSS)→ 整机 Load 680 冻结。legacy 档按报告 §8.1/§8.2 自管根治;attach 档则把
- *  生命周期整体移交给 lasso(单一持有者,单一清理器)。
- *
- * 注意:本文件含 Date/process.pid 等「生命周期」时源(空闲计时/profile 命名/heartbeat),
- * 不参与渲染产物 —— determinism.test.ts 的时源扫描范围(6 个渲染文件)刻意不含本文件,
- * 与 render-video(合法计时)同边界。
+ * 注意:本文件含 Date/process.pid 等「生命周期」时源(heartbeat),不参与渲染产物 ——
+ * determinism.test.ts 的时源扫描范围(6 个渲染文件)刻意不含本文件,与 render-video
+ * (合法计时)同边界。
  */
 
 const execFileAsync = promisify(execFile);
@@ -46,8 +40,6 @@ const execFileAsync = promisify(execFile);
 export interface BrowserLike {
   newPage(): Promise<PageLike>;
   close(): Promise<void>;
-  /** puppeteer Browser.process() —— legacy exit 钩子同步 SIGKILL 用;attach 档无本地进程句柄。测试 mock 可缺省。 */
-  process?(): { kill(signal?: string): void } | null;
   /** 监听断连(Chrome 崩溃/被外部杀死)→ 池自我清理;测试 mock 可缺省。 */
   once?(event: string, listener: () => void): unknown;
 }
@@ -69,9 +61,9 @@ export interface CDPSessionLike {
   send(method: string, params?: any): Promise<any>;
 }
 
-/** Chrome/Edge 均不可用(puppeteer-core 缺失或双 launch 失败)。渲染方据此走降级路径。 */
+/** 渲染档不可用(lasso ensure 失败 / puppeteer-core 缺失)。渲染方据此走降级路径。 */
 export class BrowserUnavailableError extends Error {
-  /** 结构化降级码:attach/auto 档 ensure 失败 = "RENDER_BROWSER_UNAVAILABLE"(legacy 档缺省无码)。 */
+  /** 结构化降级码:恒为 "RENDER_BROWSER_UNAVAILABLE"(2026-09-03 legacy 退役后无无码形态)。 */
   readonly code?: string;
   constructor(message = "Chrome/Edge not available", code?: string) {
     super(message);
@@ -80,34 +72,36 @@ export class BrowserUnavailableError extends Error {
   }
 }
 
-// ══════════════════ MEDIA_GEN_RENDER_MODE 三态(对接契约 §二.d)══════════════════
+// ══════════════════ MEDIA_GEN_RENDER_MODE 二态(对接契约 §二.d,2026-09-03 legacy 提前退役)══════════════════
 
-export type RenderMode = "auto" | "attach" | "legacy";
+export type RenderMode = "auto" | "attach";
 
 /**
  * 解析渲染档位:env MEDIA_GEN_RENDER_MODE 唯一入口。
  *  - auto(默认):ensure 成功 → attach;失败 → 结构化错误(绝不静默回落自管 launch)
  *  - attach:强制 attach(CI/验收钉死渲染档),ensure 失败同上报错
- *  - legacy:自管池全量语义(逃生门,2026-12-01 退役)
- *  - 非法值:warn(每值每进程一次)后按 auto —— 与 MEDIA_GEN_BROWSER_IDLE_MS 容错风格一致
+ *  - legacy:已退役(2026-09-03 自管池移除)—— 专用 warn(每值每进程一次)后按 auto
+ *  - 其他非法值:warn(每值每进程一次)后按 auto
  */
 const warnedInvalidModes = new Set<string>();
 export function resolveRenderMode(env: { MEDIA_GEN_RENDER_MODE?: string | undefined } = process.env): RenderMode {
   const raw = env.MEDIA_GEN_RENDER_MODE?.trim().toLowerCase();
-  if (raw === "attach" || raw === "legacy") return raw;
+  if (raw === "attach") return raw;
   if (raw == null || raw === "" || raw === "auto") return "auto";
   if (!warnedInvalidModes.has(raw)) {
     warnedInvalidModes.add(raw);
-    console.warn(`[browser-pool] MEDIA_GEN_RENDER_MODE="${raw}" 非法(合法值 auto|attach|legacy),按 auto 处理`);
+    console.warn(
+      raw === "legacy"
+        ? `[browser-pool] MEDIA_GEN_RENDER_MODE="legacy" 已退役(自管池移除),按 auto 处理`
+        : `[browser-pool] MEDIA_GEN_RENDER_MODE="${raw}" 非法(合法值 auto|attach),按 auto 处理`,
+    );
   }
   return "auto";
 }
 
-// ══════════════════ attach 档降级模板(对接契约 §二.d,lasso 验收照此比对文案)══════════════════
+// ══════════════════ 降级模板(对接契约 §二.d,lasso 验收照此比对文案)══════════════════
 
 export const RENDER_UNAVAILABLE_CODE = "RENDER_BROWSER_UNAVAILABLE";
-/** legacy 逃生门退役日 = attach 发布(2026-09-02)+ 90 天。 */
-export const LEGACY_ESCAPE_REMOVAL_DATE = "2026-12-01";
 /**
  * 自愈命令短语唯一来源(F7 收敛,2026-09-03):降级模板与 connect 失败两处此前内联复述,
  * 漂移即误导用户。🔴 文案变更须同步 lasso 验收比对文案(对接契约 §二.d)与
@@ -118,8 +112,7 @@ const ENSURE_SELF_HEAL_COMMAND = "npx -y lasso-mcp render-chrome --ensure";
 export function renderBrowserUnavailableMessage(ensureDetail: string): string {
   return (
     `确定性渲染需 lasso 渲染档:先运行 \`${ENSURE_SELF_HEAL_COMMAND}\` 后重试` +
-    `(未装 lasso 见其 README);或临时设 MEDIA_GEN_RENDER_MODE=legacy 回退自管池` +
-    `(逃生门,${LEGACY_ESCAPE_REMOVAL_DATE} 移除)。ensure stderr: ${ensureDetail}`
+    `(未装 lasso 见其 README)。ensure stderr: ${ensureDetail}`
   );
 }
 
@@ -128,47 +121,12 @@ function renderUnavailable(ensureDetail: string): BrowserUnavailableError {
 }
 
 // ── 常量 ──
-/** profile 目录前缀 —— 报告 §9 自救命令 pgrep/pkill 的识别特征,改名须同步报告附录。 */
-export const PROFILE_DIR_PREFIX = "media-gen-mcp-render";
-/** 空闲回收默认 5min(报告 §8.1:旧 30s 过短促发频 launch);env 覆盖供测试/独立脚本调短。legacy 档专属。 */
-export const DEFAULT_BROWSER_IDLE_MS = 5 * 60 * 1000;
-/** launch 超时(防 Chrome 卡死挂死渲染调用)。legacy 档专属。 */
-const LAUNCH_TIMEOUT_MS = 30 * 1000;
 /** ensure 超时预算(对接契约 §一.1:消费方给 25s;lasso 内部拉起上限 20s,冷启 ~6.3s 余量充足)。 */
 const ENSURE_TIMEOUT_MS = 25 * 1000;
 /** npx 兜底路径超时预算(冷启可超 25s,放宽到 90s —— 对接契约 §一.1)。 */
 const NPX_ENSURE_TIMEOUT_MS = 90 * 1000;
 /** 渲染会话存续期间 heartbeat 周期(对接契约 §一.2:每 ≤60s touch 一次)。 */
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 60 * 1000;
-
-// 确定性渲染 flags(legacy 档用;attach 档责任移交 lasso 渲染档 profile —— 对接契约 §二.a)。
-// 原 render-svg.ts 同款,逐字不改动 —— SVG 截图 + 视频帧捕获共用;HyperFrames 同款:
-// --force-color-profile=srgb:颜色一致;--run-all-compositor-stages-before-draw:截图前合成器刷完;
-// --disable-background-timer-throttling:GSAP ticker 不被节流;--disable-backgrounding-occluded-windows:防后台化。
-const DETERMINISTIC_FLAGS = [
-  "--no-sandbox",
-  "--disable-gpu",
-  "--font-render-hinting=full",
-  "--force-color-profile=srgb",
-  "--run-all-compositor-stages-before-draw",
-  "--disable-background-timer-throttling",
-  "--disable-backgrounding-occluded-windows",
-  "--disable-renderer-backgrounding",
-];
-
-/** 探测系统 Edge 路径(跨平台,Chrome 不可用时的回退;legacy 档)。 */
-function findEdgePath(): string | undefined {
-  const candidates = [
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "/usr/bin/microsoft-edge",
-    "/usr/bin/microsoft-edge-stable",
-    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  ];
-  return candidates.find((p) => {
-    try { return existsSync(p); } catch { return false; }
-  });
-}
 
 // ══════════════════ attach 档:ensure 解析链 + connect + heartbeat ══════════════════
 
@@ -268,12 +226,13 @@ async function runEnsure(): Promise<LassoEnsureInfo> {
 
 /**
  * 夹取整数 env 单源(#6 收敛,2026-09-03):读 env 字符串 → Number → 有限则截断小数并夹到
- * [min, max],非有限/未设 → fallback。此前 heartbeatIntervalMs 与 idleMs 两处同形散写(读字符串
- * → Number.isFinite → 各自 min/max),漂移即两种写法 —— 现共用本 helper,各自只声明夹取域。
- * 全仓 grep 结论:env 字符串→数字夹取仅此两处(config.ts num() 是 file>env 优先级解析且 float 域,
- * 非同形,不收敛)。负值语义 = 夹到 min(idle 域 min=0 → 立即回收;旧行为是回落默认,夹取语义更诚实)。
+ * [min, max],非有限/未设 → fallback。此前两处同形散写(读字符串 → Number.isFinite →
+ * 各自 min/max),漂移即两种写法 —— 由消费方声明夹取域(现存唯一消费方=heartbeatIntervalMs;legacy idleMs 已随 2026-09-03 退役)。
+ * 现存唯一消费方 = heartbeatIntervalMs(idleMs 消费随 2026-09-03 legacy 自管池退役删除)。
+ * 全仓 grep 结论:env 字符串→数字夹取仅此一处(config.ts num() 是 file>env 优先级解析且
+ * float 域,非同形,不收敛)。负值语义 = 夹到 min。
  */
-function clampIntEnv(raw: string | undefined, fallback: number, min: number, max = Number.POSITIVE_INFINITY): number {
+export function clampIntEnv(raw: string | undefined, fallback: number, min: number, max = Number.POSITIVE_INFINITY): number {
   if (raw != null && raw.trim() !== "") {
     const v = Number(raw);
     if (Number.isFinite(v)) return Math.max(min, Math.min(Math.trunc(v), max));
@@ -303,7 +262,7 @@ function touchRender(touchPath: string): void {
   }
 }
 
-// ── attach 档池状态(进程级单例;与 legacy 槽位独立,互不污染)──
+// ── attach 池状态(进程级单例)──
 interface AttachedEntry {
   browser: BrowserLike; // wrapper:close 已映射 disconnect
   wsEndpoint: string;
@@ -314,6 +273,7 @@ let attaching: Promise<BrowserLike> | null = null; // 单飞锁:并发调用共�
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let ensureCalls = 0;
 let attachCount = 0;
+let refCount = 0; // 活跃借用数:>0 期间 heartbeat 武装(legacy 自管池退役后由 attach 语义独享)
 
 /** 测试注入点:mock ensure 输出(替代真跑 lasso CLI)。 */
 let ensureOverride: (() => Promise<LassoEnsureInfo>) | null = null;
@@ -345,7 +305,7 @@ function syncHeartbeat(): void {
 async function defaultConnect(wsEndpoint: string): Promise<unknown> {
   const puppeteer = await import("puppeteer-core").catch(() => null);
   if (!puppeteer) {
-    // puppeteer-core 是硬依赖,理论不可达;保持与 legacy「不可用」同类的诚实降级
+    // puppeteer-core 是硬依赖,理论不可达;仍保持结构化「不可用」降级的诚实出口
     throw new BrowserUnavailableError(
       "Chrome/Edge not available — puppeteer-core missing", RENDER_UNAVAILABLE_CODE,
     );
@@ -439,208 +399,49 @@ async function releaseAttach(awaitInFlight = true): Promise<void> {
   }
 }
 
-/** 档位裁决:launcher 测试注入 = legacy launch 路径(attach 档无 launch 可言);否则看 RENDER_MODE。 */
-function useLegacyPool(): boolean {
-  if (launcherOverride) return true;
-  return resolveRenderMode() === "legacy";
-}
-
-// ── legacy 池状态(进程级单例;MEDIA_GEN_RENDER_MODE=legacy 或测试注入 launcher 时可达)──
-interface LiveBrowser {
-  browser: BrowserLike;
-  profileDir: string;
-  /** exit 钩子同步兜底杀的进程句柄记录(mock/真浏览器通用)。 */
-  exitKill: () => void;
-}
-let current: LiveBrowser | null = null;
-let launching: Promise<BrowserLike | null> | null = null; // 单飞锁:并发调用共享同一次 launch
-let refCount = 0; // 活跃借用数(attach/legacy 共用):>0 时空闲回收绝不触发、heartbeat 武装
-let idleTimer: ReturnType<typeof setTimeout> | null = null;
-let launchCount = 0;
-/** 进程级登记:exit 时兜底清理的全部实例(正常 close 后移除)。SIGKILL 孤儿路径的最后一道进程内防线。 */
-const liveForExit = new Set<LiveBrowser>();
-
-/** 测试注入点:替换 launch 实现(mock browser);null = 恢复默认真 launch。注入前若已有实例会先立即关停。 */
-let launcherOverride: (() => Promise<{ browser: BrowserLike; profileDir: string } | null>) | null = null;
-
-/** 空闲回收时长:env MEDIA_GEN_BROWSER_IDLE_MS 覆盖(读取时机 = 每次武装定时器,测试可动态设;夹取域 [0,∞))。legacy 档专属。 */
-function idleMs(): number {
-  return clampIntEnv(process.env.MEDIA_GEN_BROWSER_IDLE_MS, DEFAULT_BROWSER_IDLE_MS, 0);
-}
-
-function clearIdleTimer(): void {
-  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-}
-
-/** 武装空闲定时器:仅当零借用且有存活实例;unref 保证不 pin 事件循环(独立脚本靠传输层退场后自然退出)。 */
-function armIdleTimer(): void {
-  clearIdleTimer();
-  if (refCount > 0 || !current) return;
-  idleTimer = setTimeout(() => {
-    idleTimer = null;
-    void closeBrowser();
-  }, idleMs());
-  idleTimer.unref?.();
-}
-
-function removeProfileDir(profileDir: string): void {
-  try { rmSync(profileDir, { recursive: true, force: true }); } catch { /* best-effort */ }
-}
-
-/** 关停当前实例:close 失败(已死/超时)→ 同步 SIGKILL 兜底;成功后删 profile 目录。 */
-async function closeBrowser(): Promise<void> {
-  const entry = current;
-  current = null;
-  clearIdleTimer();
-  if (!entry) return;
-  liveForExit.delete(entry);
-  try {
-    await entry.browser.close();
-  } catch {
-    try { entry.exitKill(); } catch { /* ignore */ }
-  }
-  removeProfileDir(entry.profileDir);
-}
-
-/** 默认 launch:Chrome(channel)→ Edge 回退;固定前缀 profile + 显式信号处理 + 超时。 */
-async function defaultLaunch(): Promise<{ browser: BrowserLike; profileDir: string } | null> {
-  const puppeteer = await import("puppeteer-core").catch(() => null);
-  if (!puppeteer) return null;
-  // 固定可识别前缀(报告 §9 自救命令依赖):$TMPDIR/media-gen-mcp-render-<pid>-XXXXXX
-  let profileDir: string;
-  try {
-    profileDir = mkdtempSync(path.join(os.tmpdir(), `${PROFILE_DIR_PREFIX}-${process.pid}-`));
-  } catch (e) {
-    // 极端边路(如磁盘满):建不出 profile → 按不可用降级,不让渲染调用裸抛
-    console.error("[browser-pool] profile dir creation failed:", (e as Error)?.message);
-    return null;
-  }
-  const common = {
-    headless: true,
-    args: DETERMINISTIC_FLAGS,
-    userDataDir: profileDir,
-    // 显式声明(默认即 true,显式 = 意图 + 防 puppeteer 未来改默认):
-    // 宿主收到 SIGTERM/SIGINT/SIGHUP 时 puppeteer 自身也会尝试 close —— 与本池的
-    // 信号钩子(见 registerExitHooks)双保险,任一路径命中都不会留孤儿。
-    handleSIGINT: true,
-    handleSIGTERM: true,
-    handleSIGHUP: true,
-    timeout: LAUNCH_TIMEOUT_MS, // launch 挂死上限
-  };
-  // 尝试 Chrome(channel:'chrome' 找标准路径)
-  try {
-    const b = await puppeteer.default.launch({ channel: "chrome", ...common });
-    return { browser: b as unknown as BrowserLike, profileDir };
-  } catch (e) {
-    console.error("[browser-pool] Chrome launch failed, trying Edge:", (e as Error)?.message);
-  }
-  // 回退 Edge
-  const edgePath = findEdgePath();
-  if (edgePath) {
-    try {
-      const b = await puppeteer.default.launch({ ...common, executablePath: edgePath });
-      return { browser: b as unknown as BrowserLike, profileDir };
-    } catch (e) {
-      console.error("[browser-pool] Edge launch failed:", (e as Error)?.message);
-    }
-  }
-  // 双双失败:清掉刚建的 profile 目录,不留垃圾
-  removeProfileDir(profileDir);
-  return null;
-}
-
-/** 单飞 ensure:已有实例直接复用;否则(可能并发)共享同一次 launch。 */
-async function ensureLaunched(): Promise<BrowserLike | null> {
-  if (current) { armIdleTimer(); return current.browser; } // 触碰 = 重置空闲计时
-  if (launching) return launching;
-  launching = (async (): Promise<BrowserLike | null> => {
-    const launched = launcherOverride ? await launcherOverride() : await defaultLaunch();
-    if (!launched) return null;
-    launchCount++;
-    const entry: LiveBrowser = {
-      browser: launched.browser,
-      profileDir: launched.profileDir,
-      exitKill: () => { launched.browser.process?.()?.kill("SIGKILL"); },
-    };
-    current = entry;
-    liveForExit.add(entry);
-    // Chrome 崩溃/被外部杀死:池自我清理,下次调用重新 launch(借用方操作会自然抛错)
-    try { launched.browser.once?.("disconnected", () => {
-      if (current === entry) {
-        current = null;
-        clearIdleTimer();
-      }
-      liveForExit.delete(entry);
-      removeProfileDir(launched.profileDir);
-    }); } catch { /* ignore */ }
-    armIdleTimer();
-    return launched.browser;
-  })().finally(() => { launching = null; });
-  return launching;
-}
-
 // ══════════════════ 公共 API ══════════════════
 
-// F3 导出面盘点(2026-09-03,机械钉死见 test/browser-pool.test.ts「导出面」):本模块导出
-// 24 个符号(18 值 + 6 类型),运行时消费面只有 6 符号 API 子集 ——
+// F3 导出面盘点(2026-09-03 legacy 退役收缩,机械钉死见 test/browser-pool-attach.test.ts「导出面」):
+// 本模块导出 20 个符号(14 值 + 6 类型),运行时消费面只有 6 符号 API 子集 ——
 // withBrowser / acquireBrowser / releaseBrowser / BrowserUnavailableError / RENDER_UNAVAILABLE_CODE /
 // BrowserLike(render-video 另用 PageLike/CDPSessionLike 类型),由三个渲染消费方使用:
 // render-svg.ts(withBrowser 全套)、render-video.ts(acquire/release 逐帧长会话)、
 // interactive-html/export-png.ts(仅 withBrowser)。其余导出(resolveRenderMode/常量/测试注入
-// set*ForTests/诊断 getBrowserPoolState/shutdownBrowser/syncCleanupOnExit/legacy 专属面)
-// 只被 test 与诊断脚本消费 —— 新增运行时导出前先核这三消费方,防导出面无主增长。
+// setAttachProviderForTests/诊断 getBrowserPoolState/shutdownBrowser/syncCleanupOnExit/
+// renderBrowserUnavailableMessage)只被 test 与诊断脚本消费 —— 新增运行时导出前先核这
+// 三消费方,防导出面无主增长。
 
 /**
  * 借用浏览器(引用计数 +1,渲染主路径用)。配对 releaseBrowser(try/finally)。
- *  - attach/auto 档:ensure→connect;失败抛 code=RENDER_BROWSER_UNAVAILABLE 的
- *    BrowserUnavailableError(🔴 绝不静默回落自管 launch)—— 计数已回退。
- *  - legacy 档:launch 不可用抛无码 BrowserUnavailableError —— 计数已回退。
+ * ensure→connect;失败抛 code=RENDER_BROWSER_UNAVAILABLE 的 BrowserUnavailableError
+ * (🔴 绝不静默回落自管 launch —— 自管池已随 2026-09-03 legacy 退役物理删除)—— 计数已回退。
  */
 export async function acquireBrowser(): Promise<BrowserLike> {
   refCount++;
-  if (!useLegacyPool()) {
-    // attach/auto 档:无 idle 定时器可抑制(idle 归 lasso);引用计数驱动 heartbeat
-    try {
-      const b = await ensureAttached();
-      syncHeartbeat();
-      return b;
-    } catch (e) {
-      refCount = Math.max(0, refCount - 1);
-      syncHeartbeat();
-      throw e;
-    }
-  }
-  clearIdleTimer(); // 有活跃借用期间绝不空闲回收(legacy)
-  let b: BrowserLike | null;
+  // 无 idle 定时器可抑制(idle 归 lasso);引用计数驱动 heartbeat
   try {
-    b = await ensureLaunched();
+    const b = await ensureAttached();
+    syncHeartbeat();
+    return b;
   } catch (e) {
-    // launch 路径意外异常(非「不可用」):计数也必须回退,不得泄漏计数器
-    refCount--;
-    if (refCount === 0) armIdleTimer();
+    refCount = Math.max(0, refCount - 1);
+    syncHeartbeat();
     throw e;
   }
-  if (!b) {
-    refCount--;
-    if (refCount === 0) armIdleTimer();
-    throw new BrowserUnavailableError("Chrome/Edge not available — install Google Chrome or Microsoft Edge, or use a resvg/local fallback path.");
-  }
-  return b;
 }
 
-/** 归还借用(引用计数 -1);归零后:attach 档 touch 一次 + 停 heartbeat,legacy 档武装空闲回收。 */
+/** 归还借用(引用计数 -1);归零后 touch 一次 + 停 heartbeat(idle 回收归 lasso)。 */
 export function releaseBrowser(): void {
   refCount = Math.max(0, refCount - 1);
   if (refCount === 0) {
     if (attachedEntry?.touchPath) touchRender(attachedEntry.touchPath); // 归还即渲染后 touch(契约 §一.2 ①)
     syncHeartbeat(); // → 停 heartbeat
-    armIdleTimer(); // legacy:武装空闲回收(attach 下 current=null,天然 no-op)
   }
 }
 
 /**
  * 渲染包裹器:acquire → fn → release(finally 保证异常路径也归还)。
- * withBrowser 持有引用期间:legacy 空闲回收被抑制、attach heartbeat 在跑 —— 长渲染不误判空闲。
+ * withBrowser 持有引用期间 attach heartbeat 在跑 —— 长渲染不误判空闲。
  */
 export async function withBrowser<T>(fn: (browser: BrowserLike) => Promise<T>): Promise<T> {
   const browser = await acquireBrowser();
@@ -652,31 +453,22 @@ export async function withBrowser<T>(fn: (browser: BrowserLike) => Promise<T>): 
 }
 
 /**
- * 兼容 probe 语义(= 旧 render-svg.getBrowser):确保已启动并返回实例,不可用返回 null。
+ * 兼容 probe 语义(= 旧 render-svg.getBrowser):确保已附着并返回实例,不可用返回 null。
  * 不加引用计数 —— 仅用于可用性探测/测试收尾;渲染主路径必须用 withBrowser/acquireBrowser。
  */
 export async function getBrowser(): Promise<BrowserLike | null> {
-  if (!useLegacyPool()) {
-    return ensureAttached().catch(() => null);
-  }
-  return ensureLaunched();
+  return ensureAttached().catch(() => null);
 }
 
-/** 立即关停当前实例(不等空闲):attach 档 = disconnect(渲染档继续存活,归 lasso);legacy 档 = close+删 profile。 */
+/** 立即归还当前连接(不等空闲):= disconnect,共享渲染档继续存活(生命周期归 lasso)。 */
 export async function shutdownBrowser(): Promise<void> {
   await releaseAttach();
-  await closeBrowser();
 }
 
 /** 池状态(测试/诊断只读快照)。 */
 export function getBrowserPoolState(): {
   mode: RenderMode;
   refCount: number;
-  launched: boolean;
-  launchCount: number;
-  idleTimerArmed: boolean;
-  profileDir: string | null;
-  exitEntries: number;
   attached: boolean;
   attachCount: number;
   ensureCalls: number;
@@ -684,33 +476,14 @@ export function getBrowserPoolState(): {
   wsEndpoint: string | null;
 } {
   return {
-    // 诊断口径 = 行为档(#5,2026-09-03):launcher 测试注入 → 实际走 legacy launch 路径,
-    // 如实报 legacy 而非 env 档(与 useLegacyPool 同一真源)—— 快照描述「现在会怎么跑」,
-    // 不是「env 写了什么」;误报 env 档会让 attach 语义的断言在注入态下悄悄失真。
-    mode: useLegacyPool() ? "legacy" : resolveRenderMode(),
+    mode: resolveRenderMode(),
     refCount,
-    launched: current !== null,
-    launchCount,
-    idleTimerArmed: idleTimer !== null,
-    profileDir: current ? current.profileDir : null,
-    exitEntries: liveForExit.size,
     attached: attachedEntry !== null,
     attachCount,
     ensureCalls,
     heartbeatArmed: heartbeatTimer !== null,
     wsEndpoint: attachedEntry ? attachedEntry.wsEndpoint : null,
   };
-}
-
-/** 测试注入:替换 launch 实现;null 恢复默认。注入前若已有实例会先立即关停(含 attach 槽位与注入,全量复位)。 */
-export async function setLauncherForTests(
-  launcher: (() => Promise<{ browser: BrowserLike; profileDir: string } | null>) | null,
-): Promise<void> {
-  ensureOverride = null;
-  connectorOverride = null;
-  await releaseAttach();
-  await closeBrowser();
-  launcherOverride = launcher;
 }
 
 /**
@@ -729,20 +502,13 @@ export async function setAttachProviderForTests(
 // ── 进程级登记与退出钩子(模块加载即注册一次;render-svg/index 启动即导入本模块)──
 
 /**
- * exit 钩子体(同步,零 await):legacy 档 SIGKILL Chrome 主进程(Helper 随管道断退出)+ rmSync profile;
- * attach 档仅清本地连接态(🔴 绝不杀共享渲染档/不删其 profile —— 生命周期归属 lasso,连接随进程消亡)。
+ * exit 钩子体(同步,零 await):仅清本地连接态(🔴 绝不杀共享渲染档/不删其 profile ——
+ * 生命周期归属 lasso,连接随进程消亡)。
  */
 export function syncCleanupOnExit(): void {
   // 真实 'exit' 时进程随即消亡,清状态仅图幂等;测试直调则防「复活已杀实例」。
   attachedEntry = null;
   stopHeartbeatTimer();
-  current = null;
-  clearIdleTimer();
-  for (const entry of liveForExit) {
-    try { entry.exitKill(); } catch { /* best-effort */ }
-    try { rmSync(entry.profileDir, { recursive: true, force: true }); } catch { /* best-effort */ }
-  }
-  liveForExit.clear();
 }
 
 let hooksRegistered = false;
@@ -751,8 +517,7 @@ function registerExitHooks(): void {
   hooksRegistered = true;
   // 'exit' 钩子纯增量(不改进程行为),无条件注册 —— SIGKILL 以外的一切退出路径都走到这里。
   process.on("exit", syncCleanupOnExit);
-  // 进程信号:attach 档仅断连后退出(对接契约 §一.5);legacy 档关 Chrome 后立即 exit
-  // (防 Ctrl+C/SIGTERM 后 close 异步未完成 hang)。
+  // 进程信号:仅断连既有连接后退出(对接契约 §一.5)。
   // server 模式必需;独立脚本/测试可设 MEDIA_GEN_NO_SIGNAL_HANDLERS=1 禁用
   // (避免全局 handler 干扰其他 shutdown 逻辑 —— 沿用旧 render-svg 同名开关与语义)。
   if (!process.env.MEDIA_GEN_NO_SIGNAL_HANDLERS) {
@@ -761,9 +526,7 @@ function registerExitHooks(): void {
       // 既有连接仍 disconnect 后退出(对接契约 §一.5)
       releaseAttach(false)
         .catch(() => {})
-        .finally(() => {
-          closeBrowser().catch(() => {}).finally(() => process.exit(0));
-        });
+        .finally(() => process.exit(0));
     };
     process.on("SIGINT", exitHandler);
     process.on("SIGTERM", exitHandler);

@@ -159,3 +159,51 @@ skip 文案(L40)"Chrome/Edge 不可用"→"lasso 渲染档不可用(装:npm i -g
 
 - C 轮(红队终判):GO——A 方案方向与甄别全部核验成立;6 项补充(F1-F7)已并入 §四;实施须以 §四 为唯一蓝本、过 §五 全部验收命令。
 - 依据文件:src/browser-pool.ts(工作树 2026-09-03)、test/browser-pool.test.ts、test/browser-pool-attach.test.ts、src/render-svg.ts、src/render-video.ts、src/interactive-html/export-png.ts、scripts/e2e-tools.mjs、test/render-video-determinism.test.mjs、scripts/check-*.mjs、.github/、package.json(v0.18.0)、lasso 仓《对接实施说明-渲染档x-media-gen-mcp.md》§二.d/§一.5/§四。
+
+---
+
+## 九、实施纪要(2026-09-03,A 轮全量实施;本节由实施 agent 落盘,以符号锚定逐项执行)
+
+### 9.1 逐项执行状态(§四 P1-P8 全部完成)
+
+| 步骤 | 状态 | 实测要点 |
+|---|---|---|
+| P1 browser-pool.ts | ✅ | 删除全部 §四 符号清单项(常量 4/函数 9/状态类型区/模板逃生门句);`RenderMode` 二态化;legacy 值专用 warn(已退役文案);`refCount` 迁入 attach 状态区保留;`BrowserLike.process?()` 删除;exitHandler 收敛为 `releaseAttach(false).catch().finally(exit)`;F3 注释 18→14;文件头/clampIntEnv/BrowserUnavailableError 注释同步。**实测值导出恰 14**(node 枚举 dist 验证) |
+| P2 browser-pool.test.ts | ✅ | 整文件删除(含 dist-test 陈旧产物);3 测迁入 attach 文件:exit 钩子 2(原样)+ F3 钉死(**计数 18→14**,allowed 5 符号与三消费方断言不变,并按 F2 补 4 个 legacy 导出「必须不存在」断言) |
+| P3 attach 测试处置 | ✅ | 头注释验收点改写(二态);ENV_KEYS 删 `MEDIA_GEN_BROWSER_IDLE_MS`;复位改挂 `setAttachProviderForTests(null,null)`(beforeEach/afterEach);三态测试拆为二态测 + legacy 专用测(warn 匹配 /已退役.*按 auto/);删 idle 定时器测;模板测删 legacy/2026-12-01/launchCount 三断言、**补 `doesNotMatch /legacy/` 与 `/2026-12-01/` 钉死**;删「legacy 逃生门与注入隔离」整节,复位语义改写为 hermetic 测(假 lasso 二进制钉 `MEDIA_GEN_LASSO_BIN`,不真跑 lasso/npx);其余 13 测零改动(回归网) |
+| P4 render-svg.ts | ✅ | 无码 else 分支(Chrome/Edge not available 文案系)删除;code 命中分支与非池异常兜底一行未动 |
+| P5 render-video.ts | ✅ | `acquireBrowser().catch(...)` 死包装整删改直取;import 面随缩(BrowserUnavailableError/RENDER_UNAVAILABLE_CODE 不再导入——三消费方值导入并集仍恰 5 符号,F3 测过) |
+| P6 e2e-tools.mjs | ✅ | raw-env legacy skip 分支删除(留一行注释说明 env=legacy 现按 auto、L3' 应正常执行) |
+| P7 determinism 文案 | ✅ | skip 文案改「lasso 渲染档不可用(装:npm i -g lasso-mcp)」;头注释同步;探针 chromeOk 更名 renderOk;getBrowser 调用零改动 |
+| P8 文档 | ✅ | README.md/README.en.md 对称删句(段落 + 依赖表行;删 `MEDIA_GEN_RENDER_MODE=legacy` token 与 2026-12-01 数字,补退役说明;check-readme-sync 过);契约摘录副本 §三旁路/§四三态表+模板+F6 段改写并提头注明真源已同步;P0 报告仅顶部历史标注(§9 自救命令保留有效);**跨仓 lasso 真源**《对接实施说明-渲染档x-media-gen-mcp.md》§一.5 完全旁路/生命周期归属、§二.2c、§二.d(模板句下加退役注记:二态 + warn+auto + 验收以 media-gen-mcp 现版 `renderBrowserUnavailableMessage` 为准)、§三边界 4/9、§四.3 共 7 处加「2026-09-03 注」 |
+
+### 9.2 验收门禁(§五.4 全过,真实输出)
+
+| 门禁 | 结果 |
+|---|---|
+| `npm test`(真 HOME) | **tests 619 / pass 617 / fail 0 / skipped 2**(新基线;旧 635/632/3 随删测更新:删 18 测(勘误:B 轮实测 18=15 legacy+3 迁出) + 迁 3 + 拆 1 + 删 3 legacy 条件测 + 增复位/legacy-warn 测) |
+| `MEDIA_GEN_RENDER_MODE=attach npm test` | **619 / 617 / 0 / 2** 全绿 |
+| `MEDIA_GEN_RENDER_MODE=legacy npm test`(新增门) | **619 / 617 / 0 / 2** 全绿(legacy 不可达档,降级语义生效) |
+| `HOME=$(mktemp -d) CI=true npm test`(双 HOME/CI-parity) | **619 / 616 / 0 / 3**(多 1 skip = flow integration CI 语义守卫,预期)全绿 |
+| 四 check 脚本 | check-error-text **11/0**、check-schema **5/0**、check-readme-sync **OK(23 标题/8 代码块/4 表/27 span/128 数字全对称)**、check-render-output strict **PASS(6 checks)** |
+| 手验行为承诺 | `MEDIA_GEN_RENDER_MODE=legacy` 起新进程:`[browser-pool] MEDIA_GEN_RENDER_MODE="legacy" 已退役(自管池移除),按 auto 处理`;`resolveRenderMode()="auto"`、`getBrowserPoolState().mode="auto"`;4 个 legacy 导出符号 `in` 检查全空(零积分) |
+| live render_svg | `MEDIA_GEN_RENDER_MODE=attach render_svg`(backend=chrome,含 feGaussianBlur)→ **backendUsed=chrome、warning=none、png 22775B**,经真实 lasso 渲染档 ensure→connect→渲染→disconnect 归还(零积分) |
+
+### 9.3 不变式核验(§五.1-§五.3)
+
+1. 四降级点一行未动:render-svg resvg 兜底(仅删不可达无码支)/render-video 结构化上抛(仅删死包装)/export-png 零改动/determinism 诚实 skip(仅纠偏文案)。
+2. 绝不静默回落 launch:自管 launch 代码(defaultLaunch/ensureLaunched/DETERMINISTIC_FLAGS/findEdgePath)物理删除,模板 doesNotMatch 钉死不复活。
+3. attach 语义零回归:heartbeat/touch/单飞/disconnect 归还/SIGTERM 快退各测全绿(13+ 测零改动回归网)。
+4. 导出面收缩 18→14 三处同步:F3 注释 + 钉死测试 + 本纪要。
+
+### 9.4 实施裁量(超出 §四 字面、方向一致的加强,均已在 9.1 标注)
+
+- F3 钉死测试补「4 个 legacy 导出必须不存在」负向断言(比纯计数更强的退役彻底性机械证)。
+- 模板测补 `doesNotMatch /legacy/` 与 `/2026-12-01/`(方案 P3-6「建议补」已执行)。
+- 复位语义测用假 lasso 二进制保持 hermetic(裸真跑 lasso/npx 在 CI 上会吃 90s npx 预算,违背零依赖测试纪律)。
+- **版本/changelog 未动**(方案 §六/§七 为发布时措辞建议;0.19.0 bump 归发布提交,本任务范围=清除实施)。
+
+### 9.5 变更清单(本仓 11 文件,+248/-772;跨仓 lasso 文档 1 文件)
+
+本仓:src/browser-pool.ts(353 行删改)、src/render-svg.ts、src/render-video.ts、test/browser-pool.test.ts(整删 373 行)、test/browser-pool-attach.test.ts(迁测+处置)、test/render-video-determinism.test.mjs、scripts/e2e-tools.mjs、README.md、README.en.md、doc/渲染档对接契约-lasso要点摘录.md、doc/2026-09-01-Chrome泄漏致整机冻结-P0根因报告.md(顶部标注)。
+跨仓:/Users/wangdong/Documents/Project/claude技能/lasso/doc/对接实施说明-渲染档x-media-gen-mcp.md(7 处 2026-09-03 退役注记;lasso 仓工作树,未提交——提交归 lasso 仓自己的节奏)。

@@ -1,27 +1,35 @@
 /**
- * browser-pool attach 档单元测试(2026-09-02 attach 切换,对接契约 §一/§二)。
+ * browser-pool 单元测试(2026-09-02 attach 切换 → 2026-09-03 legacy 自管池提前退役,
+ * 原 browser-pool.test.ts 整删后本文件是池的唯一测试家;对接契约 §一/§二)。
  *
  * 覆盖任务验收点(mock ensure/connect + 真 spawn 假 lasso 二进制,零真实 Chrome attach、零积分):
- *  1. RENDER_MODE 三态 —— auto/attach/legacy 解析;非法值 warn(每值一次)后按 auto
+ *  1. RENDER_MODE 二态 —— auto/attach 解析;已退役 legacy 与非法值 warn(每值一次)后按 auto
  *  2. attach 语义 —— mock ensure 输出 → connect 收到 {browserWSEndpoint, defaultViewport:null};
  *     单飞(两次渲染 connect 一次);断连自清理后重 ensure
  *  3. heartbeat 启停 —— acquire/release 引用计数驱动;渲染存续期间周期 touch;归零停表
- *  4. 降级文案 —— RENDER_BROWSER_UNAVAILABLE 模板(npx 自愈命令 + legacy 逃生门 + 退役日 +
- *     stderr 原样透传);🔴 绝不静默回落自管 launch
+ *  4. 降级文案 —— RENDER_BROWSER_UNAVAILABLE 模板(npx 自愈命令 + lasso README 指引 +
+ *     stderr 原样透传;🔴 永不再含 legacy 逃生门句);🔴 绝不静默回落自管 launch
+ *     (自管池已随 2026-09-03 退役物理删除,「绝不回落」随物理删除单调成立)
  *  5. ensure 解析链 —— MEDIA_GEN_LASSO_BIN 真 spawn(假二进制:单行 JSON / exit 3 + stderr /
  *     ENOENT);stdout 污染/缺 wsEndpoint 拒绝
  *  6. 归还 = disconnect 严禁 close —— shutdownBrowser 后 disconnect 被调、close 零调用;
- *     idle 定时器在 attach 下不武装(MEDIA_GEN_BROWSER_IDLE_MS 不生效)
+ *     setAttachProviderForTests(null,null) 全量复位(归还连接 + 清注入)
  *  7. render_svg/render-video 降级联动 —— ensure 失败 → resvg 降级告警带修复指引 / 结构化错误上抛
  *  8. SIGTERM 信号路径不等在飞 ensure(2026-09-03 项1)—— 子进程在飞慢 ensure(15s)期间收
  *     SIGTERM 必须 <8s 退出(修复前形态=滞留满 npx 90s 预算类等待)
+ *  9. exit 钩子 —— 模块加载即注册('exit' 必注册;SIGINT/SIGTERM 受
+ *     MEDIA_GEN_NO_SIGNAL_HANDLERS 门控,子进程验证)—— 自原 browser-pool.test.ts 迁入
+ *     (信号路径 attach 语义不变,与 legacy 无关故迁出保留)
+ * 10. F3 导出面盘点钉死 —— 值导出恰 15 符号(2026-09-03 legacy 退役 18→14);三渲染消费方
+ *     值导入并集恰 5 符号且无第四消费方(与 src/browser-pool.ts 公共 API 节 F3 注释互为钉死)
+ *     —— 自原 browser-pool.test.ts 迁入并适配二态计数
  *
  * License:本文件为 attach 切换自研。
  */
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtempSync, statSync, utimesSync, writeFileSync, chmodSync, rmSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, chmodSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -65,13 +73,13 @@ function writeFakeLasso(script: string): string {
   return fp;
 }
 
-const ENV_KEYS = ["MEDIA_GEN_RENDER_MODE", "MEDIA_GEN_LASSO_BIN", "MEDIA_GEN_RENDER_HEARTBEAT_MS", "MEDIA_GEN_BROWSER_IDLE_MS"] as const;
+const ENV_KEYS = ["MEDIA_GEN_RENDER_MODE", "MEDIA_GEN_LASSO_BIN", "MEDIA_GEN_RENDER_HEARTBEAT_MS"] as const;
 let savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(async () => {
   savedEnv = {};
   for (const k of ENV_KEYS) { savedEnv[k] = process.env[k]; delete process.env[k]; }
-  await pool.setLauncherForTests(null); // 全量复位(含 attach 槽位与注入)
+  await pool.setAttachProviderForTests(null, null); // 全量复位(归还连接 + 清 ensure/connector 注入)
 });
 
 afterEach(async () => {
@@ -80,21 +88,33 @@ afterEach(async () => {
     else process.env[k] = savedEnv[k];
   }
   await pool.shutdownBrowser();
-  await pool.setLauncherForTests(null);
+  await pool.setAttachProviderForTests(null, null);
 });
 
-describe("browser-pool attach:RENDER_MODE 三态(对接 §二.d)", () => {
-  test("未设/auto/attach/legacy 解析正确;空串按 auto", () => {
+describe("browser-pool attach:RENDER_MODE 二态(对接 §二.d;legacy 已退役)", () => {
+  test("未设/auto/attach 解析正确;空串按 auto", () => {
     delete process.env.MEDIA_GEN_RENDER_MODE;
     assert.equal(pool.resolveRenderMode(), "auto");
     process.env.MEDIA_GEN_RENDER_MODE = "auto";
     assert.equal(pool.resolveRenderMode(), "auto");
     process.env.MEDIA_GEN_RENDER_MODE = " ATTACH ";
     assert.equal(pool.resolveRenderMode(), "attach", "trim+lowercase 归一");
-    process.env.MEDIA_GEN_RENDER_MODE = "legacy";
-    assert.equal(pool.resolveRenderMode(), "legacy");
     process.env.MEDIA_GEN_RENDER_MODE = "";
     assert.equal(pool.resolveRenderMode(), "auto");
+  });
+
+  test("env=legacy(已退役,2026-09-03):resolveRenderMode 返回 auto 且 warn 已退役提示", () => {
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (m?: unknown) => { warns.push(String(m)); };
+    try {
+      process.env.MEDIA_GEN_RENDER_MODE = "legacy";
+      assert.equal(pool.resolveRenderMode(), "auto", "legacy 值必须落入 warn+auto 通路(自管池已物理删除)");
+      assert.ok(warns.some((w) => /MEDIA_GEN_RENDER_MODE="legacy" 已退役.*按 auto/.test(w)), "退役 warn 必须明示已退役语义");
+    } finally {
+      console.warn = origWarn;
+    }
+    // 注:legacy warn 每值每进程一次,本文件内由本测试消费;后续测试设 legacy 不再重复 warn
   });
 
   test("非法值:warn(每值每进程一次)后按 auto", () => {
@@ -108,7 +128,7 @@ describe("browser-pool attach:RENDER_MODE 三态(对接 §二.d)", () => {
       process.env.MEDIA_GEN_RENDER_MODE = "other";
       assert.equal(pool.resolveRenderMode(), "auto");
       assert.equal(warns.length, 2, "两个不同非法值各 warn 一次");
-      assert.match(warns[0], /MEDIA_GEN_RENDER_MODE="bogus" 非法.*按 auto/);
+      assert.match(warns[0], /MEDIA_GEN_RENDER_MODE="bogus" 非法\(合法值 auto\|attach\).*按 auto/);
     } finally {
       console.warn = origWarn;
     }
@@ -116,8 +136,9 @@ describe("browser-pool attach:RENDER_MODE 三态(对接 §二.d)", () => {
   });
 
   test("resolveRenderMode 显式 env 入参(不读 process.env)", () => {
-    process.env.MEDIA_GEN_RENDER_MODE = "legacy";
+    process.env.MEDIA_GEN_RENDER_MODE = "auto";
     assert.equal(pool.resolveRenderMode({ MEDIA_GEN_RENDER_MODE: "attach" }), "attach");
+    assert.equal(pool.resolveRenderMode({ MEDIA_GEN_RENDER_MODE: "legacy" }), "auto", "入参形态下 legacy 同样 warn+auto");
   });
 });
 
@@ -226,20 +247,12 @@ describe("browser-pool attach:heartbeat 启停(对接 §一.2)", () => {
     }
   });
 
-  test("attach 下 idle 定时器不武装(MEDIA_GEN_BROWSER_IDLE_MS 不生效,idle 归 lasso)", async () => {
-    process.env.MEDIA_GEN_BROWSER_IDLE_MS = "20";
-    const { conn } = await injectAttach();
-    await pool.withBrowser(() => Promise.resolve());
-    await delay(200); // legacy 语义下 20ms idle 早已 close
-    const st = pool.getBrowserPoolState();
-    assert.equal(st.idleTimerArmed, false, "attach 档绝不武装自管 idle 定时器");
-    assert.equal(st.attached, true, "attach 档实例不受 MEDIA_GEN_BROWSER_IDLE_MS 影响");
-    assert.equal(conn.state.disconnectCalls, 0);
-  });
+  // (原「attach 下 idle 定时器不武装」测试随 2026-09-03 legacy 自管池退役删除:
+  //  idleTimerArmed 字段与 MEDIA_GEN_BROWSER_IDLE_MS 一并移除,idle 回收整体归 lasso)
 });
 
 describe("browser-pool attach:降级模板 RENDER_BROWSER_UNAVAILABLE(对接 §二.d)", () => {
-  test("模板全要素:npx 自愈命令 + legacy 逃生门 + 退役日 + stderr 原样透传;error 形状", async () => {
+  test("模板全要素:npx 自愈命令 + lasso README 指引 + stderr 原样透传,永不含 legacy 逃生门;error 形状", async () => {
     await pool.setAttachProviderForTests(
       async () => { const e: any = new Error("cmd failed"); e.code = 3; e.stderr = "port 9224 occupied by non-render process"; throw e; },
       null,
@@ -251,14 +264,15 @@ describe("browser-pool attach:降级模板 RENDER_BROWSER_UNAVAILABLE(对接 §�
         assert.equal(e.code, "RENDER_BROWSER_UNAVAILABLE");
         assert.match(e.message, /确定性渲染需 lasso 渲染档/);
         assert.match(e.message, /npx -y lasso-mcp render-chrome --ensure/);
-        assert.match(e.message, /MEDIA_GEN_RENDER_MODE=legacy/);
-        assert.match(e.message, /2026-12-01/);
+        assert.match(e.message, /未装 lasso 见其 README/);
         assert.match(e.message, /port 9224 occupied by non-render process/, "ensure stderr 原样透传");
+        // 2026-09-03 legacy 提前退役:模板永不再含逃生门句与退役日(钉死不复活)
+        assert.doesNotMatch(e.message, /legacy/, "模板不得再含 legacy 逃生门句");
+        assert.doesNotMatch(e.message, /2026-12-01/, "模板不得再含旧退役日");
         return true;
       },
     );
     assert.equal(pool.getBrowserPoolState().refCount, 0, "降级路径也必须归还引用计数");
-    assert.equal(pool.getBrowserPoolState().launchCount, 0, "🔴 绝不静默回落自管 launch");
   });
 
   test("MEDIA_GEN_RENDER_MODE=attach 强制档:失败同上报错(不回落)", async () => {
@@ -381,7 +395,7 @@ describe("browser-pool attach:归还 = disconnect 严禁 close(对接 §一.5)",
     assert.equal(pool.getBrowserPoolState().attached, false);
   });
 
-  test("syncCleanupOnExit:attach 槽位只清状态,不杀共享渲染档、不动 legacy 登记", async () => {
+  test("syncCleanupOnExit:仅清本地连接态,绝不杀共享渲染档", async () => {
     const { conn } = await injectAttach();
     await pool.withBrowser(() => Promise.resolve());
     pool.syncCleanupOnExit();
@@ -424,35 +438,120 @@ describe("browser-pool attach:SIGTERM 信号路径不等在飞 ensure(2026-09-03
   });
 });
 
-describe("browser-pool attach:legacy 逃生门与注入隔离", () => {
-  test("MEDIA_GEN_RENDER_MODE=legacy:自管池全量语义可达(不触 attach 槽位)", async () => {
-    process.env.MEDIA_GEN_RENDER_MODE = "legacy";
-    const profileDir = mkdtempSync(path.join(os.tmpdir(), "browser-pool-legacy-"));
-    const legacyState = { closed: false };
-    const legacyBrowser = {
-      async newPage() { throw new Error("unused"); },
-      async close() { legacyState.closed = true; },
-      process: () => ({ kill: () => {} }),
-    };
-    await pool.setLauncherForTests(async () => ({ browser: legacyBrowser, profileDir }));
-    await pool.withBrowser(() => Promise.resolve());
-    const st = pool.getBrowserPoolState();
-    assert.equal(st.mode, "legacy");
-    assert.equal(st.launched, true, "legacy 档走 launch 路径");
-    assert.equal(st.attached, false, "legacy 档绝不触 attach 槽位");
-    assert.equal(legacyState.closed, false, "借用期间不 close");
-    await pool.shutdownBrowser();
-    assert.equal(legacyState.closed, true, "legacy 档 shutdown = close(自管语义)");
-  });
-
-  test("setLauncherForTests(null) 全量复位:attach 槽位/注入与 legacy 实例一并清空", async () => {
-    const { conn } = await injectAttach();
+describe("browser-pool attach:测试复位语义(原 legacy 逃生门注入隔离节随 2026-09-03 退役删除,复位覆盖保留)", () => {
+  test("setAttachProviderForTests(null,null) 复位:disconnect 归还 + 注入清空", async () => {
+    const { conn, calls } = await injectAttach();
     await pool.withBrowser(() => Promise.resolve());
     assert.equal(pool.getBrowserPoolState().attached, true);
-    await pool.setLauncherForTests(null);
+    await pool.setAttachProviderForTests(null, null); // 复位 = releaseAttach 归还连接 + 清 ensure/connector 注入
     assert.equal(pool.getBrowserPoolState().attached, false);
     assert.equal(conn.state.disconnectCalls, 1, "复位即归还连接(disconnect)");
     assert.equal(conn.state.closeCalls, 0);
     assert.equal(pool.getBrowserPoolState().refCount, 0);
+    // 注入已清空:后续 acquire 走真 ensure 解析链 —— 用假 lasso 二进制钉住 MEDIA_GEN_LASSO_BIN
+    // 保持 hermetic(不真跑 lasso/npx);connect 到假 wsEndpoint 失败由 getBrowser probe 吞掉,
+    // ensureCalls 增量证明真链路执行、mock 计数不增证明注入确已清空
+    const fake = writeFakeLasso(`echo '{"wsEndpoint":"ws://127.0.0.1:9224/devtools/browser/reset-probe"}'`);
+    process.env.MEDIA_GEN_LASSO_BIN = fake;
+    try {
+      const ensureCallsBefore = pool.getBrowserPoolState().ensureCalls;
+      await pool.getBrowser();
+      assert.equal(pool.getBrowserPoolState().ensureCalls, ensureCallsBefore + 1, "注入清空后 ensure 走真 spawn 链路");
+      assert.equal(calls.ensureCalls, 1, "mock ensure 不再被调用(注入已清)");
+    } finally {
+      rmSync(path.dirname(fake), { recursive: true, force: true });
+    }
   });
+});
+
+// ── 迁入自原 test/browser-pool.test.ts(2026-09-03 legacy 退役整删;三测与 legacy 无关故保留)──
+
+describe("browser-pool:exit 钩子(P0 §8.2 堵 SIGKILL 以外的孤儿路径;attach 语义)", () => {
+  test("模块加载即注册 'exit' 钩子(本测试进程内已加载)", () => {
+    assert.ok(process.listenerCount("exit") >= 1, "'exit' 钩子必须无条件注册");
+  });
+
+  test("默认注册 SIGINT/SIGTERM;MEDIA_GEN_NO_SIGNAL_HANDLERS=1 时跳过(子进程验证)", () => {
+    const modUrl = pathToFileURL(path.join(distDir, "browser-pool.js")).href;
+    const script = `
+      import(${JSON.stringify(modUrl)}).then((m) => {
+        console.log(JSON.stringify({
+          exit: process.listenerCount("exit"),
+          sigint: process.listenerCount("SIGINT"),
+          sigterm: process.listenerCount("SIGTERM"),
+        }));
+        return m.shutdownBrowser();
+      }).catch((e) => { console.error(String(e)); process.exit(1); });
+    `;
+    const run = (guarded: boolean) => {
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      delete env.MEDIA_GEN_NO_SIGNAL_HANDLERS;
+      if (guarded) env.MEDIA_GEN_NO_SIGNAL_HANDLERS = "1";
+      return JSON.parse(execFileSync(process.execPath, ["-e", script], {
+        encoding: "utf8",
+        env,
+      }).trim());
+    };
+    // 默认(未设 guard):信号钩子注册
+    const unguarded = run(false);
+    assert.ok(unguarded.exit >= 1, "子进程:'exit' 钩子必须注册");
+    assert.ok(unguarded.sigint >= 1 && unguarded.sigterm >= 1, "默认必须注册 SIGINT/SIGTERM(断连后退出)");
+    // guard 生效:信号钩子不注册(独立脚本/测试不被全局 handler 干扰)
+    const guarded = run(true);
+    assert.ok(guarded.exit >= 1, "guard 只关信号钩子,'exit' 兜底仍必须注册");
+    assert.equal(guarded.sigint, 0, "MEDIA_GEN_NO_SIGNAL_HANDLERS=1 时不得注册 SIGINT");
+    assert.equal(guarded.sigterm, 0, "MEDIA_GEN_NO_SIGNAL_HANDLERS=1 时不得注册 SIGTERM");
+  });
+});
+
+describe("browser-pool:导出面盘点钉死(F3,2026-09-03 legacy 退役收缩 18→14 —— 注释在 src/browser-pool.ts 公共 API 节)", () => {
+  /** 递归收集 dist 下全部 .js(找 browser-pool 的运行时 import 方,测试在 dist-test 不算)。 */
+  function walkJs(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) out.push(...walkJs(p));
+      else if (e.name.endsWith(".js")) out.push(p);
+    }
+    return out;
+  }
+
+  test("运行时值导出恰 15 符号(20 含类型);三渲染消费方值导入并集恰 5 符号且无第四消费方", () => {
+    const runtimeExports = Object.keys(pool);
+    assert.equal(runtimeExports.length, 15, "运行时值导出面变化必须是有意为之:同步 F3 注释 + 本断言 + 三消费方核查(2026-09-03 +clampIntEnv=15)");
+    // legacy 退役删除面(2026-09-03):LEGACY_ESCAPE_REMOVAL_DATE / PROFILE_DIR_PREFIX /
+    // DEFAULT_BROWSER_IDLE_MS / setLauncherForTests —— 18-4=14,+clampIntEnv(边界语义可观测口)=15,残留即退役不彻底
+    for (const gone of ["LEGACY_ESCAPE_REMOVAL_DATE", "PROFILE_DIR_PREFIX", "DEFAULT_BROWSER_IDLE_MS", "setLauncherForTests"]) {
+      assert.ok(!runtimeExports.includes(gone), `legacy 专属导出 "${gone}" 必须已删除`);
+    }
+
+    // 值导入并集(类型在编译期擦除,BrowserLike/PageLike/CDPSessionLike 不出现在 dist import 行)
+    const allowed = ["BrowserUnavailableError", "RENDER_UNAVAILABLE_CODE", "acquireBrowser", "releaseBrowser", "withBrowser"];
+    const importers = walkJs(distDir)
+      .filter((f) => /from\s+"[^"]*browser-pool\.js"/.test(readFileSync(f, "utf8")))
+      .map((f) => path.relative(distDir, f));
+    assert.deepEqual(
+      [...importers].sort(),
+      ["interactive-html/export-png.js", "render-svg.js", "render-video.js"],
+      "browser-pool 的运行时消费方必须恰为三渲染文件 —— 出现第四消费方即 F3 盘点失效",
+    );
+    const imported = new Set<string>();
+    for (const rel of importers) {
+      const m = readFileSync(path.join(distDir, rel), "utf8").match(/import\s+\{([^}]*)\}\s+from\s+"[^"]*browser-pool\.js"/);
+      assert.ok(m, `${rel} 应有具名 import(上述过滤器按 import 语句命中)`);
+      for (const name of (m?.[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+        assert.ok(allowed.includes(name), `${rel} 导入新符号 "${name}" —— 运行时 API 子集扩张,须同步 F3 注释与本用例`);
+        imported.add(name);
+      }
+    }
+    assert.deepEqual([...imported].sort(), allowed, "5 个值符号必须全部在用(出现死符号=该清理而非扩面)");
+  });
+test("clampIntEnv 边界语义直接钉死(low finding:legacy 删除后唯一存活消费方 heartbeat 的夹取/截断须有直接断言)", () => {
+  // 直测导出的 clampIntEnv(raw, fallback, min, max):负值夹下界/越上界夹封顶/小数截断/非有限回落
+  assert.equal(pool.clampIntEnv("-5", 30000, 50, 60000), 50, "负值夹到下界");
+  assert.equal(pool.clampIntEnv("70000", 30000, 50, 60000), 60000, "越上界夹到封顶");
+  assert.equal(pool.clampIntEnv("2000.9", 30000, 50, 60000), 2000, "小数截断");
+  assert.equal(pool.clampIntEnv("abc", 30000, 50, 60000), 30000, "非有限回落 fallback");
+  assert.equal(pool.clampIntEnv(undefined, 30000, 50, 60000), 30000, "未设回落 fallback");
+});
 });

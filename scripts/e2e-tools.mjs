@@ -114,10 +114,8 @@ if (failures.length) { console.log("失败清单:"); failures.forEach((f) => con
 process.exit(0);
 
 async function runL3Prime() {
-  if (process.env.MEDIA_GEN_RENDER_MODE === "legacy") {
-    console.log("  ↷ skip:MEDIA_GEN_RENDER_MODE=legacy(逃生门钉死,attach 不可达)");
-    return;
-  }
+  // (2026-09-03 legacy 提前退役:原 MEDIA_GEN_RENDER_MODE=legacy skip 分支删除 —— env=legacy
+  //  现解析为 auto,L3' attach 验收门应正常执行,不得错误跳过迁移硬门槛)
   // lasso 可用性探测:显式 bin > PATH 直查;不可得即 skip(lasso 未装,非 fail)
   const lassoBin = process.env.MEDIA_GEN_LASSO_BIN?.trim() || (() => {
     const r = spawnSync("lasso-mcp", ["render-chrome", "--status"], { timeout: 10_000, encoding: "utf8" });

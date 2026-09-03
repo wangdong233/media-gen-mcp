@@ -152,14 +152,10 @@ export async function renderSvg(req: RenderSvgRequest): Promise<RenderSvgOutput>
       png = renderWithResvg(req.svg, targetWidth);
       backendUsed = "resvg";
       if (e instanceof BrowserUnavailableError) {
-        // attach/auto 档(lasso 渲染档 ensure 失败):降级 resvg 但带上结构化修复指引
+        // 渲染档(lasso render-chrome)ensure 失败:降级 resvg 但带上结构化修复指引。
+        // (2026-09-03 legacy 自管池退役后,池错误唯一形态 = code=RENDER_BROWSER_UNAVAILABLE,无无码分支)
         if ((e as BrowserUnavailableError & { code?: string }).code === RENDER_UNAVAILABLE_CODE) {
           warning = `渲染档(lasso render-chrome)不可用,已降级 resvg(滤镜保真 ~92%)。修复:${e.message}`;
-        } else {
-          // Chrome/Edge 不可用(legacy 档,与旧 probe 空判同语义,警告文案不变)
-          warning = req.backend === "chrome"
-            ? "Chrome/Edge not available; used resvg instead."
-            : (hasSvgFilters(req.svg) ? "SVG uses <filter>/CSS filter but Chrome unavailable; rendered with resvg (~92% filter fidelity — glow/blur may differ from design)." : (hasExternalResources(req.svg) || hasForeignObject(req.svg) ? "SVG contains external resources/foreignObject but Chrome unavailable; resvg cannot fetch/render them (will be blank). Use backend=chrome or inline as data URI." : undefined));
         }
       } else {
         console.error("[render-svg] Chrome render failed, fallback to resvg:", (e as Error)?.message);

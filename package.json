@@ -1,6 +1,6 @@
 {
   "name": "media-gen-mcp-server",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "All-in-one image-generation MCP server for Claude Code: AI imagery/video (Agnes AI + Zhipu) + structured local rendering (diagrams, charts, formulas, cards, icons, QR codes). Provider- and engine-pluggable.",
   "type": "module",
   "main": "dist/index.js",

@@ -1,7 +1,8 @@
 # 渲染档对接契约:lasso 要点摘录(跨仓副本)
 
-> 2026-09-03 建立(02 审查 F4 收尾件)。**真源 = lasso 仓**,本副本只收 media-gen-mcp 侧
-> 写代码每天都要对的硬契约要点;两侧冲突时以真源为准,发现漂移先修副本再提 lasso:
+> 2026-09-03 建立(02 审查 F4 收尾件);同日 **legacy 提前退役同步**(真源 `lasso/doc/对接实施说明-渲染档x-media-gen-mcp.md`
+> 已于 2026-09-03 加退役注记,本副本 §三/§四 同步改写;后续文案变更仍遵守「先改真源、再同步本副本」)。
+> **真源 = lasso 仓**,本副本只收 media-gen-mcp 侧写代码每天都要对的硬契约要点;两侧冲突时以真源为准,发现漂移先修副本再提 lasso:
 > - `lasso/doc/对接实施说明-渲染档x-media-gen-mcp.md`(2026-09-01/09-02 定稿)
 > - `lasso/doc/提案-render-stop端口作用域化.md`(§6 实施决议 → v1.20)
 > - `lasso/doc/渲染档-并行验收隔离配方.md`(并行验收车道/三 env)
@@ -41,31 +42,30 @@
   throw(v1.19 对抗复审真机实锤)。页面级 setViewport 由渲染方自管。
 - 🔴 **归还 = `browser.disconnect()`,严禁 `browser.close()`** —— 对 connect 实例调 close
   会下发 Browser.close CDP 指令,直接杀掉共享渲染档;池语义 close 已映射 disconnect。
-- attach 下完全旁路:自管 launch / exit 钩子杀 / idle 定时器(`MEDIA_GEN_BROWSER_IDLE_MS`
-  不生效,idle 归 lasso);保留 acquire/release 引用计数外壳与 BrowserLike 类型面。
+- 自管 launch / exit 钩子杀 / idle 定时器已随 legacy 退役**物理删除**(2026-09-03,原
+  `MEDIA_GEN_BROWSER_IDLE_MS` 一并移除);保留 acquire/release 引用计数外壳与 BrowserLike 类型面。
 - CDP 断连(`disconnected` 事件)只做消费方侧自清理,不杀不删(浏览器/profile 归 lasso)。
 - SIGTERM/SIGINT 钩子:仅断连既有连接后退出;**不等在飞 ensure**(2026-09-03 项1 修,
   在飞 ensure 含 npx 兜底 90s 预算,等它 = 信号后滞留至多 90s;不等则连接随进程消亡,
   共享渲染档无损)。
 
-## 四、MEDIA_GEN_RENDER_MODE 三态与降级模板【v1.19 起;对接说明 §二.d】
+## 四、MEDIA_GEN_RENDER_MODE 二态与降级模板【v1.19 起三态 → 2026-09-03 legacy 提前退役改二态;对接说明 §二.d】
 
 | 值 | 行为 | 用途 |
 |---|---|---|
 | auto(默认) | ensure 成功 → attach;失败 → 结构化错误(🔴 绝不静默回落自管 launch) | 常规 |
 | attach | 强制 attach;ensure 失败同上报错 | CI / 验收钉死渲染档 |
-| legacy | 自管池全量语义(launch + exit 钩子 + idle 5min) | 逃生门;退役日 2026-12-01 |
+| ~~legacy~~ | **已退役(2026-09-03 提前,原定 2026-12-01)**:自管池代码已物理删除;设该值 → 专用 warn(已退役)后按 auto | 逃生门不复存在 |
 
-- env 唯一入口;非法值 warn(每值每进程一次)后按 auto。
-- 降级模板:code=`RENDER_BROWSER_UNAVAILABLE`,message=「确定性渲染需 lasso 渲染档:
-  先运行 `npx -y lasso-mcp render-chrome --ensure` 后重试(未装 lasso 见其 README);
-  或临时设 MEDIA_GEN_RENDER_MODE=legacy 回退自管池(逃生门,2026-12-01 移除)。
-  ensure stderr: <原样透传>」—— lasso 验收照此比对文案;自愈命令短语单一来源 =
+- env 唯一入口;非法值 warn(每值每进程一次)后按 auto;`legacy` 值 warn「已退役(自管池移除),按 auto 处理」。
+- 降级模板(2026-09-03 退役后现版):code=`RENDER_BROWSER_UNAVAILABLE`,message=「确定性渲染需 lasso 渲染档:
+  先运行 `npx -y lasso-mcp render-chrome --ensure` 后重试(未装 lasso 见其 README)。
+  ensure stderr: <原样透传>」—— lasso 验收照此比对文案(逃生门句与退役日已删);自愈命令短语单一来源 =
   `src/browser-pool.ts` 模块私有常量 `ENSURE_SELF_HEAL_COMMAND`(F7 收敛,2026-09-03)。
-- legacy 退役(F6):退役日锚 `LEGACY_ESCAPE_REMOVAL_DATE = 2026-12-01`
-  (browser-pool.ts),`test/browser-pool.test.ts` 日期翻红测试 = 机械触发;退役动作 =
-  删 legacy 池路径与 legacy 分支(`MEDIA_GEN_BROWSER_IDLE_MS` 一并移除,设 legacy →
-  warn 后按 auto),详见该测试失败文案。
+- legacy 退役(F6,已于 2026-09-03 执行完毕):退役日锚 `LEGACY_ESCAPE_REMOVAL_DATE` 与
+  `MEDIA_GEN_BROWSER_IDLE_MS`、`setLauncherForTests` 等自管池符号已全部删除;
+  原 `test/browser-pool.test.ts` 日期翻红测试按其自身规定随退役删除(3 测迁入
+  `test/browser-pool-attach.test.ts`);实施全录 = `doc/legacy清除-方案与判定.md`。
 
 ## 五、v1.20 增量:端口作用域化与并行隔离【v1.20.0 起】
 
