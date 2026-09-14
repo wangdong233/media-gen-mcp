@@ -55,7 +55,8 @@ export function isChainAdvanceable(e: any): boolean {
  *   - opt-in 渠道承载计费/隐私边界,用户点名的是「这个渠道」,失败直抛(audit finding-15 语义劫持防护);
  *   - 免费渠道(agnes/zhipu)显式点名后失败仍按链回落(带 warning)—— 保持 145f83e 基线行为(零回归),
  *     schema/generate_image provider 描述与 list_models routingNote 已同步收窄为
- *     "naming an opt-in provider (flow) pins it; free providers fall through with a warning"。
+ *     "naming an opt-in provider (flow/pixverse) pins it; free providers fall through with a warning"
+ *     (2026-09-14 起 pixverse 同为 opt-in 计费渠道,钉死语义不变)。
  * 注:0fa1fc4(已 revert)曾把钉死泛化到全渠道;合包后回到 opt-in 钉死。本函数是该决策的
  * 单一可测真源 —— handler 不得内联重写此判定(防语义漂移)。
  */

@@ -1361,14 +1361,14 @@ describe("tier 门禁(§14.4 UNAVAILABLE;提交点与确认门双拦;零提交)"
     assert.ok(!t.calls.some((c: any) => c.method === "POST" && c.url.includes("/video:")), "零提交");
   });
   test("动态目录暖后:creditMapping[当前档] 实时 UNAVAILABLE → S303(来源=动态目录实时值)", async () => {
-    // 经 beginSubmissionConfirm 预暖目录(refreshCatalogIfStale)→ 提交点 lookupVideoCost 命中
+    // 经 beginVideoSubmissionConfirm 预暖目录(refreshCatalogIfStale)→ 提交点 lookupVideoCost 命中
     // 动态 creditMapping 的 UNAVAILABLE 分支(source:"dynamic")—— 独立于静态矩阵的第一道防线
     // (上游目录价漂移时仍正确拦截;mutation:禁用该分支则本用例退化为静态价源而失败)。
     const modelConfig = { videoModelFamilies: [{ usages: [{ key: "veo_3_1_t2v_fast_ultra", creditMapping: { SERVICE_TIER_ADVANCED: { cost: 10 }, SERVICE_TIER_INTERMEDIATE: { cost: "UNAVAILABLE" }, SERVICE_TIER_ENTRY: { cost: "UNAVAILABLE" } } }] }], imageModelFamilies: [] };
     const { t, p } = newProvider({ modelConfig });
     // 未知 key 在静态矩阵里无 per-tier 价,但动态目录有 → 确认门自身即应 S303(不发令牌)
     await assert.rejects(
-      () => p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
+      () => p.beginVideoSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
       (e: any) => e.code === "S303" && e.message.includes("动态目录实时值") === true,
       "确认门暖目录后,UNAVAILABLE 必须以动态价源拦截",
     );
@@ -1385,23 +1385,23 @@ describe("tier 门禁(§14.4 UNAVAILABLE;提交点与确认门双拦;零提交)"
   test("确认门:UNAVAILABLE key 不发令牌(注定失败的请求不进入确认流程)", async () => {
     const { p } = newProvider(); // INTERMEDIATE
     await assert.rejects(
-      () => p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
+      () => p.beginVideoSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_fast_ultra" }),
       (e: any) => e.code === "S303",
     );
   });
   test("确认门预估:tier 已知时用 static-tier 价(lite 在 INTERMEDIATE=10;全 tier 同价 key 不变)", async () => {
     const { p } = newProvider();
-    const c = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
+    const c = await p.beginVideoSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
     assert.equal(c!.estimatedCost, 10, "INTERMEDIATE lite=10");
     assert.equal(c!.costSource, "static-tier");
     const { p: pAdv } = newProvider({ creditsBody: { credits: 500, serviceTier: "SERVICE_TIER_ADVANCED" } });
-    const cAdv = await pAdv.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
+    const cAdv = await pAdv.beginVideoSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
     assert.equal(cAdv!.estimatedCost, 5, "ADVANCED lite=5(per-tier 真值,盲估 10 是高估)");
   });
   test("动态价优先级不变:creditMapping 有本档价 → dynamic(lite ADVANCED 动态 6 覆盖静态 5)", async () => {
     const modelConfig = { videoModelFamilies: [{ usages: [{ key: "veo_3_1_t2v_lite", creditMapping: { SERVICE_TIER_ADVANCED: { cost: 6 }, SERVICE_TIER_INTERMEDIATE: { cost: 10 }, SERVICE_TIER_ENTRY: { cost: 10 } } }] }], imageModelFamilies: [] };
     const { p } = newProvider({ modelConfig, creditsBody: { credits: 500, serviceTier: "SERVICE_TIER_ADVANCED" } });
-    const c = await p.beginSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
+    const c = await p.beginVideoSubmissionConfirm({ prompt: "x", model: "veo_3_1_t2v_lite" });
     assert.equal(c!.estimatedCost, 6);
     assert.equal(c!.costSource, "dynamic");
   });
@@ -1423,7 +1423,7 @@ describe("r2v per-key 输入上限(§14.1;旧版 tier 盲硬编码 10 是错的)
     const { t, p } = newProvider({ modelConfig });
     // 直呼 createVideo 不刷目录(提交路径不拉项目数据的不变量);确认门先行刷新 → 动态 inputSpec 生效
     await assert.rejects(
-      () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: Array(3).fill(PNG_1PX) }),
+      () => p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: Array(3).fill(PNG_1PX) }),
       (e: any) => e.code === "S301" && /该 key 2.*目录 inputSpec/.test(e.message),
     );
     assert.ok(!t.calls.some((c: any) => c.method === "POST"), "零提交");
@@ -1492,22 +1492,22 @@ describe("referenceAudio(§14.6 假 key 404 探针定型;v1 收窄 = r2v + 预�
   test("digest 绑定:确认后换 audioMediaIds → S320;同集合换序 → 仍有效(集合语义)", async () => {
     const { p } = newProvider({ externalRef: VOICES });
     const req0 = { prompt: "x", model: "abra_r2v_8s", images: ["https://e.com/a.png"], audioMediaIds: ["achernar", "charon"] };
-    const c1 = await p.beginSubmissionConfirm(req0);
+    const c1 = await p.beginVideoSubmissionConfirm(req0);
     // 先做 mismatch 断言(令牌尚未消费,拒绝只能由 digest 不匹配产生 —— mutation:从 confirmDigest
     // 删除 audioMediaIds 摘入后本断言必败);成功校验会消费令牌,故有效断言必须放最后。
     await assert.rejects(
-      p.beginSubmissionConfirm({ ...req0, audioMediaIds: ["achernar"] }, c1!.confirmToken!),
+      p.beginVideoSubmissionConfirm({ ...req0, audioMediaIds: ["achernar"] }, c1!.confirmToken!),
       (e: any) => e.code === "S320",
       "确认后换音频样本必须使令牌失效(此时尚未消费,S320 只能来自 digest 不匹配)",
     );
-    const pass = await p.beginSubmissionConfirm({ ...req0, audioMediaIds: ["charon", "achernar"] }, c1!.confirmToken!);
+    const pass = await p.beginVideoSubmissionConfirm({ ...req0, audioMediaIds: ["charon", "achernar"] }, c1!.confirmToken!);
     assert.equal(pass, undefined, "集合换序语义等价,令牌仍有效(本次校验消费令牌)");
   });
   test("上限来源动态优先:inputSpec.maxAudioReferences=1 覆盖静态 5(abra;经确认门暖目录)", async () => {
     const modelConfig = { videoModelFamilies: [{ usages: [{ key: "abra_r2v_8s", inputSpec: { maxAudioReferences: 1 }, maxImageInputs: 7 }] }], imageModelFamilies: [] };
     const { p } = newProvider({ modelConfig, externalRef: VOICES });
     await assert.rejects(
-      () => p.beginSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: ["achernar", "charon"] }),
+      () => p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_r2v_8s", images: [PNG_1PX], audioMediaIds: ["achernar", "charon"] }),
       (e: any) => e.code === "S301" && /该 key 1.*目录 inputSpec/.test(e.message),
     );
   });

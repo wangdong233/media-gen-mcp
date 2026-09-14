@@ -6,6 +6,7 @@ import { PaddleocrProvider } from "./paddle.js";
 import { VlmProvider } from "./vlm.js";
 import { GlmVisionProvider } from "./glm-vision.js";
 import { FlowProvider, FLOW_MNEMONIC_RE, abraCreditRange, veoCreditRange } from "./flow.js";
+import { PixverseProvider } from "./pixverse.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -53,6 +54,15 @@ const registry: Record<string, MediaProvider> = {
     // 顶级 flow 段引用:toolDeadlineMs = 长操作防 stall 截止;videoConfirm/confirmTtlMs = 计费确认门。
     // 传对象引用供测试 live 修改。(原 enabled/S000 硬门已删,链即开关。)
     flowCfg: config.flow,
+  }),
+  pixverse: new PixverseProvider({ // PixVerse 订阅池(spawn 官方 CLI --json;契约 doc/PixVerse-provider集成.md)。
+    // 渠道准入(对齐 flow):requiresOptIn()=true —— pixverse 消耗订阅积分(09-14 终局裁决:CLI 无
+    // Relax 免费池,Standard 无免费白名单),未显式同意(点名或 priority 链列入)不进任何隐式链。
+    // 🔴 全模式计费确认门(image/video 一律两段式 confirmToken)+ CLI 版本锁(optionalDependencies
+    // 精确锁 1.4.3,禁裸 npx)+ 成本账本(~/.media-gen-mcp/pixverse-cost-ledger.json,命中优先于静态首估)。
+    bin: process.env.PIXVERSE_BIN || config.providers.pixverse?.settings?.bin,
+    models: config.providers.pixverse?.models,
+    pixverseCfg: config.pixverse,
   }),
 };
 
@@ -128,6 +138,18 @@ function hasModality(p: MediaProvider, modality: "image" | "video"): boolean {
     console.warn(
       `[media-gen-mcp] ⚠️ videoProviderPriority 包含 "flow":Flow 视频消耗积分(abra ${abraCreditRange()} / veo ${veoCreditRange()} 点每条)。仅当你在 config.json 显式如此配置时才会走到该链;未列入时 flow 视频只能显式 provider=flow 调用。`,
     );
+  }
+}
+
+// PixVerse(2026-09-14):链内列入 = 知情同意订阅积分消耗(09-14 终局裁决:CLI 无 Relax 免费池,
+// image/video 一律计费 —— qwen-image 实扣 5/10cr)。任一模态链列入都强提示。
+{
+  for (const [modality, prio] of [["image", config.imageProviderPriority], ["video", config.videoProviderPriority]] as const) {
+    if (prio?.includes("pixverse")) {
+      console.warn(
+        `[media-gen-mcp] ⚠️ ${modality}ProviderPriority 包含 "pixverse":PixVerse 走付费订阅积分池(09-14 终局裁决:CLI 无 Relax 免费池,Standard 无免费白名单;静态首估 v6-720p 9cr/s、qwen-image 1080p 10cr/张)。提交前有两段式计费确认门;未列入时只能显式 provider=pixverse 调用。`,
+      );
+    }
   }
 }
 

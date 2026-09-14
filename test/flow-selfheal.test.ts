@@ -112,10 +112,10 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flow-xproc-ok-"));
     const A = newProcess(dir);
     const B = newProcess(dir);
-    const challenge = await A.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    const challenge = await A.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
     assert.ok(challenge?.confirmToken, "A(进程一)第一段签发令牌");
     // B 是全新实例(新内存 Map、重读 secret 文件)—— 等价于第二个 node 进程
-    const pass = await B.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, challenge.confirmToken);
+    const pass = await B.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, challenge.confirmToken);
     assert.equal(pass, undefined, "B(进程二)应能校验 A 签发的令牌(跨进程安装级密钥)");
     // secret 文件形状:32B、0600
     const st = fs.statSync(path.join(dir, "flow-confirm-secret"));
@@ -127,9 +127,9 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flow-xproc-consume-"));
     const A = newProcess(dir);
     const B = newProcess(dir);
-    const c = await A.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    const c = await A.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
     // A 消费(第二段)
-    assert.equal(await A.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken), undefined);
+    assert.equal(await A.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken), undefined);
     // 消费表已落盘且形状正确;权限 0600(文件含 TTL 内仍有效的一次性令牌,防同机他用户可读)
     const raw = JSON.parse(fs.readFileSync(path.join(dir, "flow-confirm-consumed.json"), "utf-8"));
     assert.equal(raw.version, 1);
@@ -137,14 +137,14 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     assert.equal(fs.statSync(path.join(dir, "flow-confirm-consumed.json")).mode & 0o777, 0o600, "consumed 文件权限 0600");
     // B(另一进程)重放同 token → 必须拒绝
     await assert.rejects(
-      B.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
+      B.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
       (e: any) => e.code === "S320" && /已使用/.test(e.message),
       "顺序跨进程重放必须被拒(并发首消费的理论窗口见 flow.ts 字段注释,非本用例断言面)",
     );
     // 第三实例 C(消费后新起)同样拒绝 —— 读时合并磁盘消费表
     const C = newProcess(dir);
     await assert.rejects(
-      C.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
+      C.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
       (e: any) => e.code === "S320" && /已使用/.test(e.message),
     );
   });
@@ -154,13 +154,13 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     const consumedFile = path.join(dir, "flow-confirm-consumed.json");
     const A = newProcess(dir);
     const B = newProcess(dir);
-    const cA = await A.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
-    const cB = await B.p.beginSubmissionConfirm({ prompt: "y", model: "abra_t2v_10s" });
+    const cA = await A.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    const cB = await B.p.beginVideoSubmissionConfirm({ prompt: "y", model: "abra_t2v_10s" });
     // 时序模拟丢失更新窗口:B 先 sync(此刻盘上还是空)→ A 消费并落盘 T_A → B 才写自己的 T_B。
     // 旧代码(只写本进程内存)会把 T_A 抹掉,T_A 在 TTL 内变回可重放;新代码写内存 ∪ 盘上未过期的并集。
     const pB = B.p as any;
     pB.syncConsumedFromDisk(); // 盘上无文件 → B 内存表仍空(此刻未见到 T_A)
-    assert.equal(await A.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, cA!.confirmToken), undefined);
+    assert.equal(await A.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, cA!.confirmToken), undefined);
     pB.consumedConfirmTokens.set(cB!.confirmToken, Date.now() + 60_000);
     pB.persistConsumedTokens();
     const raw = JSON.parse(fs.readFileSync(consumedFile, "utf-8"));
@@ -169,7 +169,7 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     // 新进程读到的是并集 → T_A 仍不可重放(丢失更新若发生,这里会放行)
     const C = newProcess(dir);
     await assert.rejects(
-      C.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, cA!.confirmToken),
+      C.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, cA!.confirmToken),
       (e: any) => e.code === "S320" && /已使用/.test(e.message),
     );
   });
@@ -179,9 +179,9 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     const dirB = fs.mkdtempSync(path.join(os.tmpdir(), "flow-xproc-b-"));
     const A = newProcess(dirA);
     const B = newProcess(dirB);
-    const c = await A.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    const c = await A.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
     await assert.rejects(
-      B.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
+      B.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
       (e: any) => e.code === "S320" && /与当前请求不符/.test(e.message) && !/已使用/.test(e.message),
       "密钥不同源 → 签名不匹配(而非消费拒绝)",
     );
@@ -203,14 +203,14 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flow-xproc-hint-"));
     const A = newProcess(dir);
     await assert.rejects(
-      A.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, "bogus-token"),
+      A.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, "bogus-token"),
       (e: any) => e.code === "S320" && /跨进程/.test(e.message) && /安装级/.test(e.message),
       "格式非法 hint 应含跨进程说明",
     );
     const B = newProcess(fs.mkdtempSync(path.join(os.tmpdir(), "flow-xproc-hint2-")));
-    const c = await B.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_10s" });
+    const c = await B.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_10s" });
     await assert.rejects(
-      B.p.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
+      B.p.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c!.confirmToken),
       (e: any) => e.code === "S320" && /跨进程/.test(e.message),
       "参数变化 S320 hint 应含跨进程说明",
     );
@@ -218,10 +218,10 @@ describe("确认令牌跨进程(日志#15:安装级稳定密钥 + 消费表持�
     const dirS = fs.mkdtempSync(path.join(os.tmpdir(), "flow-xproc-s321-"));
     short.confirmSecretFile = path.join(dirS, "s");
     short.confirmConsumedFile = path.join(dirS, "c.json");
-    const c2 = await short.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
+    const c2 = await short.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" });
     await new Promise((r) => setTimeout(r, 80));
     await assert.rejects(
-      short.beginSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c2!.confirmToken),
+      short.beginVideoSubmissionConfirm({ prompt: "x", model: "abra_t2v_8s" }, c2!.confirmToken),
       (e: any) => e.code === "S321" && /跨进程/.test(e.message),
       "S321 过期 hint 应含跨进程说明",
     );

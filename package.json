@@ -56,7 +56,8 @@
   },
   "optionalDependencies": {
     "@napi-rs/canvas": "^1.0.2",
-    "pdfjs-dist": "^6.1.200"
+    "pdfjs-dist": "^6.1.200",
+    "pixverse": "1.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

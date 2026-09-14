@@ -223,6 +223,7 @@ export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoPro
     const warnings: string[] = [];
     if (req.aspect) warnings.push("agnes 不支持 aspect,已忽略;请用 size 控制尺寸。");
     if (req.seed != null) warnings.push("agnes 不支持 seed,已忽略。");
+    if (req.quality) warnings.push("agnes 不支持 quality,已忽略(尺寸由 size 控制)。");
     const body: Record<string, unknown> = { model, prompt: req.prompt };
     if (req.size) body.size = req.size;
     // n 不透传上游(Agnes 网关忽略 n);批量由工具层 fan-out 兑现。

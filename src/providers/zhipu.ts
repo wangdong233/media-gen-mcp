@@ -286,6 +286,7 @@ export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoPro
     // 丢弃参数告警(aspect/seed 为渠道专属直通参数,zhipu 图像不消费 —— 执行点内聚在丢弃方)
     if (req.aspect) warnings.push("zhipu 不支持 aspect,已忽略;请用 size 控制尺寸。");
     if (req.seed != null) warnings.push("zhipu 不支持 seed,已忽略。");
+    if (req.quality) warnings.push("zhipu 不支持 quality,已忽略(尺寸由 size 控制)。");
     return { outputs, raw: r, watermarked: wantedWatermark, warnings };
   }
 

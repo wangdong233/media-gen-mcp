@@ -38,6 +38,12 @@ export interface ImageRequest {
    * agnes/zhipu 的 Object.assign(body, extra) 直透上游请求体)。
    */
   seed?: number;
+  /**
+   * 输出质量档(pixverse 先例:quality 是一等计费参数 —— qwen-image 720p=5cr / 1080p=10cr)。
+   * provider 按自家枚举吸附/消费(经能力表 on_invalid=adjust 预吸附并告警);
+   * 不支持的 provider(agnes/zhipu/flow)自行告警后忽略。
+   */
+  quality?: string;
   /** provider 私有字段透传口(如 Agnes 的 return_base64 / extra_body.response_format)。 */
   extra?: Record<string, unknown>;
 }
@@ -140,6 +146,19 @@ export interface ImageProvider {
    * 未实现 / 返回 false = 仅 URI。存在性/类型校验仍归 provider 提交路径的结构化错误。
    */
   acceptsImageInputRef?(value: string, req: { model?: string; images?: string[] }): boolean;
+  /**
+   * 计费确认门(图像模态可选钩子;pixverse 先例 —— 2026-09-14 终局裁决:CLI 生图走计费通道,
+   * Standard 无 Relax 免费白名单,故图像提交同样两段式确认)。语义与 VideoProvider 的
+   * beginVideoSubmissionConfirm 完全一致:无 confirmToken 且本请求消耗计费资源 → 返回
+   * SubmissionConfirm(不提交);带 confirmToken → 校验,通过返回 undefined 放行;免费渠道
+   * 不实现(零影响)。handler 在提交点(含 fallback 目标)前调用本钩子。
+   *
+   * 🔴 判别显式化(2026-09-14 审查 P0-2):图像/视频各自独立钩子,模态由「调用了哪个钩子」
+   * 表达 —— 禁止请求形状猜测(最小合法 VideoRequest {prompt, model} 与 ImageRequest 结构
+   * 重叠,任何 shape-marker 判别都不可靠;旧 looksLikeVideoRequest 已删)。同渠道双模态计费
+   * 的 provider(如 pixverse)分别实现两个钩子;免费模态不实现即豁免。
+   */
+  beginImageSubmissionConfirm?(req: ImageRequest, confirmToken?: string): Promise<SubmissionConfirm | undefined>;
 }
 
 export interface VideoProvider {
@@ -165,8 +184,9 @@ export interface VideoProvider {
    * - 带 confirmToken → 校验(TTL + 与当前请求的绑定),失败抛结构化错,通过返回 undefined 放行提交;
    * - 未实现 / 本请求免费(如 0 积分超分)→ undefined(直接提交,零影响)。
    * handler 在每个真实提交点(含优先级链 fallback 目标)前调用本钩子。
+   * 模态判别经钩子名显式表达(图像侧 beginImageSubmissionConfirm;禁请求形状猜测,详见其注释)。
    */
-  beginSubmissionConfirm?(req: VideoRequest, confirmToken?: string): Promise<SubmissionConfirm | undefined>;
+  beginVideoSubmissionConfirm?(req: VideoRequest, confirmToken?: string): Promise<SubmissionConfirm | undefined>;
 }
 
 /**

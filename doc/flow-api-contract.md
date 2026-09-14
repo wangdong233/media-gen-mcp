@@ -419,7 +419,7 @@ POST /v1/flow/upsampleImage
 
 - **活性契约**:本文档是 Flow wire 真相的唯一活性来源。新 wire 发现**追加新节**(§N+1),不追写进已定型的节;对既有结论的修正沿用先例格式「原结论 → 后被 §N.x 修正」(见 §10.4 action 误用归因的自我修正),已 live 验证的历史不删改。
 - **积分台账纪律(不变)**:每次 live 提交在对应节记录台账(如 §7 918→894、§10.6 911→901、§11 901→901);调研性探针默认零积分——优先 bundle Zod 明文 key 检索(§10.1,零请求),404 探针只作补充;严禁程序化 UI 机枪操作(§10.4 reCAPTCHA 打热 >15 分钟教训)。
-- **代码锚点**:provider 实现 `src/providers/flow.ts`(确认门 `beginSubmissionConfirm` §计费确认门;渠道启停 = 优先级链,S000 硬门已于 2026-08-26 删除);工具面 `generate_image`/`create_video`(`provider=flow`)+ `flow_status`(自省/下载/删除/分享/取消;flow_entity 已按用户裁决移除 2026-08-26,存档 §13);测试 `dist-test/flow*.test.js` + `test/flow-*.integration.test.mjs`(confirmToken 单次消费 = faaeead)。
+- **代码锚点**:provider 实现 `src/providers/flow.ts`(确认门 `beginVideoSubmissionConfirm` §计费确认门;渠道启停 = 优先级链,S000 硬门已于 2026-08-26 删除);工具面 `generate_image`/`create_video`(`provider=flow`)+ `flow_status`(自省/下载/删除/分享/取消;flow_entity 已按用户裁决移除 2026-08-26,存档 §13);测试 `dist-test/flow*.test.js` + `test/flow-*.integration.test.mjs`(confirmToken 单次消费 = faaeead)。
 - **历史归档**:pares0-14 各阶段实施/调研文档(含本项目 Flow 之前的全部实施方案)已于 2026-08-26 全量归档至仓库 `.doc-archive-snapshot/`(128 文件,PROVENANCE.md 记录萃取去向);渠道扩张全景与判据见 `doc/Provider扩张路线图.md`,渠道治理规则见 `doc/架构要求清单.md` §11 ADR-2。
 
 ## 13. 角色域存档:移除裁决 + 终局 wire 实证(2026-08-26;积分 1050→1050,全部 0 消耗)
@@ -536,7 +536,7 @@ CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome
 
 ## 15. t2v / edit / 音频参考三笔 live 转正(2026-08-27,L 轮用户授权;积分 888→854,-34)
 
-> 三笔授权预算 ≤37(t2v 7 / edit 20 / r2v+audio 7),总闸 45;实扣 34,三笔全部一次成功零重试,预估(dynamic)=实扣零误差。方法:dist provider 代码路径(确认门两段式 beginSubmissionConfirm → createVideo → getVideo 轮询 → 下载 ffprobe),驱动脚本 /tmp/live-L3/。基线勘误:本轮期初余额实际 **888**(=§14.10 台账期末),"1050" 是 §14.10 期初值。
+> 三笔授权预算 ≤37(t2v 7 / edit 20 / r2v+audio 7),总闸 45;实扣 34,三笔全部一次成功零重试,预估(dynamic)=实扣零误差。方法:dist provider 代码路径(确认门两段式 beginVideoSubmissionConfirm → createVideo → getVideo 轮询 → 下载 ffprobe),驱动脚本 /tmp/live-L3/。基线勘误:本轮期初余额实际 **888**(=§14.10 台账期末),"1050" 是 §14.10 期初值。
 
 | 笔 | key | 输入 | 实扣 | 时长 | 分辨率 | 音轨 |
 |---|---|---|---|---|---|---|
@@ -562,5 +562,5 @@ CLI 拉起 hidden 档 Chrome 供本项目 CDP 直连时,须 `lasso launch-chrome
 
 - 图片 in-flight 取消 404(§11.3 既有);视频早取消 400;**中段窗口未测到**(生成太快,重试时已完成)。
 - **工具语义已降级为 best-effort**(index.ts cancelMediaIds 描述 2026-08-27 更新):只在"数秒内发现提交错"时有价值。
-- 🔴 顺带发现(操作失误,如实记录):provider 直调 `createVideo` **无确认门**(门接线在 index.ts handler 层,types.ts 注释明示)——live 脚本两次直调 = 双提交(d52a26ed/0b3faa47 各 -7)。设计如此非缺陷;**live 脚本纪律:每笔提交只调一次 createVideo,门操作用 beginSubmissionConfirm 表达**。
+- 🔴 顺带发现(操作失误,如实记录):provider 直调 `createVideo` **无确认门**(门接线在 index.ts handler 层,types.ts 注释明示)——live 脚本两次直调 = 双提交(d52a26ed/0b3faa47 各 -7)。设计如此非缺陷;**live 脚本纪律:每笔提交只调一次 createVideo,门操作用 beginVideoSubmissionConfirm 表达**。
 - 附带观测:veo lite 实际生成耗时 ~45s(契约 §3 旧表 ~110s 已过时,模型侧明显提速)。

@@ -85,6 +85,31 @@ export function parseFlowSection(raw: unknown): { toolDeadlineMs: number; videoC
 }
 
 /**
+ * 顶级 "pixverse" 渠道运行时段(2026-09-14 PixVerse provider;语义对齐 parseFlowSection):
+ *   - toolDeadlineMs:长操作(生图轮询/视频提交/取件)工具级截止,防 stall 红线 ≤120s;默认 110s;
+ *   - confirm:计费确认门(两段式确认令牌)。默认 true —— 09-14 终局裁决 CLI 无 Relax 免费池
+ *     (image/video 一律扣订阅积分),误门代价远小于漏门;仅显式 false 关;
+ *   - confirmTtlMs:确认令牌 TTL,默认 10 分钟;
+ *   - pinnedVersion:CLI 版本锁(optionalDependencies 之外的显式覆盖口;升级 = 显式 act + CHANGELOG 评审)。
+ * 纯解析函数导出供单测白盒(与 parseFlowSection 同范式:解析与 I/O 分离)。
+ */
+export function parsePixverseSection(raw: unknown): {
+  toolDeadlineMs: number; confirm: boolean; confirmTtlMs: number; pinnedVersion?: string;
+} {
+  const s = (raw ?? {}) as Record<string, any>;
+  const deadline = num("PIXVERSE_TOOL_DEADLINE_MS", 110_000, s.toolDeadlineMs);
+  const ttl = num("PIXVERSE_CONFIRM_TTL_MS", 600_000, s.confirmTtlMs);
+  return {
+    toolDeadlineMs: Number.isFinite(deadline) && deadline > 0 ? deadline : 110_000,
+    confirm: s.confirm !== false,
+    confirmTtlMs: Number.isFinite(ttl) && ttl > 0 ? ttl : 600_000,
+    ...(typeof s.pinnedVersion === "string" && /^\d+\.\d+\.\d+$/.test(s.pinnedVersion)
+      ? { pinnedVersion: s.pinnedVersion }
+      : {}),
+  };
+}
+
+/**
  * 动态构造 providers:遍历 config.json 的 providers 块,字段通用化。
  * 新增 provider 只需 config.json 加块 + registry.ts 注册 + 实现文件 —— config.ts 零改动。
  * env 回退按约定 `<UPPER(NAME)>_API_KEY` 等。
@@ -152,6 +177,12 @@ export const config = {
    * 对象整体注入 FlowProvider(registry 传引用,测试可 live 修改)。
    */
   flow: parseFlowSection(userCfg.flow),
+
+  /**
+   * 顶级 "pixverse" 渠道运行时段(2026-09-14:toolDeadlineMs + 计费确认门 + CLI 版本锁覆盖口)。
+   * 对象整体注入 PixverseProvider(registry 传引用,测试可 live 修改)。
+   */
+  pixverse: parsePixverseSection(userCfg.pixverse),
 
   outDir: userCfg.outDir
     ? path.resolve(userCfg.outDir)

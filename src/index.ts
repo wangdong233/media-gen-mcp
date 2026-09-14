@@ -21,7 +21,7 @@ import {
 import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, getProviderPriority, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
-import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList, sniffImage } from "./providers/flow.js";
+import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList, sniffImage } from "./image-sniff.js";
 import { isImageUri, localizeImageInput } from "./local-image.js";
 import { isFallbackWorthy, isChainAdvanceable, isRequestPinned } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
@@ -171,29 +171,31 @@ function buildTools() {
     {
       name: "generate_image",
       description:
-        "Generate or edit an AI image (text-to-image 文生图/AI画图; or image-to-image 图生图 via `images`) using free models (Agnes AI default, or Zhipu). Output downloads locally and the path is returned; no local rendering libs needed.\n\nWHEN: subject is photographic or illustrated (写实图/插画/概念图/original logo artwork / 原创品牌主视觉); user says 'AI画图 / 文生图 / generate an image of ...' and wants AI-generated pixels.\n\nAVOID:\n- Text-heavy cards / OG images / posters / quote cards / cover images → use `generate_card` instead (deterministic Satori render, no AI variability, same input → same output).\n- An existing brand logo (Iconify 200k+ vector set) → use `generate_icon` instead; this tool only draws ORIGINAL logo artwork.\n\nNEXT: call `list_models` first to discover available model names and size constraints per provider. provider=flow (Google Flow via local Chrome): `aspect` (16:9/9:16/1:1/3:4/4:3) and `seed` are honored exactly; outputs carry `mediaId`+`seed` (re-download via `flow_status(mediaId)`); image generation is " + FLOW_ZERO_CREDIT + "-credit. provider=flow also accepts `images` (image-to-image, live-verified): images[0] = base image (aspect follows the base), images[1..9] = references (base + references cap: 10 total) — each is uploaded to the Flow project first (" + FLOW_ZERO_CREDIT + " credits). Image UPSCALE: model=GEM_PIX_2_UPSAMPLE_2K + images[0] (an existing image mediaId, or a URI to upload first) → 2K upscale, " + FLOW_ZERO_CREDIT + " credits, prompt ignored.\n\nMultilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
+        "Generate or edit an AI image (text-to-image 文生图/AI画图; or image-to-image 图生图 via `images`) using free models (Agnes AI default, or Zhipu). Output downloads locally and the path is returned; no local rendering libs needed.\n\nWHEN: subject is photographic or illustrated (写实图/插画/概念图/original logo artwork / 原创品牌主视觉); user says 'AI画图 / 文生图 / generate an image of ...' and wants AI-generated pixels.\n\nAVOID:\n- Text-heavy cards / OG images / posters / quote cards / cover images → use `generate_card` instead (deterministic Satori render, no AI variability, same input → same output).\n- An existing brand logo (Iconify 200k+ vector set) → use `generate_icon` instead; this tool only draws ORIGINAL logo artwork.\n\nNEXT: call `list_models` first to discover available model names and size constraints per provider. provider=flow (Google Flow via local Chrome): `aspect` (16:9/9:16/1:1/3:4/4:3) and `seed` are honored exactly; outputs carry `mediaId`+`seed` (re-download via `flow_status(mediaId)`); image generation is " + FLOW_ZERO_CREDIT + "-credit. provider=flow also accepts `images` (image-to-image, live-verified): images[0] = base image (aspect follows the base), images[1..9] = references (base + references cap: 10 total) — each is uploaded to the Flow project first (" + FLOW_ZERO_CREDIT + " credits). Image UPSCALE: model=GEM_PIX_2_UPSAMPLE_2K + images[0] (an existing image mediaId, or a URI to upload first) → 2K upscale, " + FLOW_ZERO_CREDIT + " credits, prompt ignored. provider=pixverse (PixVerse subscription pool via official CLI): 14 image models (gpt-image-2.5-flare default / qwen-image / gemini-3.1-flash NB2 / seedream / kling-image…); `aspect` (up to 11 ratios incl 21:9/5:4) and `quality` (720p/1080p…, a first-class BILLING parameter) honored with per-model capability adsorption; images = references (qwen-image max 3); outputs are direct https URLs. 🔴 2026-09-14 final adjudication: the CLI has NO Relax free pool (Standard has no free whitelist — qwen-image actually bills 5/10cr) → EVERY pixverse image submission goes through the TWO-PHASE BILLING CONFIRM GATE (`confirmToken`, same flow as flow video): first call returns {needConfirm, estimatedCost, confirmToken} WITHOUT submitting; re-call with the same params + token to submit.\n\nMultilingual triggers: 画像 · imagen · image · Bild · изображение · imagem (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "Image description." },
           model: {
             type: "string",
-            description: "Optional; omit to use the provider default. Call list_models to see options. provider=flow: GEM_PIX_2_UPSAMPLE_2K = 2K UPSCALE mode (requires images[0] = an existing image mediaId or a URI; " + FLOW_ZERO_CREDIT + " credits, prompt ignored — a non-empty placeholder prompt is still required by the schema).",
+            description: "Optional; omit to use the provider default. Call list_models to see options. provider=flow: GEM_PIX_2_UPSAMPLE_2K = 2K UPSCALE mode (requires images[0] = an existing image mediaId or a URI; " + FLOW_ZERO_CREDIT + " credits, prompt ignored — a non-empty placeholder prompt is still required by the schema). provider=pixverse: 14 models (gpt-image-2.5-flare / gpt-image-2.5-sunburst / gpt-image-2.0 / gemini-3.1-flash / gemini-3.1-flash-lite / qwen-image / gemini-3.0 / gemini-2.5-flash / seedream-5.0-pro / seedream-5.0-lite / seedream-4.5 / seedream-4.0 / kling-image-o3 / kling-image-v3).",
           },
-          size: { type: "string", description: "e.g. 1024x1024. Zhipu requires each side 512-2880, multiple of 16, pixels ≤ 2^21 — the tool auto-snaps to a valid size; Agnes accepts free size. provider=flow: size maps to the nearest of 5 aspect ratios (1920x1080→16:9 / 720x1280→9:16 / 1024x1024→1:1 / 768x1024→3:4 / 1024x768→4:3); pass `aspect` for an exact ratio." },
-          aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "3:4", "4:3"], description: "Direct aspect ratio (provider=flow only — maps to Flow IMAGE_ASPECT_RATIO_*; exact, no size guessing). Other providers ignore it with a warning; use `size` there." },
-          seed: { type: "number", description: "Seed for reproducible results (provider=flow only — goes straight into the request; the response echoes the actual per-image seed). Other providers ignore it with a warning." },
-          n: { type: "number", description: "Number of images (1-8). Provider APIs ignore batch n, so the tool fans out N parallel single-image requests; partial success returns fewer + a `warnings` field." },
+          size: { type: "string", description: "e.g. 1024x1024. Zhipu requires each side 512-2880, multiple of 16, pixels ≤ 2^21 — the tool auto-snaps to a valid size; Agnes accepts free size. provider=flow: size maps to the nearest of 5 aspect ratios (1920x1080→16:9 / 720x1280→9:16 / 1024x1024→1:1 / 768x1024→3:4 / 1024x768→4:3); pass `aspect` for an exact ratio. provider=pixverse: non-default size maps to the nearest of 11 aspect ratios (pixverse has no pixel-size parameter)." },
+          aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "3:4", "4:3"], description: "Direct aspect ratio (provider=flow maps to IMAGE_ASPECT_RATIO_*; provider=pixverse passes it through with per-model adsorption — its native enum is wider: 1:1/16:9/9:16/4:3/3:4/5:4/4:5/3:2/2:3/21:9). Other providers ignore it with a warning; use `size` there." },
+          quality: { type: "string", description: "Output quality tier (provider=pixverse only — a first-class BILLING parameter: qwen-image 720p=5cr vs 1080p=10cr; adsorbed per-model with a warning, e.g. gpt-image-2.5 enum 1080p/1440p/2160p). agnes/zhipu/flow ignore it with a warning (use `size` there)." },
+          seed: { type: "number", description: "Seed for reproducible results (provider=flow / provider=pixverse pass-through). Other providers ignore it with a warning." },
+          n: { type: "number", description: "Number of images (1-8). Provider APIs ignore batch n, so the tool fans out N parallel single-image requests; partial success returns fewer + a `warnings` field. provider=pixverse: the confirm gate estimates the TOTAL (per-unit × n) up front." },
           images: {
             type: "array",
             items: { type: "string" },
-            description: "Image-to-image inputs (public URL / data URI / absolute local file path — read server-side, ≤15MB). Omit for text-to-image.",
+            description: "Image-to-image inputs (public URL / data URI / absolute local file path — read server-side, ≤15MB). Omit for text-to-image. provider=pixverse also accepts numeric asset ids from its asset library.",
           },
           watermark: { type: "boolean", default: false, description: "true = keep provider watermark (Zhipu). Default false requests watermark off; some free-tier models may still embed one — see response `watermarked` flag." },
           download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get mediaId only." },
           name: { type: "string", description: "Output filename (without extension); multi-image adds -1/-2/… suffix. Defaults to img_<uuid>. NOTE: providers (incl. Google Flow) do not name assets server-side — this name applies when the tool downloads & saves locally; if the file already exists, a -2/-3… suffix is added (never silently overwrites)." },
           outDir: { type: "string", description: "Output directory; omit = default ./output under the server start dir (the project that launched the task); change globally via config outDir." },
-          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); naming an opt-in provider (flow) pins it — errors surface instead of silently substituting, while free providers (agnes/zhipu) named explicitly still fall through with a warning. Not listing a provider in the chain = it is not auto-routed; explicit provider calls are always allowed (environment problems surface as structured S1xx preflight errors). Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
+          confirmToken: { type: "string", description: "Two-phase billing confirm (provider=pixverse image — the CLI bills subscription credits for EVERY image; see tool description). First call without the token returns {needConfirm, estimatedCost, confirmToken, expiresInSeconds} WITHOUT submitting; re-call with the SAME parameters + the token to submit. Tokens are short-lived (default 10 min, pixverse.confirmTtlMs), single-use, and bound to model+quality+aspect+n+prompt+input references — changing any of them invalidates the token (fetch a fresh one). estimatedCost comes from the observed cost ledger first (~/.media-gen-mcp/pixverse-cost-ledger.json), then a static first-estimate (drifts — the manual proved v6-360p bills 4cr/s vs 5cr/s documented); actual deduction always wins. Free providers never trigger the gate; disable via config pixverse.confirm=false (not recommended)." },
+          provider: { type: "string", default: getProviderPriority("image")?.[0] ?? config.defaultImageProvider, description: "Optional; omit to use the image provider chain head (imageProviderPriority[0] if configured, else defaultImageProvider). On failure the chain falls through in order (e.g. flow → agnes → zhipu); naming an opt-in provider (flow/pixverse) pins it — errors surface instead of silently substituting, while free providers (agnes/zhipu) named explicitly still fall through with a warning. Not listing a provider in the chain = it is not auto-routed; explicit provider calls are always allowed (environment problems surface as structured S1xx preflight errors). Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
         },
         required: ["prompt"],
       },
@@ -201,7 +203,7 @@ function buildTools() {
     {
       name: "create_video",
       description:
-        "Create an AI video (text-to-video / image-to-video / keyframe animation; 文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) via free models (Agnes AI default, or Zhipu). Smart async: long videos return a handle; short ones block until done.\n\nWHEN: user wants photorealistic or AI-generated video (写实视频 / AI 合成画面 / 让这张图动起来).\n\nAVOID:\n- HTML/CSS/GSAP motion graphics / kinetic typography / animated charts / brand intros (deterministic, same input → same output, no AI) → use `render_video` instead.\n\nNEXT: poll returned handles with `get_video` until status=done; verify allowed numFrames per provider first (`list_models`). Flow provider (provider=\"flow\") BILLING CONFIRM GATE: video calls need a two-phase `confirmToken` — the first call returns {needConfirm, estimatedCost, confirmToken, expiresInSeconds} INSTEAD of submitting (" + FLOW_ZERO_CREDIT + " credits spent); re-call with the same parameters + the token to submit (details: `confirmToken`). ONE clip per call — x2-x4 = repeat calls, each billing credits (the UI's x1-x4 = the same N independent single-item POSTs); seed behavior across the N calls: see `seed`. Seven modes (wire §14; all live-verified — latest 2026-08-27, per-mode dates §15): t2v = prompt + t2v key (abra_t2v_8s); i2v = `image` + i2v key (abra_i2v_8s / veo_3_1_i2v_lite; upload " + FLOW_ZERO_CREDIT + " credits); r2v = `images` + r2v key (abra_r2v_8s / veo_3_1_r2v_lite, " + abraGenCreditRange() + " credits by duration); first+last frame = `keyframes` (exactly 2) + interpolation/_fl key (veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl); extend = `videoMediaId` + extension key (veo_3_1_extension_lite / veo_3_1_extend_fast_landscape, " + flowCreditsEn("veo_3_1_extension_lite") + "); upscale = `videoMediaId` + veo_3_1_upsampler_1080p (" + flowCreditsEn("veo_3_1_upsampler_1080p") + "; 4k tier-locked); V2V edit = `videoMediaId` + edit-instruction prompt + abra_edit (" + flowCreditsEn("abra_edit") + "). Credit ranges per clip: abra family " + abraCreditRange() + ", veo " + veoPlainCostsList() + ". Full live catalog + per-key/per-tier prices: `flow_status()`.\n\nMultilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
+        "Create an AI video (text-to-video / image-to-video / keyframe animation; 文生视频/图生视频/关键帧动画/让这张图动起来/做个动画) via free models (Agnes AI default, or Zhipu). Smart async: long videos return a handle; short ones block until done.\n\nWHEN: user wants photorealistic or AI-generated video (写实视频 / AI 合成画面 / 让这张图动起来).\n\nAVOID:\n- HTML/CSS/GSAP motion graphics / kinetic typography / animated charts / brand intros (deterministic, same input → same output, no AI) → use `render_video` instead.\n\nNEXT: poll returned handles with `get_video` until status=done; verify allowed numFrames per provider first (`list_models`). Flow provider (provider=\"flow\") BILLING CONFIRM GATE: video calls need a two-phase `confirmToken` — the first call returns {needConfirm, estimatedCost, confirmToken, expiresInSeconds} INSTEAD of submitting (" + FLOW_ZERO_CREDIT + " credits spent); re-call with the same parameters + the token to submit (details: `confirmToken`). ONE clip per call — x2-x4 = repeat calls, each billing credits (the UI's x1-x4 = the same N independent single-item POSTs); seed behavior across the N calls: see `seed`. Seven modes (wire §14; all live-verified — latest 2026-08-27, per-mode dates §15): t2v = prompt + t2v key (abra_t2v_8s); i2v = `image` + i2v key (abra_i2v_8s / veo_3_1_i2v_lite; upload " + FLOW_ZERO_CREDIT + " credits); r2v = `images` + r2v key (abra_r2v_8s / veo_3_1_r2v_lite, " + abraGenCreditRange() + " credits by duration); first+last frame = `keyframes` (exactly 2) + interpolation/_fl key (veo_3_1_interpolation_lite / veo_3_1_i2v_s_fast_fl); extend = `videoMediaId` + extension key (veo_3_1_extension_lite / veo_3_1_extend_fast_landscape, " + flowCreditsEn("veo_3_1_extension_lite") + "); upscale = `videoMediaId` + veo_3_1_upsampler_1080p (" + flowCreditsEn("veo_3_1_upsampler_1080p") + "; 4k tier-locked); V2V edit = `videoMediaId` + edit-instruction prompt + abra_edit (" + flowCreditsEn("abra_edit") + "). Credit ranges per clip: abra family " + abraCreditRange() + ", veo " + veoPlainCostsList() + ". Full live catalog + per-key/per-tier prices: `flow_status()`. PixVerse provider (provider=\"pixverse\", subscription pool via official CLI): 25 video models aggregated on one subscription (v6 / pixverse-c1 / seedance-2.5 / minimax-h3 / flux-3.0 / wan-3.0 / kling-* / veo-3.1-* / sora-2 * / grok-imagine * …); P1 modes = text-to-video (prompt) + image-to-video (`image`, single); `durationSeconds` is NATIVE (v6 1-15s integers); resolution maps to per-model quality enums (v6 360p/540p/720p/1080p); ratio maps to per-model aspect enums (v6 incl 21:9/3:2/2:3). keyframes/multi-reference (CLI transition/reference modes) are P2 — not wired. 🔴 Same TWO-PHASE BILLING CONFIRM GATE as flow video (`confirmToken`): every pixverse video bills subscription credits; exit-7 concurrency retries (5s/10s/20s ×3) reuse the same idempotency key without re-confirming.\n\nMultilingual triggers: 動画 · vídeo · vidéo · Video · видео · vídeo (ja/es/fr/de/ru/pt).",
       inputSchema: {
         type: "object",
         properties: {
@@ -221,13 +223,13 @@ function buildTools() {
           seed: { type: "number", description: "Reproducibility seed. provider=flow: passed through, actual seed echoed in outputs; omit → random per call (repeat calls for xN each get a fresh seed; an explicit seed is reused across the N calls)." },
           negativePrompt: { type: "string", description: "Negative prompt. provider=flow: NOT on the wire — ignored with a warning (fold exclusions into the prompt instead, e.g. 'no text overlays')." },
           wait: { type: "boolean", description: "Omit = smart (estimated ≤60s sync, >60s async returns a handle); true = block until done (emits progress); false = return a handle immediately." },
-          confirmToken: { type: "string", description: "Two-phase billing confirm (provider=flow video only — the gate flow & response shape are in the tool description). Tokens are short-lived (default 10 min, flow.confirmTtlMs) and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds) — changing any of them invalidates the token (fetch a fresh one). Free submissions and non-flow providers never trigger the gate; tier-unavailable keys are rejected with a per-tier matrix instead of getting a token (see model); disable via config flow.videoConfirm=false." },
+          confirmToken: { type: "string", description: "Two-phase billing confirm (provider=flow / provider=pixverse video — the gate flow & response shape are in the tool description). Tokens are short-lived (default 10 min, flow.confirmTtlMs / pixverse.confirmTtlMs), single-use, and bound to model+duration+estimate+prompt+input references (image/keyframes/images/videoMediaId/audioMediaIds; pixverse also quality+count+audio) — changing any of them invalidates the token (fetch a fresh one). Free submissions and free providers never trigger the gate; flow tier-unavailable keys are rejected with a per-tier matrix instead of getting a token (see model); disable via config flow.videoConfirm=false / pixverse.confirm=false." },
           timeoutMs: { type: "number", default: 900000, description: "Max ms to block in wait=true smart-sync mode (default 900000) before returning a handle." },
           pollIntervalMs: { type: "number", default: 10000, description: "Poll cadence in ms while waiting in sync mode (default 10000)." },
           download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get the taskId/mediaId only." },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>. Providers (incl. Flow) do not name assets server-side — applies at local download; existing files get -2/-3… suffix (never silently overwrites)." },
           outDir: { type: "string", description: "Output directory; omit = default ./output under the server start dir (the project that launched the task); change globally via config outDir." },
-          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider). provider=flow bills credits — always pass it explicitly when Flow video is intended. Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
+          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider). provider=flow / provider=pixverse bill credits — always pass it explicitly when those are intended. Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
         },
         required: ["prompt"],
       },
@@ -239,12 +241,12 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          videoId: { type: "string", description: "Task id from create_video (agnes/zhipu async handle). provider=flow: pass the mediaId as taskId instead (flow has no separate videoId)." },
-          taskId: { type: "string", description: "legacy fallback endpoint" },
+          videoId: { type: "string", description: "Task id from create_video (agnes/zhipu async handle). provider=flow: pass the mediaId as taskId instead (flow has no separate videoId). provider=pixverse: pass the numeric video_id as taskId." },
+          taskId: { type: "string", description: "legacy fallback endpoint; provider=flow = mediaId, provider=pixverse = numeric video_id (task status polling)" },
           download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get raw metadata only." },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>. For Flow: mediaId/seed/model/prompt are returned alongside local_path so each file maps back to its exact input. Existing files get -2/-3… suffix (never silently overwrites)." },
           outDir: { type: "string", description: "Download directory; omit = default ./output under the server start dir (same as create_video, so async polling writes to the same place); change globally via config outDir." },
-          provider: { type: "string", default: videoHead, description: "Provider used at task creation: 'agnes' / 'zhipu' / 'flow' — defaults to the video provider chain head. create_video responses carry provider_used; pass it back here to poll the right backend." },
+          provider: { type: "string", default: videoHead, description: "Provider used at task creation: 'agnes' / 'zhipu' / 'flow' / 'pixverse' — defaults to the video provider chain head. create_video responses carry provider_used; pass it back here to poll the right backend." },
         },
       },
     },
@@ -341,7 +343,7 @@ function buildTools() {
     },
     {
       name: "list_models",
-      description: "List available AI image/video models and video constraints per provider. Generation providers: agnes / zhipu / flow (flow's live video key catalog is richer via `flow_status`); vision providers (tesseract/paddle/vlm/glm-vision) are listed too. Use to discover model names (e.g. cogview-4, agnes-video-v2.0) and allowed video frame counts before calling generate_image / create_video.",
+      description: "List available AI image/video models and video constraints per provider. Generation providers: agnes / zhipu / flow (flow's live video key catalog is richer via `flow_status`) / pixverse (subscription-pool CLI; its per-model capability enums — quality/aspect/duration with on_invalid=adjust — are queried lazily per call, not listed here); vision providers (tesseract/paddle/vlm/glm-vision) are listed too. Use to discover model names (e.g. cogview-4, agnes-video-v2.0, qwen-image, veo-3.1-lite) and allowed video frame counts before calling generate_image / create_video.",
       inputSchema: {
         type: "object",
         properties: { provider: { type: "string", description: "Optional: filter detail to one provider (agnes/zhipu/flow/tesseract/paddle/vlm/glm-vision); omit = all." } },
@@ -733,6 +735,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           return err(`provider "${p.name}" 不支持图生图(images 会被忽略)。请改用 agnes,或去掉 images 走纯文生图。`);
         }
         const extra = a.watermark === true ? { watermark_enabled: true } : undefined;
+        // 质量档直通参数(pixverse 一等计费参数;qwen-image 720p=5cr/1080p=10cr):
+        // 不支持的 provider(agnes/zhipu/flow)自行告警后忽略(执行点内聚在丢弃方)。
+        const quality = optString(a.quality);
+        // 计费确认门(渠道无关可选钩子 types.ts ImageProvider.beginImageSubmissionConfirm,pixverse 内聚
+        // 实现 —— 09-14 终局裁决 CLI 生图走计费通道):路由到/显式用计费渠道且未带 confirmToken →
+        // 先返回积分预估 + 短时效确认令牌(不提交);带 token 复调经校验后放行。免费渠道未实现钩子 →
+        // undefined 直提交(零影响)。模态经钩子名显式表达(禁请求形状猜测,types.ts P0-2)。
+        const imageConfirmToken = optString(a.confirmToken);
+        {
+          const challenge = await p.beginImageSubmissionConfirm?.(
+            { prompt, model, size: optString(a.size) ?? "1024x1024", images: imgs, extra, aspect, seed: imageSeed, quality, n },
+            imageConfirmToken,
+          );
+          if (challenge) return ok(challenge);
+        }
         // C 任务:渠道优先级链式 walk(复用 getFallbackProvider 的排序/熔断/能力谈判管线,不旁路)。
         // 钉死守卫(audit finding-15 语义劫持防护;三审 finding-1 单一真源 http.ts isRequestPinned):
         // 显式点名 opt-in 渠道(provider=X 或 model 归属 X,如 flow)→ 失败直抛,绝不静默换成其他渠道
@@ -747,7 +764,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           let activeSize = optString(a.size) ?? "1024x1024";
           for (let hop = 0; ; hop++) {
             try {
-              const result = await active.generateImage({ prompt, model: activeModel, size: activeSize, images: imgs, extra, aspect, seed: imageSeed });
+              const result = await active.generateImage({ prompt, model: activeModel, size: activeSize, images: imgs, extra, aspect, seed: imageSeed, quality, n });
               return { result, providerName: active.name };
             } catch (e: any) {
               // pares3 语义保留:非 fallback-worthy 的业务错直抛;钉死链(opt-in 渠道显式点名)直抛。
@@ -761,13 +778,27 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
               activeSize = fb.snapImageSize?.(activeSize) ?? activeSize;
               warnings.push(`provider "${active.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"(免费)。`);
               active.notifyUnavailable?.(e);
-              // aspect/seed 是渠道专属直通参数:离开支持渠道后的丢弃由目标 provider 自行告警(不静默)
+              // 计费确认门对 fallback 目标同样生效(链内计费渠道如 pixverse = 用户显式列入的知情
+              // 付费档):fan-out 内无法直接返回挑战 → 以带 challenge 标记的错误上浮,外层原样返回。
+              if (typeof fb.beginImageSubmissionConfirm === "function") {
+                const fbChallenge = await fb.beginImageSubmissionConfirm(
+                  { prompt, model: undefined, size: activeSize, images: imgs, extra, aspect, seed: imageSeed, quality, n },
+                  imageConfirmToken,
+                );
+                if (fbChallenge) {
+                  const ce = new Error(`provider "${fb.name}" 需要计费确认(两段式:带 confirmToken 复调)`) as Error & { challenge?: unknown };
+                  ce.challenge = fbChallenge;
+                  throw ce;
+                }
+              }
               active = fb;
               activeModel = undefined; // model 归属失败方(fallback 目标用其默认模型,现行为)
             }
           }
         };
         const { results: rawResults, firstError } = await runPool(Array.from({ length: n }, () => makeOne), 3);
+        // fallback 路径计费确认挑战上浮(makeOne 内 fb 门命中时以 challenge 标记错误抛出)
+        if ((firstError as any)?.challenge) return ok((firstError as any).challenge);
         const pairs = rawResults.filter((x): x is { result: ImageResult; providerName: string } => !!x);
         const results = pairs.map((x) => x.result);
         const outputs = results.flatMap((r) => r.outputs);
@@ -918,8 +949,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const estimated = p.estimateGenerationSeconds(effFrames, frameRate);
         const wait = a.wait === true || (a.wait === undefined && estimated <= ASYNC_THRESHOLD_SECONDS);
 
-        // 计费确认门(用户核心诉求;渠道无关可选钩子 types.ts VideoProvider.beginSubmissionConfirm,
-        // flow 内聚实现):视频路由到/显式用计费渠道且未带 confirmToken → 先返回积分预估 + 短时效
+        // 计费确认门(用户核心诉求;渠道无关可选钩子 types.ts VideoProvider.beginVideoSubmissionConfirm,
+        // flow/pixverse 内聚实现):视频路由到/显式用计费渠道且未带 confirmToken → 先返回积分预估 + 短时效
         // 确认令牌(不提交);带 token 复调经校验后放行。免费渠道未实现钩子 → undefined 直提交(零影响)。
         const confirmToken = optString(a.confirmToken);
         // videoReq 全参数渠道中性感构建:专属输入(images 参考图 / videoMediaId)由消费方使用、
@@ -931,7 +962,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           durationSeconds: optNumber(a.durationSeconds), seed: optNumber(a.seed), negativePrompt: optString(a.negativePrompt),
         };
         {
-          const challenge = await p.beginSubmissionConfirm?.(videoReq, confirmToken);
+          const challenge = await p.beginVideoSubmissionConfirm?.(videoReq, confirmToken);
           if (challenge) return ok(challenge);
         }
 
@@ -963,7 +994,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             warnings.push(`fallback numFrames ${fbFrames} 超过 ${fb.name} 的 ${optString(a.resolution) ?? "当前分辨率"}上限 ${fbMaxF},已降为 ${fbMaxF}。`);
             fbFrames = fbMaxF;
           }
-          warnings.push(`provider "${p.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"${fb.beginSubmissionConfirm ? "(计费渠道:提交前仍须两段式确认)" : "(免费)"},numFrames ${effFrames}→${fbFrames}。`);
+          warnings.push(`provider "${p.name}" 不可用(${(e as Error)?.message?.slice(0, 80)}),已自动 fallback 到 "${fb.name}"${fb.beginVideoSubmissionConfirm ? "(计费渠道:提交前仍须两段式确认)" : "(免费)"},numFrames ${effFrames}→${fbFrames}。`);
           p.notifyUnavailable?.(e);
           activeProvider = fb;
           // 关键:不透传 durationSeconds —— Agnes.createVideo 会优先用 framesForDuration(durationSeconds) 重推导 numFrames,
@@ -979,7 +1010,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           // 计费确认门对 fallback 目标同样生效:链内 flow = 用户显式列入(知情付费档),
           // 其提交点前仍须两段式确认(与链头同规则)。
           {
-            const fbChallenge = await fb.beginSubmissionConfirm?.(fbReq, confirmToken);
+            const fbChallenge = await fb.beginVideoSubmissionConfirm?.(fbReq, confirmToken);
             if (fbChallenge) return ok(fbChallenge);
           }
           try {

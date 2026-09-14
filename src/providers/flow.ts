@@ -23,6 +23,7 @@
  *     未显式同意(点名 provider/model 或 <modality>ProviderPriority 列入)时,flow 永不进入
  *     任何模态的隐式 fallback 链(取代旧门禁「不实现 capabilities()」,见 types.ts 注释)
  */
+import { sniffImage } from "../image-sniff.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -1467,6 +1468,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     }
     const warnings: string[] = [];
     if (req.prompt?.trim()) warnings.push("图片放大不消费 prompt(固定 GEM_PIX_2_UPSAMPLE_2K 管线),已忽略。");
+    if (req.quality) warnings.push(`flow 不支持 quality,已忽略(质量档是 pixverse 渠道参数,收到 "${req.quality}")。`);
     // 源解析:URI → 上传;否则当 mediaId(须在项目内且是 image)
     let mediaId: string;
     if (/^(https?|data):/i.test(src)) {
@@ -1843,13 +1845,16 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     if (!FLOW_IMAGE_MODELS.includes(model)) {
       throw new FlowError("S300", `未知图片模型 "${model}"。可用:${FLOW_IMAGE_MODELS.join(", ")}`);
     }
+    const flowDropQuality = req.quality
+      ? [`flow 不支持 quality,已忽略(输出由模型与比例决定;质量档是 pixverse 渠道参数,收到 "${req.quality}")。`]
+      : [];
     if (model === "GEM_PIX_2_UPSAMPLE_2K") {
       // 2K 放大走独立端点 /v1/flow/upsampleImage(契约 §9.5/E 轮 bundle Zod 全 schema + §10.8 action=IMAGE_GENERATION),
       // 不作普通生图模型提交;输入 images[0] = 已有图片 mediaId 或 http(s)/data: URI(先上传,0 点)。
       return this.generateUpscaledImage(req);
     }
     const pid = await this.ensureProjectId();
-    const warnings: string[] = [];
+    const warnings: string[] = [...flowDropQuality];
     // 带图链路(契约 §7.2):先上传为项目内媒体,imageInputs 用 {imageInputType, name=mediaId} 引用
     let imageInputs: Array<{ imageInputType: string; name: string }> = [];
     if (req.images?.length) {
@@ -2018,7 +2023,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   }
 
   /**
-   * 提交前的本地形状校验(渠道差异内聚;createVideoUnbounded 与 beginSubmissionConfirm 共用真源):
+   * 提交前的本地形状校验(渠道差异内聚;createVideoUnbounded 与 beginVideoSubmissionConfirm 共用真源):
    * 模式门禁(S303)+ 输入形态互斥(S301)+ 模式↔输入交叉校验(S301)+ r2v 输入上限(§14.1 inputSpec)。
    * 网络侧校验(videoMediaId 存在性/类型/完成态、audioMediaIds 预设语音存在性)留 createVideo ——
    * 确认门阶段只做零消耗本地检查。
@@ -2127,14 +2132,16 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
   }
 
   /**
-   * 🔴 计费确认门(types.ts VideoProvider.beginSubmissionConfirm;handler 在每个真实提交点前调用):
+   * 🔴 计费确认门(types.ts VideoProvider.beginVideoSubmissionConfirm;handler 在每个真实提交点前调用):
    * - 第一段(无 confirmToken):预估消耗 >0 积分 → 返回挑战(handler 原样返回,绝不提交)——
    *   预估积分(动态 creditMapping 优先 / 静态契约表兜底)+ 短时效确认令牌 + 指引。
    * - 第二段(带 confirmToken):校验(令牌与「最终 key + 预估 + prompt + 输入引用」绑定 + TTL)→ 通过返回 undefined 放行。
    * 0 积分提交(veo_3_1_upsampler_1080p)不触发;flow.videoConfirm=false 整门关闭。
    * 模型/形状校验与提交同源(S300/S301 早失败 —— 不让用户确认一个注定失败的请求)。
+   * 图像模态免门经「不实现 beginImageSubmissionConfirm」表达(契约 §3:flow 图片一律 0 点,
+   * 免费模态不实现钩子 = 豁免,无请求形状猜测)。
    */
-  async beginSubmissionConfirm(req: VideoRequest, confirmToken?: string): Promise<SubmissionConfirm | undefined> {
+  async beginVideoSubmissionConfirm(req: VideoRequest, confirmToken?: string): Promise<SubmissionConfirm | undefined> {
     if (this.flowCfg?.videoConfirm === false) return undefined;
     // 动态目录先刷新(0 点只读,10min TTL;失败静默回落静态):key 校验与预估都用动态真源 ——
     // 目录新增 key(静态快照无)在门口即可解析,价目取实时 creditMapping。
@@ -2185,7 +2192,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
    * 用户确认后才在上游碰壁)—— 现在显式标出,由 assertTierAvailable 在确认门前拦截(S303)。
    * noRefresh=true(提交点调用):只用已缓存目录 + credits + 静态矩阵,不刷 projectInitialData ——
    * 守住「计费/tier 查找本身不新增项目数据读」的不变量(单测钉死纯提交路径零轮询;音频预设校验与
-   * videoMediaId 校验的既有合法读不受影响);确认门(beginSubmissionConfirm)先行刷新过目录,
+   * videoMediaId 校验的既有合法读不受影响);确认门(beginVideoSubmissionConfirm)先行刷新过目录,
    * 10min TTL 内提交点看到的就是同一份。
    */
   private async lookupVideoCost(key: string, opts: { noRefresh?: boolean } = {}): Promise<{
@@ -2399,7 +2406,7 @@ export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProv
     warnings.push(...shape.warnings);
     // tier 门禁(D-4):目录真值说该 key 当前档 UNAVAILABLE → 提交前 S303(读 credits + 已缓存目录,零消耗,
     // noRefresh 不拉 projectInitialData —— 提交路径不引入新的项目数据读)。
-    // 确认门开着时 beginSubmissionConfirm 已查过同一真源(10min 缓存),这里是提交点自守 ——
+    // 确认门开着时 beginVideoSubmissionConfirm 已查过同一真源(10min 缓存),这里是提交点自守 ——
     // videoConfirm=false / 链内直达 / 单测直呼 createVideo 的路径同样拦住。
     {
       const cost = await this.withToolDeadline(this.lookupVideoCost(resolved.key, { noRefresh: true }), "flow tier 门禁");
@@ -2650,46 +2657,6 @@ export function flowScopeKeyOf(cwd: string = process.cwd(), home: string = os.ho
 function flowProjectTitleOf(scopeKey: string): string {
   const base = scopeKey === "default" ? "media-gen-mcp" : `media-gen-mcp@${scopeKey}`;
   return base.length > 60 ? base.slice(0, 60) : base;
-}
-
-export function sniffImage(bytes: Buffer): { mimeType?: string; width?: number; height?: number } {
-  const latin = (s: number, e: number) => bytes.subarray(s, e).toString("latin1");
-  const be16 = (o: number) => bytes.readUInt16BE(o);
-  const le16 = (o: number) => bytes.readUInt16LE(o);
-  try {
-    if (bytes.length > 24 && latin(0, 8) === "\x89PNG\r\n\x1a\n" && latin(12, 16) === "IHDR") {
-      return { mimeType: "image/png", width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-    }
-    if (bytes.length > 10 && (latin(0, 6) === "GIF87a" || latin(0, 6) === "GIF89a")) {
-      return { mimeType: "image/gif", width: le16(6), height: le16(8) };
-    }
-    if (bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-      // JPEG:扫 SOF0-3/5-7/9-11/13-15 段取尺寸(逐段跳过,容错截断)
-      let o = 2;
-      while (o + 9 < bytes.length) {
-        if (bytes[o] !== 0xff) { o++; continue; }
-        const marker = bytes[o + 1];
-        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-          return { mimeType: "image/jpeg", height: be16(o + 5), width: be16(o + 7) };
-        }
-        const len = be16(o + 2);
-        if (len < 2) break;
-        o += 2 + len;
-      }
-      return { mimeType: "image/jpeg" };
-    }
-    if (bytes.length > 30 && latin(0, 4) === "RIFF" && latin(8, 12) === "WEBP") {
-      const chunk = latin(12, 16);
-      if (chunk === "VP8X") return { mimeType: "image/webp", width: 1 + bytes.readUIntLE(24, 3), height: 1 + bytes.readUIntLE(27, 3) };
-      if (chunk === "VP8 ") return { mimeType: "image/webp", width: le16(26) & 0x3fff, height: le16(28) & 0x3fff };
-      if (chunk === "VP8L") {
-        const b = bytes.readUInt32LE(21);
-        return { mimeType: "image/webp", width: (b & 0x3fff) + 1, height: ((b >> 14) & 0x3fff) + 1 };
-      }
-      return { mimeType: "image/webp" };
-    }
-  } catch { /* 嗅探失败按未知处理 */ }
-  return {};
 }
 
 /**
