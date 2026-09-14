@@ -122,7 +122,10 @@ before(async () => {
 });
 after(() => { if (proc) proc.kill(); });
 
-describe("flow 工具集成(真实 CDP;仅零消耗端点)", { skip: await (async () => !(await cdpAlive()))() }, () => {
+// 🔴 2026-09-14 用户裁决:Flow 渠道已死(L3 账号地区门禁)+ 真实 HOME 门禁会触发自动开页自愈弹大量窗口
+// —— 本套件默认永不真连;显式 FLOW_IT=1 且非 CI 且 CDP 活着才跑。
+const flowItOff = process.env.FLOW_IT !== "1" || Boolean(process.env.CI);
+describe("flow 工具集成(真实 CDP;仅零消耗端点;🔴 默认 skip——FLOW_IT=1 显式开启)", { skip: flowItOff || !(await cdpAlive()) }, () => {
 
   test("tools/list:flow_status 注册在列(23 工具;flow_entity 已按用户裁决移除 2026-08-26)", async () => {
     const r = await send("tools/list", {});
