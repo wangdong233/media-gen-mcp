@@ -564,6 +564,32 @@ export class PixverseProvider implements MediaProviderBase, ImageProvider, Video
     // 订阅积分误耗红线(flow 先例):未显式同意(点名或 priority 链列入)不进任何隐式 fallback 链。
     return true;
   }
+
+  /** 价格目录(2026-09-14):静态首估+台账命中合并的三态视图,list_models 透出供调用方选型。 */
+  costCatalog(): Record<string, { mode: "image" | "video"; credits?: number; unit: "per-image" | "cr/sec" | "unknown"; source: "ledger" | "static" | "none" }> {
+    const out: Record<string, { mode: "image" | "video"; credits?: number; unit: "per-image" | "cr/sec" | "unknown"; source: "ledger" | "static" | "none" }> = {};
+    const ledger = this.readLedger();
+    for (const model of PIXVERSE_IMAGE_MODELS) {
+      const per = staticImageCredits(model, "1080p");
+      const hit = ledger[costLedgerKey({ mode: "image", model, quality: "1080p", count: 1 })];
+      out[model] = hit
+        ? { mode: "image", credits: hit.credits, unit: "per-image", source: "ledger" }
+        : per != null
+          ? { mode: "image", credits: per, unit: "per-image", source: "static" }
+          : { mode: "image", unit: "unknown", source: "none" };
+    }
+    for (const model of PIXVERSE_VIDEO_MODELS) {
+      const rates = staticVideoRates(model, "720p");
+      const hit = ledger[costLedgerKey({ mode: "video", model, quality: "720p", durationSeconds: 5, count: 1 })];
+      out[model] = hit
+        ? { mode: "video", credits: Math.round(hit.credits / 5), unit: "cr/sec", source: "ledger" }
+        : rates != null
+          ? { mode: "video", credits: rates, unit: "cr/sec", source: "static" }
+          : { mode: "video", unit: "unknown", source: "none" };
+    }
+    return out;
+  }
+
   listModels(): string[] { return [...this.listImageModels(), ...this.listVideoModels()]; }
   listImageModels(): string[] { return [...PIXVERSE_IMAGE_MODELS]; }
   listVideoModels(): string[] { return [...PIXVERSE_VIDEO_MODELS]; }

@@ -173,6 +173,13 @@ export interface VideoProvider {
   };
   /** 估算生成耗时(秒),供工具层决定同步/异步 + 给用户预估。粗估、偏保守即可。 */
   estimateGenerationSeconds(numFrames: number, frameRate?: number): number;
+
+  /**
+   * 模型价格目录(可选;2026-09-14 用户裁决:调用方选型须可见成本)——三态:
+   * number = 已知积分(per 张或 cr/秒)| "unknown" = 未公开(首用实扣落台账自学习)| 缺省键 = 该模型不可用。
+   * pixverse 先例(静态首估+成本台账合并视图);免费渠道不实现(无价格语义)。
+   */
+  costCatalog?(): Record<string, { mode: "image" | "video"; credits?: number; unit: "per-image" | "cr/sec" | "unknown"; source: "ledger" | "static" | "none" }>;
   /** 给定 resolution×ratio 下 numFrames 上限(无约束返回 undefined)。工具层前置钳制,免 CC 试错碰 API 400。 */
   maxFramesFor?(resolution?: string, ratio?: string): number | undefined;
   createVideo(req: VideoRequest): Promise<VideoTask>;

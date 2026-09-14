@@ -308,6 +308,7 @@ export function buildListModelsDetail(provider?: string): Record<string, any> {
       ...(dv != null && typeof prov.estimateGenerationSeconds === "function"
         ? { estimate_example: `${dv} 帧 → ~${prov.estimateGenerationSeconds(dv)}s 生成` }
         : {}),
+      ...(typeof prov.costCatalog === "function" ? { costCatalog: prov.costCatalog() } : {}),
     };
   }
   return out;

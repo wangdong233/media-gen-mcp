@@ -13,7 +13,8 @@
  */
 import path from "node:path";
 import fs from "node:fs/promises";
-import { sniffImage, LOCAL_IMAGE_INPUT_MAX_BYTES } from "./providers/flow.js";
+import { sniffImage } from "./image-sniff.js";
+import { LOCAL_IMAGE_INPUT_MAX_BYTES } from "./providers/flow.js";
 
 /** URI 校验(http(s): / data:),生成域与 vision 域图片输入共用(R-CI-01 单源)。 */
 export const isImageUri = (u: string) => /^(https?:|data:)/i.test(u);

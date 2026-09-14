@@ -21,7 +21,8 @@ import {
 import path from "node:path";
 import { config } from "./config.js";
 import { getProvider, listProviders, resolveProvider, buildListModelsDetail, buildVisionCapabilitiesDetail, getFallbackProvider, getProviderPriority, asImageProvider, asVideoProvider, asVisionProvider } from "./providers/registry.js";
-import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList, sniffImage } from "./image-sniff.js";
+import { sniffImage } from "./image-sniff.js";
+import { FlowProvider, FLOW_ZERO_CREDIT, abraCreditRange, abraGenCreditRange, flowCreditsEn, veoPlainCostsList } from "./providers/flow.js";
 import { isImageUri, localizeImageInput } from "./local-image.js";
 import { isFallbackWorthy, isChainAdvanceable, isRequestPinned } from "./providers/http.js";
 import type { ImageResult, VideoMode, Resolution, VideoTask, ExtractTextHints, ExtractTableHints, AnalyzeChartHints, DescribeImageHints, VisionResult, VisionTask } from "./providers/types.js";
@@ -178,7 +179,7 @@ function buildTools() {
           prompt: { type: "string", description: "Image description." },
           model: {
             type: "string",
-            description: "Optional; omit to use the provider default. Call list_models to see options. provider=flow: GEM_PIX_2_UPSAMPLE_2K = 2K UPSCALE mode (requires images[0] = an existing image mediaId or a URI; " + FLOW_ZERO_CREDIT + " credits, prompt ignored — a non-empty placeholder prompt is still required by the schema). provider=pixverse: 14 models (gpt-image-2.5-flare / gpt-image-2.5-sunburst / gpt-image-2.0 / gemini-3.1-flash / gemini-3.1-flash-lite / qwen-image / gemini-3.0 / gemini-2.5-flash / seedream-5.0-pro / seedream-5.0-lite / seedream-4.5 / seedream-4.0 / kling-image-o3 / kling-image-v3).",
+            description: "Optional; omit to use the provider default. Call list_models to see options. provider=flow: GEM_PIX_2_UPSAMPLE_2K = 2K UPSCALE mode (requires images[0] = an existing image mediaId or a URI; " + FLOW_ZERO_CREDIT + " credits, prompt ignored — a non-empty placeholder prompt is still required by the schema). provider=pixverse: 14 models (gpt-image-2.5-flare / gpt-image-2.5-sunburst / gpt-image-2.0 / gemini-3.1-flash / gemini-3.1-flash-lite / qwen-image / gemini-3.0 / gemini-2.5-flash / seedream-5.0-pro / seedream-5.0-lite / seedream-4.5 / seedream-4.0 / kling-image-o3 / kling-image-v3). Cost per model is in list_models costCatalog (ledger-observed > static estimate; 'unknown' = price not published — first use lands the observed cost in the ledger and subsequent calls show it).",
           },
           size: { type: "string", description: "e.g. 1024x1024. Zhipu requires each side 512-2880, multiple of 16, pixels ≤ 2^21 — the tool auto-snaps to a valid size; Agnes accepts free size. provider=flow: size maps to the nearest of 5 aspect ratios (1920x1080→16:9 / 720x1280→9:16 / 1024x1024→1:1 / 768x1024→3:4 / 1024x768→4:3); pass `aspect` for an exact ratio. provider=pixverse: non-default size maps to the nearest of 11 aspect ratios (pixverse has no pixel-size parameter)." },
           aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "3:4", "4:3"], description: "Direct aspect ratio (provider=flow maps to IMAGE_ASPECT_RATIO_*; provider=pixverse passes it through with per-model adsorption — its native enum is wider: 1:1/16:9/9:16/4:3/3:4/5:4/4:5/3:2/2:3/21:9). Other providers ignore it with a warning; use `size` there." },
