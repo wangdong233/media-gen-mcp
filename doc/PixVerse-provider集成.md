@@ -66,6 +66,7 @@
 - 观测源:`asset list` 的 `cost_credits`(任务完成后 best-effort 读取;缺失≠免费,不落账只告警)。
 - 预估优先级:ledger 命中 > 静态首估表 > null。静态表已证漂移(v6-360p 实扣 4cr/s vs 手册 5cr/s;qwen-image 720p/1080p 实测 5/10cr)→ 静态来源必带「以实际扣减为准」告警,观测落账后自动消失。
 - 未传 quality/duration 时按能力表默认值落键(写读对齐)。
+- **价格目录已落地(0cbe0ac)**:`costCatalog()` 经 `list_models` 透出(provider 可选方法,registry `buildListModelsDetail` 统一挂载)——三态 `ledger`(实测命中)> `static`(静态首估)> `unknown`(未发布,首用落账后转 ledger),附 `unit`(`per-image`/`cr/sec`)与 `mode`;调用方选型即可见成本,无需先跑挑战段。免费渠道不实现该方法即不出该字段(agnes/zhipu/flow 均无)。
 
 ## 5. 能力表与参数吸附
 
@@ -109,7 +110,7 @@ env:`PIXVERSE_BIN`(bin 覆盖)、`PIXVERSE_ACCESS_KEY`(无人值守)、`PIXVERSE
 
 **已收口**:F5 版本锁双源断言(测试守护)/ F7 sniffImage 迁中立模块 src/image-sniff.ts(flow/pixverse/local-image 三消费方单源)。
 
-**第 4 家计费渠道入仓前必须收敛**(否则"无偏差"判定失效):
+**下一家计费渠道入仓前必须收敛**(2026-09-14 C 终裁:任何新计费渠道再复制 crypto 管线(第 3 实例)或再出 P0-1 级复制分歧缺陷,自动判重大偏差):
 - F1 确认门 crypto 管线双实现(flow/pixverse 各 ~130 行近同构;复制已实证产出 P0-1 令牌段错位 bug)→ 抽 src/providers/confirm-token.ts(secret+消费表+mint/verify 骨架,载荷参数化)
 - F2 confirm-digest sig 构造 4 份手工维护 → 提 buildImageSig/buildVideoSig 各一份
 - F4 模型清单 3 处真值(常量/list_models/描述字符串)→ 描述改指 list_models

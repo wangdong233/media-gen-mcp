@@ -1,5 +1,7 @@
 # Google Flow API 白盒契约(经 lasso/CDP 逆向,2026-08-22)
 
+> 🔴 **渠道自 2026-09-10 起 L3 账号地区门禁不可用(flow.google.com/unsupported-country),本文档转为契约存档**(正文原样保留,凭此可在换账号地区/美区账号后恢复;治理件已被 PixVerse 渠道复用并一般化,见 `架构要求清单.md` ADR-4)。
+>
 > 来源:真实 Chrome(lasso launch-chrome --port 9223,profile ~/.cache/lasso/chrome-profile-default,已登录 wdong4036@gmail.com)网络抓包 + 页面上下文重放验证。**已实测验证的端点**:session/credits/projectInitialData/getMediaUrlRedirect 重放 ✓;batchGenerateImages/batchAsyncGenerateVideoText 抓包 ✓(重放待实施时验证)。
 > 项目(永久复用,除非失效再新建):**c36ca3e2-192b-41e5-9e5b-700130e3d324** @ ~/.media-gen-mcp/flow-project.json
 

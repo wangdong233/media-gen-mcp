@@ -530,4 +530,23 @@ describe("pixverse registry 接线", () => {
       assert.equal(p.beginVideoSubmissionConfirm, undefined);
     }
   });
+test("costCatalog 守护(A 阻断):钩子链完整 + buildListModelsDetail 透出三态 + ledger 升级(该行曾被工作流 agent 误删,门禁未拦——本测试即闸门)", () => {
+  const reg = require_(path.join(distDir, "providers/registry.js"));
+  const prov = reg.getProvider("pixverse");
+  assert.equal(typeof prov.costCatalog, "function", "types 钩子→provider 实现");
+  const detail = reg.buildListModelsDetail("pixverse");
+  const cat = (detail as any).pixverse?.costCatalog; // buildListModelsDetail 返回以 provider 名为键
+  assert.ok(cat, "registry 透出行在位(1d9cfd6 曾被误删——摘除本行则此断言红)");
+  assert.equal(Object.keys(cat).length, 39, "39 模型全覆盖(14 图像+25 视频)");
+  assert.deepEqual({ ...(cat as any)["qwen-image"] }, { mode: "image", credits: 10, unit: "per-image", source: "static" }, "静态已知:qwen-image");
+  assert.equal((cat as any)["v6"].credits, 12, "静态已知:v6=12cr/s(720p 有音代表档)");
+  assert.equal((cat as any)["sora-2"].unit, "unknown", "未公开模型=unknown");
+  // ledger 升级:注入观测值后 source 转 ledger
+  const { p: p2 } = makeP({});
+  (p2 as any).costLedgerFile = path.join((p2 as any).dir ?? os.tmpdir(), "ledger-cat.json");
+  fs.writeFileSync((p2 as any).costLedgerFile, JSON.stringify({ entries: { [costLedgerKey({ mode: "image", model: "qwen-image", quality: "1080p", count: 1 })]: { credits: 7, observedAt: "2026-09-14T00:00:00Z", source: "test" } } }));
+  const cat2 = (p2 as any).costCatalog();
+  assert.equal(cat2["qwen-image"].source, "ledger", "台账命中升级为观测值");
+  assert.equal(cat2["qwen-image"].credits, 7);
+});
 });

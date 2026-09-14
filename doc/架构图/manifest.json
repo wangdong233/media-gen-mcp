@@ -1,9 +1,9 @@
 {
   "id": "root",
   "label": "media-gen-mcp 分层架构图",
-  "diagram": "direction: down\n\n用户层: {\n  label: \"用户接入层\"\n  style.fill: \"#F3E8FF\"\n  style.stroke-dash: 3\n  user: {\n    shape: person\n    label: \"Claude Code 用户\"\n  }\n  agent: {\n    shape: person\n    label: \"AI 助手\"\n  }\n  dev: {\n    shape: person\n    label: \"开发者(配置服务方)\"\n  }\n}\n\n能力层: {\n  label: \"业务能力层(三大功能域)\"\n  style.fill: \"#E0F2FE\"\n  style.stroke-dash: 3\n  生成: {\n    label: \"生成能力 ▾\\n写实图·视频·图标\"\n    link: \"drill:create\"\n  }\n  理解: {\n    label: \"理解能力 ▾\\nOCR·表格·图表·PDF\"\n    link: \"drill:understand\"\n  }\n  结构化: {\n    label: \"结构化能力 ▾\\n架构图·数据图·卡片·二维码\"\n    link: \"drill:structure\"\n  }\n}\n\n支撑层: {\n  label: \"技术支撑与交付保障层\"\n  style.fill: \"#F0FDF4\"\n  style.stroke-dash: 3\n  engines: \"本地引擎(D2·Vega·MathJax·Satori)\"\n  providers: \"外部服务(Agnes·智谱·Flow·tesseract·PaddleX·vLLM)\"\n  交付保障: {\n    label: \"交付保障 ▾\\n守门·错误契约·确认门·Golden\"\n    link: \"drill:deliver\"\n  }\n}\n\n用户层 -> 能力层: \"一句话需求\"\n能力层 -> 支撑层: \"调引擎/服务\"\n支撑层 -> 能力层: \"返回产物\"\n能力层 -> 用户层: \"图/视频/数据/卡片 落盘交付\"\n",
+  "diagram": "direction: down\n\n用户层: {\n  label: \"用户接入层\"\n  style.fill: \"#F3E8FF\"\n  style.stroke-dash: 3\n  user: {\n    shape: person\n    label: \"Claude Code 用户\"\n  }\n  agent: {\n    shape: person\n    label: \"AI 助手\"\n  }\n  dev: {\n    shape: person\n    label: \"开发者(配置服务方)\"\n  }\n}\n\n能力层: {\n  label: \"业务能力层(三大功能域)\"\n  style.fill: \"#E0F2FE\"\n  style.stroke-dash: 3\n  生成: {\n    label: \"生成能力 ▾\\n写实图·视频·图标\"\n    link: \"drill:create\"\n  }\n  理解: {\n    label: \"理解能力 ▾\\nOCR·表格·图表·PDF\"\n    link: \"drill:understand\"\n  }\n  结构化: {\n    label: \"结构化能力 ▾\\n架构图·数据图·卡片·二维码\"\n    link: \"drill:structure\"\n  }\n}\n\n支撑层: {\n  label: \"技术支撑与交付保障层\"\n  style.fill: \"#F0FDF4\"\n  style.stroke-dash: 3\n  engines: \"本地引擎(D2·Vega·MathJax·Satori)\"\n  providers: \"外部服务(Agnes·智谱·Flow·PixVerse·tesseract·PaddleX·vLLM)\"\n  交付保障: {\n    label: \"交付保障 ▾\\n守门·错误契约·确认门·Golden\"\n    link: \"drill:deliver\"\n  }\n}\n\n用户层 -> 能力层: \"一句话需求\"\n能力层 -> 支撑层: \"调引擎/服务\"\n支撑层 -> 能力层: \"返回产物\"\n能力层 -> 用户层: \"图/视频/数据/卡片 落盘交付\"\n",
   "diagramType": "architecture",
-  "notes": "功能分层 L0(2026-08-26 随 24 工具/Flow 渠道批重生成):上「用户接入层」(谁在用)/中「业务能力层」(WHAT——生成/理解/结构化三大功能域)/下「技术支撑与交付保障层」(HOW——本地引擎 + 外部服务 + 横切质量)。价值流纵向穿层:用户一句话需求进来,图/视频/数据/卡片落盘出去。外部服务现为三家生成渠道(Agnes/智谱/Flow)+ 四档识别(tesseract/GLM/PaddleX/vLLM);Flow 走本地 Chrome CDP 且受 S000 硬门+计费确认门治理。刻意不出现 MCP/stdio/TypeScript/src 模块名——这些是 drill 三层后才看到的技术真相(01 §2.1 抽象层面)。",
+  "notes": "功能分层 L0(2026-09-14 随 PixVerse 第 4 生成渠道批更新;原 2026-08-26 随 Flow 渠道批重生成):上「用户接入层」(谁在用)/中「业务能力层」(WHAT——生成/理解/结构化三大功能域)/下「技术支撑与交付保障层」(HOW——本地引擎 + 外部服务 + 横切质量)。价值流纵向穿层:用户一句话需求进来,图/视频/数据/卡片落盘出去。外部服务现为四家生成渠道(Agnes/智谱/Flow/PixVerse)+ 四档识别(tesseract/GLM/PaddleX/vLLM);Flow 走本地 Chrome CDP(🔴 L3 账号地区门禁 2026-09-10 起不可用,契约存档)受链即开关+计费确认门治理;PixVerse spawn 官方 CLI 订阅积分池(opt-in 钉定)。刻意不出现 MCP/stdio/TypeScript/src 模块名——这些是 drill 三层后才看到的技术真相(01 §2.1 抽象层面)。",
   "children": [
     {
       "id": "create",
@@ -15,9 +15,9 @@
         {
           "id": "create-tech",
           "label": "外部 AI 生成服务接入(生成背后)",
-          "diagram": "agnes: \"Agnes(默认,免费层永久开放)\"\nzhipu: \"智谱 cogview/cogvideox(中文原生 fallback)\"\nflow: {\n  label: \"Google Flow(本地 Chrome CDP) ▾\"\n  link: \"drill:flow-governance\"\n}\nresolve: {\n  label: \"服务方调度与恢复 ▾\"\n  link: \"drill:provider-fallback\"\n}\nagnes -> resolve: \"implements\"\nzhipu -> resolve: \"implements\"\nflow -> resolve: \"implements\"\n",
+          "diagram": "agnes: \"Agnes(默认,免费层永久开放)\"\nzhipu: \"智谱 cogview/cogvideox(中文原生 fallback)\"\nflow: {\n  label: \"Google Flow(本地 Chrome CDP;L3 门禁暂不可用) ▾\"\n  link: \"drill:flow-governance\"\n}\npixverse: {\n  label: \"PixVerse(订阅积分池,CLI spawn) ▾\"\n  link: \"drill:pixverse-governance\"\n}\nresolve: {\n  label: \"服务方调度与恢复 ▾\"\n  link: \"drill:provider-fallback\"\n}\nagnes -> resolve: \"implements\"\nzhipu -> resolve: \"implements\"\nflow -> resolve: \"implements\"\npixverse -> resolve: \"implements\"\n",
           "diagramType": "architecture",
-          "notes": "技术实现:三家生成渠道 Agnes(默认免费)+ 智谱 cogview(中文 fallback)+ Google Flow(本地 Chrome CDP 页面上下文,Veo/Abra 高质量视频,无 API key)。任一挂掉自动切换,用户无感;Flow 为 opt-in 点名钉定(不静默换渠道)。接口窄(MediaProvider 能力袋)、实现厚(私有协议/重试/熔断),典型深模块(01 §2.4)。",
+          "notes": "技术实现:四家生成渠道 Agnes(默认免费)+ 智谱 cogview(中文 fallback)+ Google Flow(本地 Chrome CDP 页面上下文,Veo/Abra 高质量视频,无 API key;🔴 L3 账号地区门禁 2026-09-10 起不可用,契约存档)+ PixVerse(官方 CLI spawn 订阅积分池,25 视频 + 14 图像模型,opt-in 钉定)。任一挂掉自动切换,用户无感;Flow/PixVerse 为 opt-in 点名钉定(不静默换渠道)。接口窄(MediaProvider 能力袋)、实现厚(私有协议/重试/熔断),典型深模块(01 §2.4)。",
           "children": [
             {
               "id": "provider-fallback",
@@ -28,10 +28,17 @@
             },
             {
               "id": "flow-governance",
-              "label": "Flow 渠道治理(S000 硬门 + 计费确认门)",
-              "diagram": "chain: \"优先级硬链(点名>模态链>全局;点名 flow 钉定不静默换)\"\ns000: \"S000 硬禁用门(flow.enabled=false → 剔除出链+结构化报错)\"\nconfirm: \"计费确认门(预估>0 积分 → confirmToken 二段式,单次消费)\"\nzero: \"图/上采样/实体 0 积分;视频 7-100 分/条\"\nchain -> s000\ns000 -> confirm: \"放行前\"\nconfirm -> zero: \"红线:绝不自动路由计费路径\"\n",
+              "label": "Flow 渠道治理(链即开关 + 计费确认门)",
+              "diagram": "chain: \"优先级硬链=链即开关(点名>模态链>全局;点名 flow 钉定不静默换)\"\nconfirm: \"计费确认门(预估>0 积分 → confirmToken 二段式,单次消费)\"\nzero: \"图/上采样 0 积分;视频 7-100 分/条\"\nchain -> confirm: \"放行前\"\nconfirm -> zero: \"红线:绝不自动路由计费路径\"\n",
               "diagramType": "flowchart",
-              "notes": "Flow 渠道治理三件硬件(2026-08-24/26):①渠道优先级硬链=链即开关(2026-08-26 起 S000 硬门删除,不配置=不启用);②计费确认门——无 confirmToken 返回挑战(needConfirm/estimatedCost/TTL)绝不提交,令牌与 key+预估+prompt+输入引用绑定且单次消费;③积分红线——图/上采样/实体 0 积分,视频 7-100 积分/条必须显式确认。配套 flow_status(自省/下载/删除/分享/取消);flow_entity 已按用户裁决移除 2026-08-26(角色域存档见 flow-api-contract.md §13)。"
+              "notes": "Flow 渠道治理三件硬件(2026-08-24/26):①渠道优先级硬链=链即开关(2026-08-26 起 S000 硬门删除,不配置=不启用);②计费确认门——无 confirmToken 返回挑战(needConfirm/estimatedCost/TTL)绝不提交,令牌与 key+预估+prompt+输入引用绑定且单次消费;③积分红线——图/上采样 0 积分,视频 7-100 积分/条必须显式确认。配套 flow_status(自省/下载/删除/分享/取消);flow_entity 已按用户裁决移除 2026-08-26(角色域存档见 flow-api-contract.md §13)。🔴 渠道 2026-09-10 起 L3 账号地区门禁不可用(代码与契约保留);治理件已被 PixVerse 复用并一般化(ADR-4)。"
+            },
+            {
+              "id": "pixverse-governance",
+              "label": "PixVerse 渠道治理(opt-in + 确认门 + 版本锁)",
+              "diagram": "optin: \"requiresOptIn 钉定(不进默认链;点名/列入链才启用+响亮告警)\"\nconfirm: \"计费确认门全模式(CLI 无免费池;HMAC 令牌单次消费)\"\nledger: \"成本台账 + costCatalog 三态价格目录(ledger>static>unknown)\"\nlock: \"版本锁 pixverse@1.4.3(-V + capabilities sha256 自检)\"\noptin -> confirm: \"放行前\"\nconfirm -> ledger: \"实测落账\"\nlock -> confirm: \"前置\"\n",
+              "diagramType": "flowchart",
+              "notes": "PixVerse 渠道治理四件硬件(2026-09-14,ADR-4):①opt-in 钉定——订阅积分误耗红线,绝不自动路由;②计费确认门覆盖所有 image/video 提交(终局裁决:CLI/API 无 Relax 免费池,Relax 是 Web UI 独有权益);③成本台账实测落账 + list_models costCatalog 三态(ledger>static>unknown,首用落账自动转 ledger);④CLI 版本锁 + 启动自检,漂移响亮告警绝不静默。契约 doc/PixVerse-provider集成.md;测试零 spawn 零消耗(49 白盒测)。"
             }
           ]
         }
@@ -109,18 +116,18 @@
         {
           "id": "cool-render-tech",
           "label": "酷炫动效渲染器(SVG/视频)",
-          "diagram": "rsvg: \"render-svg(resvg + Chrome 双后端自动选)\"\nrvideo: \"render-video(逐帧 seek + ffmpeg)\"\nchrome: \"getBrowser 单例(跨工具复用)\"\nrsvg -> chrome\nrvideo -> chrome\n",
+          "diagram": "rsvg: \"render-svg(resvg + Chrome 双后端自动选)\"\nrvideo: \"render-video(逐帧 seek + ffmpeg)\"\nchrome: \"lasso 渲染档(attach 确定性浏览器;legacy 自管池 0.19.0 已移除)\"\nrsvg -> chrome\nrvideo -> chrome\n",
           "diagramType": "architecture",
-          "notes": "技术实现:SVG 含 feGaussianBlur/辉光/景深时自动切 Chrome 后端保真,否则 resvg 轻量。render-video 逐帧 seek+ffmpeg 拼帧,确定性(同输入同输出)。Chrome 子进程单例被两个叶子共享。"
+          "notes": "技术实现:SVG 含 feGaussianBlur/辉光/景深时自动切 Chrome 后端保真,否则 resvg 轻量。render-video 逐帧 seek+ffmpeg 拼帧,确定性(同输入同输出)。Chrome 实例由 lasso 渲染档统一治理(ensure→connect attach,空闲自动回收;契约 doc/渲染档对接契约-lasso要点摘录.md);legacy 自管池已于 0.19.0 彻底移除,未装 lasso 时滤镜 SVG 降级 resvg、动效视频结构化报错绝不静默回落。"
         }
       ]
     },
     {
       "id": "deliver",
       "label": "交付保障(横切质量,非能力柱)",
-      "diagram": "gate: {\n  label: \"产物自动校验防崩 ▾\"\n  link: \"drill:output-checker\"\n}\nfallback: \"服务方失败自动切换(60 秒软冷却)\"\ndeterm: \"同输入永远同输出(可入 git)\"\ngate -> fallback: \"生成/识别侧各有链\"\n",
+      "diagram": "gate: {\n  label: \"产物自动校验防崩 ▾\"\n  link: \"drill:output-checker\"\n}\nfallback: \"服务方失败自动切换(60 秒软冷却)\"\ndeterm: \"同输入永远同输出(可入 git)\"\nconfirm: \"计费确认门(flow/pixverse 两段式,绝不静默提交)\"\ngate -> fallback: \"生成/识别侧各有链\"\ngate -> confirm: \"积分渠道先过门\"\n",
       "diagramType": "architecture",
-      "notes": "交付保障(横切质量,非能力柱,01 §2.5 刻度四正交):每次都靠谱——产物自动校验防崩、服务方失败自动切换、同输入永远同输出。这是横切所有能力柱的正交质量属性,不是第四根能力柱。README 反复强调的『能入 git、免费层挂了你无感、不会拿到坏图』就是这块。drill 看守门矩阵。",
+      "notes": "交付保障(横切质量,非能力柱,01 §2.5 刻度四正交):每次都靠谱——产物自动校验防崩、服务方失败自动切换、同输入永远同输出、积分渠道两段式确认门(flow + pixverse 共用治理件,ADR-2/ADR-4)。这是横切所有能力柱的正交质量属性,不是第四根能力柱。README 反复强调的『能入 git、免费层挂了你无感、不会拿到坏图、绝不误扣积分』就是这块。drill 看守门矩阵。",
       "children": [
         {
           "id": "output-checker",

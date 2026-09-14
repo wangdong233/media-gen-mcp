@@ -152,6 +152,8 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 ### Google Flow 渠道(Veo 3.1 / Nano Banana,免 API Key)
 
+> 🔴 **渠道状态(2026-09-10 定谳)**:Google 账号地区门禁(L3,`flow.google.com/unsupported-country`)导致本渠道当前**不可用**——登录与会话正常、更换网络节点仍被拒,恢复无时间表。代码与配置面保留,下文保留为契约说明(完整 wire 契约存档 `doc/flow-api-contract.md`)。
+
 **是什么**:接入你已登录 Google Flow 的本机 Chrome,把 Flow 的生成能力变成工具 —— 免 API Key,生图 **0 积分**,视频按积分计费(7-100/条,提交前必经**计费确认门**:第一次调用只返回积分预估+确认令牌,你确认后才真提交)。
 
 **前置**(只需一次;跨机器通用,lasso 非必需):一台开了调试端口的 Chrome 并登录 labs.google/fx —— `lasso launch-chrome --port 9223 --idle-ms 0`(推荐,静默),或裸 Chrome `--remote-debugging-port=9223 --user-data-dir=~/.media-gen-mcp/chrome-profile` 后在窗口登录;MCP 自动经 CDP 直连,不依赖 lasso 进程。
@@ -257,7 +259,8 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | 画架构图 / 数据图表 / 卡片 / 二维码 / 公式 | **什么都不用配** | 本地引擎,装完即用 |
 | 酷炫动效视频 / 滤镜 SVG 100% 保真(`render_video` / `render_svg` Chrome 后端) | 推荐装 **lasso 渲染档**:`npm i -g lasso-mcp` 后跑一次 `npx -y lasso-mcp render-chrome --ensure`(空闲 10 分钟自动回收) | 装上即用;未装 lasso 时滤镜 SVG 自动降级 resvg(~92% 保真),动效视频返回带修复指引的结构化错误(legacy 自管池已退役) |
 | AI 写实图 / AI 视频(文生图、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
-| 用 Google Flow 生图(0 积分)/ 管理生成资产 | **不用配 Key**:本机 Chrome 登录 Flow 即可(`lasso launch-chrome` 启动) | 生图 / 放大 / 上传 / 删除 / 分享 / 取消 / 查询全 0 积分;视频按积分计费(7–100 积分/条) |
+| 用 Google Flow 生图(0 积分)/ 管理生成资产 | **不用配 Key**:本机 Chrome 登录 Flow 即可(`lasso launch-chrome` 启动) | 生图 / 放大 / 上传 / 删除 / 分享 / 取消 / 查询全 0 积分;视频按积分计费(7–100 积分/条)。🔴 2026-09-10 起 L3 账号地区门禁不可用,恢复无时间表 |
+| 用 PixVerse 订阅池生图 / 生视频(一个订阅聚合 25 个视频 + 14 个图像模型) | 需 PixVerse 订阅 + CLI 登录一次(`npx pixverse login`;**opt-in 渠道,不进默认链**,须点名 `provider="pixverse"` 或列入优先级链) | 按订阅积分计费,提交前必经**两段式计费确认门**(预估+确认令牌);各模型价格经 `list_models` 的 costCatalog 可查(实测价 > 静态估 > 未发布) |
 | OCR 文字识别(英文 / 验证码 / 数字 / 简单文档) | **什么都不用配** | 默认走进程内轻量引擎,装完即用 |
 | 中文 OCR / 发票表格 / 图表读数 / 看图问答 / 手写 / 公式 | **配一行智谱 GLM Key**(零部署,云端永久免费)**或** 自托管 PaddleX / vLLM | 配 GLM Key 即开即用;自托管服务跑起来后填一行 baseUrl |
 | **PDF 文字提取**(数字版 / 扫描件 / 多页) | 装两个依赖 `npm i pdfjs-dist @napi-rs/canvas`(首次用 PDF 时装) | 数字版 PDF 秒出;扫描件按上面 OCR 档位走(默认零配置也能跑) |
@@ -298,6 +301,8 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 - **计费确认门(两段式,默认开)**:Flow 视频第一次调用不提交,只返回 `{needConfirm, estimatedCost, confirmToken}`;**原参数 + confirmToken** 再调才真提交。令牌 10 分钟有效、与全部计费参数绑定(改任一项失效);当前会员档不可用的 key 不发令牌直接拒绝并附各档价目;0 积分操作与非 Flow 渠道不触发。关闭:`"flow": { "videoConfirm": false }`
 
 **Flow 资产管理(全 0 积分)**:`flow_status` 支持查积分/查状态/下载,以及分享(`shareMediaIds`)/取消(`cancelMediaIds`)/批量删除(`deleteMediaIds`)。配套 `"flow": { "toolDeadlineMs": 110000 }` 为 Flow 长操作设工具级截止(防卡死,超时转 `[flow] S410`,底层不取消,稍后经 `flow_status` 复查)。
+
+**PixVerse 渠道(第 4 生成渠道,订阅积分池)**:spawn 官方 CLI(`pixverse --json`)接入你已登录的订阅池 —— 一个订阅聚合 25 个视频模型 + 14 个图像模型。**opt-in 红线**:不进任何默认链,要么显式 `provider="pixverse"` 点名,要么写入 `"imageProviderPriority"` / `"videoProviderPriority"` 自担积分;一切 image/video 提交必经**两段式计费确认门**(与 Flow 同款:首次只返回积分预估+确认令牌,原参数+令牌复调才真提交;令牌 10 分钟有效且单次消费)。各模型价格在 `list_models` 的 costCatalog 三态可查(实测落账 > 静态估算 > 未发布)。配置段 `"pixverse": { "confirm": true, "confirmTtlMs": 600000, "pinnedVersion": "1.4.3" }`;CLI 版本锁定 + 启动自检,漂移响亮告警。详见 `doc/PixVerse-provider集成.md`。
 
 ---
 
