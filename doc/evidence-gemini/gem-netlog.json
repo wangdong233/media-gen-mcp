@@ -1,0 +1,82 @@
+[
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=PCck7e&source-path=%2Fapp&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=4910344518606176366&hl=zh-CN&_reqid=",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22PCck7e%22%2C%22%5B%5C%22r_caa8bb68fe8de0ab%5C%22%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=VxUbXb&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22VxUbXb%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=aPya6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22aPya6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=qpEbW&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=491034451860617636",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22qpEbW%22%2C%22%5B%5B%5B1%2C4%5D%2C%5B6%2C6%5D%2C%5B1%2C15%5D%5D%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=aPya6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22aPya6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=aPya6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22aPya6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=aPya6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22aPya6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=ESY5D&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=491034451860617636",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22ESY5D%22%2C%22%5Bnull%2C%5B5%5D%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=MyzX6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22MyzX6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=VxUbXb&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22VxUbXb%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=qpEbW&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=491034451860617636",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22qpEbW%22%2C%22%5B%5B%5B1%2C4%5D%2C%5B6%2C6%5D%2C%5B1%2C15%5D%5D%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=aPya6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22aPya6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=MyzX6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22MyzX6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=VxUbXb&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22VxUbXb%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=qpEbW&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=491034451860617636",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22qpEbW%22%2C%22%5B%5B%5B1%2C4%5D%2C%5B6%2C6%5D%2C%5B1%2C15%5D%5D%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ },
+ {
+  "url": "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=aPya6c&source-path=%2Fapp%2Fc3c04e2fece711f1&bl=boq_assistant-bard-web-server_20260920.14_p0&f.sid=49103445186061763",
+  "method": "POST",
+  "postData": "f.req=%5B%5B%5B%22aPya6c%22%2C%22%5B%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&at=AOvx0lJyQNJjRMtciEQqsh17WAFV%3A1790080118635&"
+ }
+]

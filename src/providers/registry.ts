@@ -7,6 +7,7 @@ import { VlmProvider } from "./vlm.js";
 import { GlmVisionProvider } from "./glm-vision.js";
 import { FlowProvider, FLOW_MNEMONIC_RE, abraCreditRange, veoCreditRange } from "./flow.js";
 import { PixverseProvider } from "./pixverse.js";
+import { GeminiWebProvider } from "./gemini-web.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -63,6 +64,23 @@ const registry: Record<string, MediaProvider> = {
     bin: process.env.PIXVERSE_BIN || config.providers.pixverse?.settings?.bin,
     models: config.providers.pixverse?.models,
     pixverseCfg: config.pixverse,
+  }),
+  gemini: new GeminiWebProvider({ // Gemini 网页渠道(CDP UI 驱动;调研 doc/Gemini渠道调研-2026-09-22.md)。
+    // 渠道准入(对齐 flow/pixverse):requiresOptIn()=true —— Google AI 订阅算力配额制(视频消耗
+    // 显著,实测单条 ≈15-20% 5h 窗口)+ 本机 Chrome 路由隐私边界;未显式同意不进任何隐式链。
+    // 端口参数化(lasso browse 通道硬编码 9222 教训):providers.gemini.cdpPort / GEMINI_CDP_PORT。
+    cdpPort: (() => {
+      const raw = process.env.GEMINI_CDP_PORT;
+      if (raw != null && raw !== "") {
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+          console.warn(`[media-gen-mcp] ⚠️ GEMINI_CDP_PORT="${raw}" 非法(须为正整数端口),已忽略并回落 config/默认 9225。`);
+          return undefined;
+        }
+        return n;
+      }
+      return config.providers.gemini?.settings?.cdpPort;
+    })(),
   }),
 };
 
@@ -138,6 +156,18 @@ function hasModality(p: MediaProvider, modality: "image" | "video"): boolean {
     console.warn(
       `[media-gen-mcp] ⚠️ videoProviderPriority 包含 "flow":Flow 视频消耗积分(abra ${abraCreditRange()} / veo ${veoCreditRange()} 点每条)。仅当你在 config.json 显式如此配置时才会走到该链;未列入时 flow 视频只能显式 provider=flow 调用。`,
     );
+  }
+}
+
+// Gemini 网页渠道(2026-09-22):链内列入 = 知情同意订阅算力配额消耗(算力制无按次积分;
+// 视频消耗显著,实测单条 ≈15-20% 5h 滚动窗口)。任一模态链列入都提示。
+{
+  for (const [modality, prio] of [["image", config.imageProviderPriority], ["video", config.videoProviderPriority]] as const) {
+    if (prio?.includes("gemini")) {
+      console.warn(
+        `[media-gen-mcp] ⚠️ ${modality}ProviderPriority 包含 "gemini":走 Google AI 订阅算力配额(5h 滚动窗 + 周上限;视频单条实测 ≈15-20% 窗口,图像少量)。消耗订阅配额非现金积分;未列入时只能显式 provider=gemini 调用。`,
+      );
+    }
   }
 }
 

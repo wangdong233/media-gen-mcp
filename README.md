@@ -261,6 +261,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | AI 写实图 / AI 视频(文生图、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
 | 用 Google Flow 生图(0 积分)/ 管理生成资产 | **不用配 Key**:本机 Chrome 登录 Flow 即可(`lasso launch-chrome` 启动) | 生图 / 放大 / 上传 / 删除 / 分享 / 取消 / 查询全 0 积分;视频按积分计费(7–100 积分/条)。🔴 2026-09-10 起 L3 账号地区门禁不可用,恢复无时间表 |
 | 用 PixVerse 订阅池生图 / 生视频(一个订阅聚合 25 个视频 + 14 个图像模型) | 需 PixVerse 订阅 + CLI 登录一次(`npx pixverse login`;**opt-in 渠道,不进默认链**,须点名 `provider="pixverse"` 或列入优先级链) | 按订阅积分计费,提交前必经**两段式计费确认门**(预估+确认令牌);各模型价格经 `list_models` 的 costCatalog 可查(实测价 > 静态估 > 未发布) |
+| 用 Gemini 网页生图(Nano Banana 2)/ 生视频(Omni = Veo 3.1 系) | 本机 Chrome CDP 9225 + Google AI 订阅登录(`lasso launch-chrome --port 9225 --idle-ms 0` 后在窗口登录一次;**opt-in 渠道**,点名 `provider="gemini"` 或列入优先级链) | 消耗 Google AI 订阅**算力配额**(5 小时滚动窗 + 周上限;视频单条实测 ≈15-20% 窗口,每次提交带配额警示);文生图 / 文生视频 MVP(8s 16:9 固定档) |
 | OCR 文字识别(英文 / 验证码 / 数字 / 简单文档) | **什么都不用配** | 默认走进程内轻量引擎,装完即用 |
 | 中文 OCR / 发票表格 / 图表读数 / 看图问答 / 手写 / 公式 | **配一行智谱 GLM Key**(零部署,云端永久免费)**或** 自托管 PaddleX / vLLM | 配 GLM Key 即开即用;自托管服务跑起来后填一行 baseUrl |
 | **PDF 文字提取**(数字版 / 扫描件 / 多页) | 装两个依赖 `npm i pdfjs-dist @napi-rs/canvas`(首次用 PDF 时装) | 数字版 PDF 秒出;扫描件按上面 OCR 档位走(默认零配置也能跑) |
@@ -303,6 +304,8 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 **Flow 资产管理(全 0 积分)**:`flow_status` 支持查积分/查状态/下载,以及分享(`shareMediaIds`)/取消(`cancelMediaIds`)/批量删除(`deleteMediaIds`)。配套 `"flow": { "toolDeadlineMs": 110000 }` 为 Flow 长操作设工具级截止(防卡死,超时转 `[flow] S410`,底层不取消,稍后经 `flow_status` 复查)。
 
 **PixVerse 渠道(第 4 生成渠道,订阅积分池)**:spawn 官方 CLI(`pixverse --json`)接入你已登录的订阅池 —— 一个订阅聚合 25 个视频模型 + 14 个图像模型。**opt-in 红线**:不进任何默认链,要么显式 `provider="pixverse"` 点名,要么写入 `"imageProviderPriority"` / `"videoProviderPriority"` 自担积分;一切 image/video 提交必经**两段式计费确认门**(与 Flow 同款:首次只返回积分预估+确认令牌,原参数+令牌复调才真提交;令牌 10 分钟有效且单次消费)。各模型价格在 `list_models` 的 costCatalog 三态可查(实测落账 > 静态估算 > 未发布)。配置段 `"pixverse": { "confirm": true, "confirmTtlMs": 600000, "pinnedVersion": "1.4.3" }`;CLI 版本锁定 + 启动自检,漂移响亮告警。详见 `doc/PixVerse-provider集成.md`。
+
+**Gemini 网页渠道(第 5 生成渠道,订阅算力配额)**:CDP UI 驱动 gemini.google.com 网页(「制作图片」= Nano Banana 2 /「制作视频」= Omni),零 API Key —— 用你已登录 Google AI 订阅的本机 Chrome(lasso `launch-chrome --port 9225 --idle-ms 0`,首次 visible 窗口登录一次)。**opt-in 红线**:不进默认链,显式 `provider="gemini"` 或写入优先级链。计费为订阅**算力配额**(5h 滚动窗 + 周上限,无按次积分、无确认门——视频每次提交带配额警示 warning)。产物:图像 JPEG(页面 canvas 抓取)、视频 MP4 直链;视频提交返回伪 handle,`get_video` 轮询取件。端口可配(`GEMINI_CDP_PORT` / `providers.gemini.cdpPort`)。MVP 边界:文生图/文生视频(图生图、宽高比/风格参数化未接)。详见 `doc/Gemini渠道调研-2026-09-22.md`。
 
 ---
 

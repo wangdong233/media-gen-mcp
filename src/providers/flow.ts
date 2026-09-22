@@ -28,7 +28,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import WebSocket from "ws";
 import type {
   MediaProviderBase,
   ImageProvider,
@@ -236,103 +235,13 @@ const RECAPTCHA_EXPR = (siteKey: string, action: string) =>
   `(async()=>{try{if(typeof grecaptcha!=="object"||!grecaptcha.enterprise){return{__rcErr:"grecaptcha.enterprise 未加载"}}` +
   `const t=await grecaptcha.enterprise.execute(${jsonLiteral(siteKey)},{action:${jsonLiteral(action)}});return{__rcTok:t};}catch(e){return{__rcErr:String(e&&e.message||e)};}})()`;
 
-/** CDP WebSocket 客户端:懒连接 + 消息路由 + 超时;连接断开自动失效,下次调用重连。 */
-class CdpConnection {
-  private ws: WebSocket | null = null;
-  private opening: Promise<void> | null = null;
-  private nextId = 0;
-  private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
-  /** 页面导航/关闭导致 WS 断开时,把存活页 URL 记下来供 S103 诊断。 */
-  lastCloseReason = "";
+// CdpConnection 已迁公共模块 src/providers/cdp-client.ts(gemini-web 渠道单一真源化;
+// 此处经 flowCdpError 工厂保持 FlowError 命名空间与全部错误语义零漂移,670 测守护)。
+import { CdpConnection, type CdpErrorFactory } from "./cdp-client.js";
 
-  constructor(private readonly wsUrl: string) {}
-
-  private connect(): Promise<void> {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) return Promise.resolve();
-    if (this.opening) return this.opening;
-    this.opening = new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const ws = new WebSocket(this.wsUrl, { perMessageDeflate: false });
-      const onOpenTimeout = setTimeout(() => {
-        if (!settled) { settled = true; ws.terminate(); reject(new FlowError("S103", "CDP WebSocket 连接超时")); }
-      }, 10_000);
-      ws.once("open", () => {
-        if (settled) return;
-        settled = true; clearTimeout(onOpenTimeout);
-        this.ws = ws; resolve();
-      });
-      ws.once("error", (e: Error) => {
-        if (settled) return;
-        settled = true; clearTimeout(onOpenTimeout);
-        reject(new FlowError("S103", `CDP WebSocket 错误: ${e.message}`, { hint: LAUNCH_HINT }));
-      });
-      ws.once("close", () => {
-        this.lastCloseReason = this.lastCloseReason || "closed";
-        this.ws = null;
-        for (const [, p] of this.pending) p.reject(new FlowError("S103", "CDP 连接已断开(页面可能被导航/关闭)", { hint: LAUNCH_HINT, flowStatus: 0 }));
-        this.pending.clear();
-      });
-      ws.on("message", (raw: WebSocket.RawData) => {
-        try {
-          const m = JSON.parse(raw.toString());
-          if (m?.id != null && this.pending.has(m.id)) {
-            const p = this.pending.get(m.id)!;
-            this.pending.delete(m.id);
-            if (m.error) p.reject(new Error(m.error.message ?? "CDP error"));
-            else p.resolve(m.result);
-          }
-        } catch { /* 非 JSON 帧忽略 */ }
-      });
-    }).finally(() => { this.opening = null; });
-    return this.opening;
-  }
-
-  /** 原始 CDP 命令(带超时;evaluate/Page.navigate 共用 pending 路由)。 */
-  private async send(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<any> {
-    await this.connect();
-    const id = ++this.nextId;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new FlowError("S103", `CDP ${method} 超时(>${Math.round(timeoutMs / 1000)}s)`, { flowStatus: 0, ...(method === "Runtime.evaluate" ? { evalTimeout: true } : {}) }));
-      }, timeoutMs);
-      this.pending.set(id, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      try {
-        this.ws!.send(JSON.stringify({ id, method, params }));
-      } catch (e: any) {
-        clearTimeout(timer); this.pending.delete(id);
-        reject(new FlowError("S103", `CDP 发送失败: ${e?.message ?? e}`, { flowStatus: 0 }));
-      }
-    });
-  }
-
-  async evaluate(expression: string, timeoutMs: number): Promise<unknown> {
-    const r = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, timeoutMs);
-    return r;
-  }
-
-  /** 导航当前页面(Page.navigate 命令响应在导航发起即返回,不受上下文销毁影响)。 */
-  navigate(url: string, timeoutMs = 15_000): Promise<void> {
-    return this.send("Page.navigate", { url }, timeoutMs).then(() => undefined);
-  }
-
-  /** 重载当前页面(Page.reload;命令 ack 不依赖 JS 上下文存活,401 自愈用)。 */
-  reloadPage(timeoutMs = 15_000): Promise<void> {
-    return this.send("Page.reload", {}, timeoutMs).then(() => undefined);
-  }
-
-  /** 立即断开(自愈临时连接用 —— WS 句柄是事件循环引用,不断开会挂住进程;主连接不调用)。 */
-  dispose(): void {
-    const ws = this.ws;
-    this.ws = null;
-    this.pending.clear();
-    if (ws) { try { ws.terminate(); } catch { /* 已断开 */ } }
-  }
-
-}
+/** flow 命名空间的 CDP 错误工厂(status→flowStatus 映射;hint/evalTimeout 原样透传)。 */
+const flowCdpError: CdpErrorFactory = (code, message, opts) =>
+  new FlowError(code, message, opts ? { hint: opts.hint, flowStatus: opts.status, evalTimeout: opts.evalTimeout } : undefined);
 
 /** 生产传输:CDP /json/version 探活 + /json/list 定位 labs.google page target + Runtime.evaluate。 */
 export class CdpFlowTransport implements FlowTransport {
@@ -367,7 +276,7 @@ export class CdpFlowTransport implements FlowTransport {
       throw new FlowError("S103", "page target 无 webSocketDebuggerUrl(页面可能正在关闭)");
     }
     this.pageUrl = page.url;
-    this.conn = new CdpConnection(page.webSocketDebuggerUrl);
+    this.conn = new CdpConnection(page.webSocketDebuggerUrl, flowCdpError, LAUNCH_HINT);
     return { pageUrl: this.pageUrl };
   }
 
@@ -385,7 +294,7 @@ export class CdpFlowTransport implements FlowTransport {
     const tab = (await res.json()) as any;
     const wsUrl = tab?.webSocketDebuggerUrl;
     if (typeof wsUrl !== "string" || !wsUrl) throw new Error("新 tab 无 webSocketDebuggerUrl");
-    const tmp = new CdpConnection(wsUrl);
+    const tmp = new CdpConnection(wsUrl, flowCdpError, LAUNCH_HINT);
     try {
       await tmp.navigate(url);
     } finally {

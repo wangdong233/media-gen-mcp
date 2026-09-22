@@ -122,7 +122,7 @@ describe("钉死守卫集成(死端口 CDP + 死端口 zhipu;确定性零积分)
     const r = await c.send("tools/list", {});
     const gi = r.result.tools.find((t) => t.name === "generate_image");
     const desc = gi.inputSchema.properties.provider.description;
-    assert.match(desc, /naming an opt-in provider \(flow\/pixverse\) pins it/, "收窄后的钉死承诺(opt-in 限定;pixverse 同为 opt-in 计费渠道)在册");
+    assert.match(desc, /naming an opt-in provider \(flow\/pixverse\/gemini\) pins it/, "收窄后的钉死承诺(opt-in 限定;pixverse 同为 opt-in 计费渠道)在册");
     assert.match(desc, /free providers \(agnes\/zhipu\) named explicitly still fall through/, "免费渠道回落语义在册");
     assert.doesNotMatch(desc, /explicitly naming a provider pins it/, "旧的全渠道钉死措辞必须移除(契约与实现分歧源)");
   });
