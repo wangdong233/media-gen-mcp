@@ -230,7 +230,7 @@ function buildTools() {
           download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get the taskId/mediaId only." },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>. Providers (incl. Flow) do not name assets server-side — applies at local download; existing files get -2/-3… suffix (never silently overwrites)." },
           outDir: { type: "string", description: "Output directory; omit = default ./output under the server start dir (the project that launched the task); change globally via config outDir." },
-          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider). provider=flow / provider=pixverse bill credits — always pass it explicitly when those are intended. Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
+          provider: { type: "string", default: videoHead, description: "Optional; omit to use the video provider chain head (videoProviderPriority[0] if configured, else defaultVideoProvider). provider=flow / provider=pixverse bill credits and provider=gemini burns Google AI subscription compute quota — always pass it explicitly when those are intended. Vision tools use a separate provider set (tesseract/paddle/vlm/glm-vision — see list_vision_capabilities)." },
         },
         required: ["prompt"],
       },
