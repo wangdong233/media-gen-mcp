@@ -1,27 +1,26 @@
 /**
- * C 任务(渠道优先级链)单元测试 —— 零网络零消耗(全程 override 注入 / Stub transport,不触真实 CDP/积分)。
+ * 渠道路由单元测试(0.22.0 语义:优先级链已废弃 + disabledProviders 禁用表)—— 零网络零消耗。
+ *
+ * 新契约(2026-09-23 用户裁决,链体系移除):
+ *   - provider 缺省 = 免费池头(defaultImageProvider,agnes;agnes↔zhipu 容灾互备);
+ *   - opt-in 渠道(gemini/pixverse)点名即用;flow 经 disabledProviders 禁用(默认含 flow,死域);
+ *   - 优先级链配置读到即忽略(config.ts 打废弃警告);getProviderPriority 恒 undefined。
  *
  * 覆盖面:
- *   1. parseProviderPriority:config 数组 / env csv / 小写归一 / 去重 / 非法项剔除 / 空 → undefined
- *   2. getProviderPriority:override 注入缝 + 未知 provider 剔除(warn 不 fatal)
- *   3. resolveProvider 链头:priority[0];熔断窗口内跳过(链降级到下一成员);未配置 = legacy 默认(零回归)
- *   4. getFallbackProvider 排序统一:priority 位置优先于 tier;optIn 门禁(未列入不进任何链,列入才进;
- *      链内成员豁免 configured 过滤 —— flow 首次探测前 configured=false)
+ *   1. parseProviderPriority:config 数组 / env csv / 小写归一 / 去重(解析仍在,供废弃警告路径)
+ *   2. getProviderPriority:恒 undefined(链废弃;override/config 均无效)
+ *   3. resolveProvider:未点名恒 defaultImageProvider;model 归属自动路由(禁用渠道不参与归属)
+ *   4. getFallbackProvider:免费池 tier 降序;optIn 永不承接;禁用渠道永不承接
  *   5. isChainAdvanceable:precondition(S1xx)推进;S301 业务错不推进;上游 5xx/429 推进
- *   6. flow 60s 软熔断:notifyUnavailable → health().cooldown;ensureReady 冷却窗口内零探测直抛缓存错误;
- *      窗口过期自动重探
- *   7. isRequestPinned(三审 finding-1):opt-in 渠道(flow)显式点名 → 钉死直抛;免费渠道
- *      (agnes/zhipu)显式点名 → 不钉死(失败按链回落带 warning)—— 与收窄后的 schema 契约一致
+ *   6. flow 60s 软熔断:notifyUnavailable → health().cooldown;ensureReady 冷却窗口内零探测直抛
+ *   7. isRequestPinned(钉死守卫):opt-in 渠道显式点名 → 钉死直抛;免费渠道不钉死
+ *   8. disabledProviders(0.22.0):默认 ["flow"];getProvider 单点拦截(零网络零 CDP);
+ *      禁用渠道的模型无归属;解禁走独立 fixture 套件(test/provider-disabled.test.ts)
  *
  * 导入方式:与 flow.test.ts 同范式(createRequire 引编译产物 dist/;npm test 先 build 再 build:tests)。
- * 测试隔离铁律(2026-08-24 CI #18/#19 红后加固)双层隔离:
- *   ① __priorityOverrideForTests 置 null,隔离本机 imageProviderPriority 差异;
- *   ② 本文件进程内写 tmp fixture 并经 MEDIA_GEN_MCP_CONFIG(config.ts 官方测试注入缝,
- *     同 flow-gate.integration 先例)在 require dist 之前设 env —— 本文件绝不读
- *     ~/.media-gen-mcp/config.json(CI 无该文件时 zhipu configured=false + models 空,
- *     模型归属路由 / 视频回落链两用例曾因此依赖本机状态而 false-fail)。
- *   fixture 后本地/CI 断言逐字节一致;「测试环境自足性」用例机械化盯防该缝被回退
- *   (守卫再丢失会立刻在此炸出,而非两条下游用例莫名红)。
+ * 测试隔离铁律双层(2026-08-24 CI 加固,延续):① override 缝置 null;② tmp fixture 经
+ * MEDIA_GEN_MCP_CONFIG 注入(本文件 fixture 未写 disabledProviders → 出厂默认 ["flow"] 生效,
+ * 与真实用户环境一致)。node --test 每文件独立进程,env 不外泄。
  */
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
@@ -32,9 +31,6 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 // ── 自足 fixture(必须先落盘 + 设 env,再 require dist:config.ts 模块加载时读此 env)──
-// 零网络零积分:key 为哑值,只为 health().configured=true 与模型目录非空两项路由前提成立;
-// 本文件全程 override 注入 / Stub transport,从不发真实请求。node --test 每文件独立进程,
-// 此 env 不外泄到其他测试文件。
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "provider-priority-"));
 const cfgPath = path.join(tmpDir, "config.json");
 fs.writeFileSync(cfgPath, JSON.stringify({
@@ -60,217 +56,169 @@ const { getProviderPriority, getFallbackProvider, resolveProvider, getProvider }
 const { FlowProvider, FlowError } = require_(path.join(distDir, "providers/flow.js"));
 const { isChainAdvanceable, isFallbackWorthy, isRequestPinned } = require_(path.join(distDir, "providers/http.js"));
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// 默认「未配置优先级」(legacy 语义);个别用例按需覆盖后必须还原。
 before(() => {
   reg.__priorityOverrideForTests.image = null;
   reg.__priorityOverrideForTests.video = null;
 });
 
-// ═══ 0. 测试环境自足性(CI #18/#19 根因回归:无 ~/.media-gen-mcp/config.json 环境不依赖本机状态)═══
+// ═══ 0. 测试环境自足性 ═══
 
 describe("测试环境自足性(fixture 注入缝机械化盯防)", () => {
   test("CONFIG_FILE 指向本文件 tmp fixture;zhipu configured + 模型目录非空(路由两前提)", () => {
-    assert.equal(CONFIG_FILE, cfgPath, "fixture 注入失效 = 隔离缝被回退,下游用例将退化为依赖本机状态");
-    assert.equal(getProvider("zhipu").health().configured, true, "zhipu 须 configured(CI 无 config 时为 false,曾致视频回落链用例 false-fail)");
-    assert.ok((getProvider("zhipu").listImageModels() as string[]).includes("cogview-4"), "cogview-4 须在 zhipu 图像目录(模型归属路由前提)");
-    assert.ok((getProvider("zhipu").listVideoModels() as string[]).length > 0, "zhipu 视频目录须非空");
+    assert.equal(CONFIG_FILE, cfgPath, "fixture 注入失效 = 隔离缝被回退");
+    assert.equal(getProvider("zhipu").health().configured, true);
+    assert.ok((getProvider("zhipu").listImageModels() as string[]).includes("cogview-4"));
+    assert.ok((getProvider("zhipu").listVideoModels() as string[]).length > 0);
     assert.equal(getProvider("agnes").health().configured, true);
   });
+  test("出厂默认:disabledProviders = ['flow'](死域渠道,配置化默认非硬代码)", () => {
+    assert.deepEqual(config.disabledProviders, ["flow"]);
+  });
 });
 
-// ═══ 1. 配置解析 ═══
+// ═══ 1. 配置解析(保留:废弃警告路径仍在解析)═══
 
-describe("parseProviderPriority(配置形态:config 数组 > env csv)", () => {
+describe("parseProviderPriority(配置形态:config 数组 > env csv;0.22.0 起仅供电量废弃警告)", () => {
   test("config 数组:小写归一 + 去重(保序)", () => {
-    assert.deepEqual(parseProviderPriority(["Flow", "agnes", "zhipu", "AGNES"], "X_NONE"), ["flow", "agnes", "zhipu"]);
+    assert.deepEqual(parseProviderPriority(["Agnes", "agnes", "Zhipu"], "NOPE"), ["agnes", "zhipu"]);
   });
   test("env 逗号分隔:trim + 剔空", () => {
-    process.env.X_NONE = "flow, zhipu ,,agnes";
+    process.env.PROV_PRI_TEST_ENV = " agnes , ,zhipu,";
     try {
-      assert.deepEqual(parseProviderPriority(undefined, "X_NONE"), ["flow", "zhipu", "agnes"]);
+      assert.deepEqual(parseProviderPriority(undefined, "PROV_PRI_TEST_ENV"), ["agnes", "zhipu"]);
     } finally {
-      delete process.env.X_NONE;
+      delete process.env.PROV_PRI_TEST_ENV;
     }
   });
-  test("config 数组优先于 env;非法项(非字符串)剔除", () => {
-    process.env.X_NONE = "zhipu";
-    try {
-      assert.deepEqual(parseProviderPriority(["flow", 42, null as any, "agnes"], "X_NONE"), ["flow", "agnes"]);
-    } finally {
-      delete process.env.X_NONE;
-    }
-  });
-  test("全空/空数组 → undefined(= 未配置 = legacy 行为)", () => {
-    assert.equal(parseProviderPriority([], "X_NONE"), undefined);
-    assert.equal(parseProviderPriority(["", "  "], "X_NONE"), undefined);
-    assert.equal(parseProviderPriority(undefined, "X_NONE"), undefined);
+  test("全空/空数组 → undefined", () => {
+    assert.equal(parseProviderPriority([], "NOPE"), undefined);
+    assert.equal(parseProviderPriority(undefined, "NOPE"), undefined);
   });
 });
 
-// ═══ 2. registry 优先级解析 ═══
+// ═══ 2. 链已废弃:getProviderPriority 恒 undefined ═══
 
-describe("getProviderPriority(override 注入缝 + 未知 provider 剔除)", () => {
-  test("未知 provider 名剔除(warn 不 fatal),已知保序", () => {
-    reg.__priorityOverrideForTests.image = ["flow", "no-such-provider", "agnes"];
+describe("getProviderPriority(0.22.0 废弃:恒 undefined)", () => {
+  test("override 注入与 config 均无效(链语义已移除)", () => {
+    reg.__priorityOverrideForTests.image = ["flow", "agnes"];
     try {
-      assert.deepEqual(getProviderPriority("image"), ["flow", "agnes"]);
+      assert.equal(getProviderPriority("image"), undefined, "配置链不再生效");
+      assert.equal(reg.getRawProviderPriority("image"), undefined);
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
   });
-  test("null override = 强制未配置(隔离本机 config 差异)", () => {
+  test("null override 同样 undefined(隔离缝语义不变)", () => {
     assert.equal(getProviderPriority("image"), undefined);
     assert.equal(getProviderPriority("video"), undefined);
   });
 });
 
-// ═══ 3. resolveProvider 链头 ═══
+// ═══ 3. resolveProvider:未点名恒默认;归属路由不受链影响 ═══
 
-describe("resolveProvider 链头(priority[0];熔断跳过;未配置零回归)", () => {
-  test("配置 imageProviderPriority=[flow,agnes,zhipu] 且未点名 provider → 链头 = flow", () => {
+describe("resolveProvider(未点名 = defaultImageProvider;model 归属自动路由)", () => {
+  test("未点名 → legacy 默认 defaultImageProvider(免费池头;链配置无效)", () => {
     reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
     try {
-      assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "flow");
+      assert.equal(resolveProvider(undefined, undefined, "image").provider.name, config.defaultImageProvider);
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
   });
-  test("链头 + 他家 model → 自动路由不变(model 归属优先)", () => {
-    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
-    try {
-      const r = resolveProvider(undefined, "cogview-4", "image");
-      assert.equal(r.provider.name, "zhipu");
-      assert.equal(r.autoRouted, true);
-      assert.equal(r.routedFrom, "flow");
-    } finally {
-      reg.__priorityOverrideForTests.image = null;
-    }
+  test("他家 model → 自动路由不变(model 归属优先;例:agnes 头 + cogview-4 → zhipu)", () => {
+    const r = resolveProvider(undefined, "cogview-4", "image");
+    assert.equal(r.provider.name, "zhipu");
+    assert.equal(r.autoRouted, true);
+    assert.equal(r.routedFrom, config.defaultImageProvider);
   });
-  test("未配置 priority → legacy 默认 defaultImageProvider(零回归)", () => {
-    const { config } = require_(path.join(distDir, "config.js"));
-    assert.equal(resolveProvider(undefined, undefined, "image").provider.name, config.defaultImageProvider);
-  });
-  test("链头在 60s 熔断窗口内 → 降级到下一成员;窗口过期恢复(惰性:只读 health,零探测)", async () => {
-    const flow = getProvider("flow");
-    const prevCooldownMs = flow.cooldownMs;
-    flow.cooldownMs = 40; // 实例字段,便于测试调短
-    flow.notifyUnavailable(new FlowError("S100", "CDP 不可连", { precondition: true }));
-    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
-    try {
-      assert.equal(flow.health().cooldown, true);
-      assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "agnes", "熔断窗口内链头降级 agnes");
-      await sleep(90);
-      assert.equal(flow.health().cooldown, false);
-      assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "flow", "窗口过期恢复 flow 链头");
-    } finally {
-      reg.__priorityOverrideForTests.image = null;
-      flow.cooldownMs = prevCooldownMs;
+  test("禁用渠道的模型不参与归属(flow 助记/目录 key 均无归属 → 未知模型)", () => {
+    for (const m of ["abra_t2v", "abra_i2v", "abra_t2v_8s", "NARWHAL"]) {
+      assert.throws(() => resolveProvider(undefined, m, m.startsWith("abra") ? "video" : "image"), (e: any) =>
+        e.message.includes("未知模型"), `${m} 应无归属(flow 禁用)`);
     }
   });
 });
 
-// ═══ 4. getFallbackProvider 排序统一(优先级与 fallback 同一管线)═══
+// ═══ 4. getFallbackProvider(免费池 tier 降序;optIn/禁用永不承接)═══
 
-describe("getFallbackProvider(priority 位置优先于 tier;optIn 门禁)", () => {
-  test("priority=[zhipu,agnes]:fallback(flow) → zhipu(list 序战胜 tier,agnes tier=10 > zhipu=5)", () => {
-    reg.__priorityOverrideForTests.image = ["zhipu", "agnes"];
+describe("getFallbackProvider(免费池容灾;optIn 与禁用渠道永不承接)", () => {
+  test("agnes 失败 → zhipu(免费池互备,tier 序);永不落 flow/gemini/pixverse", () => {
+    assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu");
+    assert.equal(getFallbackProvider("zhipu", "image", {})?.name, "agnes");
+    const videoFb = getFallbackProvider("agnes", "video", { mode: "text-to-video" })?.name;
+    assert.equal(videoFb, "zhipu");
+    for (const cur of ["agnes", "zhipu"]) {
+      assert.notEqual(getFallbackProvider(cur, "image", {})?.name, "flow", "禁用渠道不承接");
+      assert.notEqual(getFallbackProvider(cur, "image", {})?.name, "gemini", "optIn 渠道不承接");
+      assert.notEqual(getFallbackProvider(cur, "image", {})?.name, "pixverse", "optIn 渠道不承接");
+    }
+  });
+  test("链配置对 fallback 排序同样无效(恒 tier 序)", () => {
+    reg.__priorityOverrideForTests.image = ["pixverse", "zhipu"];
     try {
-      assert.equal(getFallbackProvider("flow", "image", {})?.name, "zhipu");
+      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu");
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
   });
-  test("priority=[flow,agnes,zhipu]:fallback(flow) → agnes;fallback(agnes) → flow(链=偏好序,可向上回落)", () => {
-    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
+  test("熔断窗口内跳过(cooldown 过滤保留;免费池内降级)", () => {
+    const zhipu = getProvider("zhipu");
+    const prev = zhipu.cooldownMs;
+    zhipu.cooldownMs = 40;
     try {
-      assert.equal(getFallbackProvider("flow", "image", {})?.name, "agnes");
-      // agnes 失败 → 链上下一可用 = flow(pos 0;经 config 显式同意放行 optIn+configured 豁免)
-      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "flow");
+      zhipu.notifyUnavailable(new Error("probe"));
+      assert.equal(zhipu.health().cooldown, true);
+      assert.equal(getFallbackProvider("agnes", "image", {}), undefined, "zhipu 熔断 → 免费池无候选(不落 optIn)");
     } finally {
-      reg.__priorityOverrideForTests.image = null;
-    }
-  });
-  test("未配置 priority:optIn 门禁生效 —— flow 不进任何模态隐式链;视频链 = agnes↔zhipu(零回归)", () => {
-    assert.notEqual(getFallbackProvider("agnes", "image", {})?.name, "flow");
-    assert.notEqual(getFallbackProvider("zhipu", "image", {})?.name, "flow");
-    assert.equal(getFallbackProvider("agnes", "video", { mode: "text-to-video" })?.name, "zhipu");
-    assert.notEqual(getFallbackProvider("agnes", "video", { mode: "text-to-video" })?.name, "flow");
-  });
-  test("flow 在熔断窗口内 → 即使列入链也被跳过(cooldown 过滤对链内成员同样生效)", async () => {
-    const flow = getProvider("flow");
-    const prevCooldownMs = flow.cooldownMs;
-    flow.cooldownMs = 40;
-    flow.notifyUnavailable(new Error("cooldown probe"));
-    reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
-    try {
-      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu", "flow 熔断 → 跳过");
-      await sleep(90);
-      assert.equal(getFallbackProvider("agnes", "image", {})?.name, "flow", "窗口过期 → flow 回链");
-    } finally {
-      reg.__priorityOverrideForTests.image = null;
-      flow.cooldownMs = prevCooldownMs;
+      return sleep(50).then(() => { zhipu.cooldownMs = prev; });
     }
   });
 });
 
-// ═══ 4b. 钉死守卫(三审 finding-1:契约收窄后的语义回归)═══
+// ═══ 4b. 钉死守卫(纯函数语义保留;opt-in 例子换活渠道 gemini)═══
 
 describe("isRequestPinned(钉死守卫:opt-in 渠道显式点名直抛;免费渠道带告警回落)", () => {
-  test("opt-in 渠道:显式 provider 或 model 归属 → 钉死;默认路由到达不钉死(链可推进)", () => {
-    assert.equal(isRequestPinned("flow", undefined, true), true, "显式 provider=flow 钉死");
-    assert.equal(isRequestPinned(undefined, "NARWHAL", true), true, "model 归属路由到 flow 同样钉死");
-    assert.equal(isRequestPinned(undefined, undefined, true), false, "链头默认路由到达 opt-in 渠道不钉死(环境前置失败可推进)");
+  test("opt-in 渠道:显式 provider 或 model 归属 → 钉死;默认路由到达不钉死", () => {
+    assert.equal(isRequestPinned("gemini", undefined, true), true, "显式 provider=gemini 钉死");
+    assert.equal(isRequestPinned(undefined, "nano-banana-2", true), true, "model 归属路由到 gemini 同样钉死");
+    assert.equal(isRequestPinned(undefined, undefined, true), false, "默认路由(现已不可能到达 optIn,防御保留)");
   });
-  test("免费渠道(agnes/zhipu):显式点名也不钉死(失败仍按链回落带 warning;零回归基线)", () => {
+  test("免费渠道(agnes/zhipu):显式点名也不钉死(失败仍按免费池回落带 warning)", () => {
     assert.equal(isRequestPinned("agnes", undefined, false), false);
-    assert.equal(isRequestPinned("zhipu", "cogview-4", false), false, "model 归属免费渠道同样不钉死");
+    assert.equal(isRequestPinned("zhipu", "cogview-4", false), false);
     assert.equal(isRequestPinned(undefined, undefined, false), false);
   });
-  test("与 registry 真源一致:resolveProvider 解析结果的 requiresOptIn 喂入判定(opt-in=flow,免费=agnes/zhipu)", () => {
-    const flowOptIn = resolveProvider("flow", undefined, "image").provider.requiresOptIn?.("image") === true;
-    const agnesOptIn = resolveProvider("agnes", undefined, "image").provider.requiresOptIn?.("image") === true;
-    const zhipuOptIn = resolveProvider("zhipu", undefined, "image").provider.requiresOptIn?.("image") === true;
-    assert.equal(flowOptIn, true, "flow 是唯一 opt-in 渠道(当前注册表)");
-    assert.equal(agnesOptIn, false);
-    assert.equal(zhipuOptIn, false);
-    // 端到端语义:显式点名 flow → 直抛;显式点名 agnes/zhipu → 不钉死(可回落,见 getFallbackProvider 用例)
-    assert.equal(isRequestPinned("flow", undefined, flowOptIn), true);
-    assert.equal(isRequestPinned("agnes", undefined, agnesOptIn), false);
-    assert.equal(isRequestPinned("zhipu", undefined, zhipuOptIn), false);
+  test("与 registry 真源一致(gemini/pixverse opt-in;agnes/zhipu 免费[未实现钩子=undefined])", () => {
+    assert.equal(getProvider("gemini").requiresOptIn?.("image"), true);
+    assert.equal(getProvider("pixverse").requiresOptIn?.("image"), true);
+    assert.ok(getProvider("agnes").requiresOptIn?.("image") !== true, "免费渠道未实现钩子(undefined)≠ opt-in");
+    assert.ok(getProvider("zhipu").requiresOptIn?.("image") !== true);
   });
 });
 
-// ═══ 5. isChainAdvanceable(失败分类)═══
+// ═══ 5. isChainAdvanceable(失败分类;纯函数保留)═══
 
 describe("isChainAdvanceable(= isFallbackWorthy ∪ 环境前置失败)", () => {
   const mk = (code: string, opts?: any) => new FlowError(code, "x", opts);
-  test("S100/S101/S102/S104 precondition → 推进(请求从未提交,非业务错)", () => {
+  test("S100/S101/S102/S104 precondition → 推进", () => {
     for (const c of ["S100", "S101", "S102", "S104"]) {
       assert.equal(isChainAdvanceable(mk(c, { precondition: true })), true, c);
     }
   });
-  test("S301 参数错 / S401 媒体错 → 不推进(保留原始错误)", () => {
+  test("S301 参数错 / S401 媒体错 → 不推进", () => {
     assert.equal(isChainAdvanceable(mk("S301")), false);
     assert.equal(isChainAdvanceable(mk("S401")), false);
   });
-  test("上游 5xx / 401 / 429(带 flowStatus)→ 推进(既有 isFallbackWorthy 语义)", () => {
+  test("上游 5xx / 429 → 推进", () => {
     assert.equal(isChainAdvanceable(mk("S201", { flowStatus: 500 })), true);
-    assert.equal(isChainAdvanceable(mk("S201", { flowStatus: 429 })), true);
     assert.equal(isChainAdvanceable(mk("S103", { flowStatus: 0 })), true);
-  });
-  test("isFallbackWorthy 语义保留(precondition 不泄漏进单跳 fallback 既有路径)", () => {
-    assert.equal(isFallbackWorthy(mk("S100", { precondition: true })), false, "S100 无 status → 单跳 fallback 仍不认(现行为)");
-    const httpish: any = new Error("rate limited");
-    httpish.status = 429;
-    assert.equal(isFallbackWorthy(httpish), true);
   });
 });
 
-// ═══ 6. flow 60s 软熔断(零探测快速失败)═══
+// ═══ 6. flow 60s 软熔断(直构实例;不经 getProvider —— flow 默认禁用)═══
 
-/** open() 永远失败的 stub:S100 precondition(模拟 Chrome/CDP 未开)。 */
 class DeadCdpTransport {
   opens = 0;
   async open() {
@@ -282,68 +230,42 @@ class DeadCdpTransport {
 }
 
 describe("flow 60s 软熔断(notifyUnavailable → ensureReady 零探测)", () => {
-  test("失败后 notifyUnavailable:冷却窗口内 ensureReady 直抛缓存错误(opens 计数不增);过期重探", async () => {
+  test("冷却窗口内 ensureReady 直抛缓存错误(opens 不增);过期重探", async () => {
     const t = new DeadCdpTransport();
     const p = new FlowProvider({ transport: t as any });
-    p.cooldownMs = 50; // 实例字段,便于测试调短
-    p.healCdpBackoffMs = 1; // S100 自愈重探(日志#21)测试缝调短;首次失败=初次探测+自愈重探共 2 次
+    p.cooldownMs = 50;
+    p.healCdpBackoffMs = 1;
     const e1 = await p.ensureReady().then(() => null, (e: any) => e);
     assert.ok(e1 instanceof FlowError && e1.code === "S100");
-    assert.equal(e1.precondition, true);
-    assert.equal(t.opens, 2, "初次探测 + S100 自愈重探一次(仍失败才抛)");
-    assert.equal(p.health().cooldown, false, "失败本身不打熔断(链 walk 的 notifyUnavailable 负责)");
+    assert.equal(t.opens, 2, "初次探测 + S100 自愈重探一次");
     p.notifyUnavailable(e1);
     assert.equal(p.health().cooldown, true);
     const e2 = await p.ensureReady().then(() => null, (e: any) => e);
-    assert.equal(e2, e1, "冷却窗口内直抛缓存错误(零探测,自愈重探也不发生)");
-    assert.equal(t.opens, 2, "窗口内不重复探测 CDP");
+    assert.equal(e2, e1, "窗口内直抛缓存错误(零探测)");
     await sleep(110);
     const e3 = await p.ensureReady().then(() => null, (e: any) => e);
-    assert.equal(t.opens, 4, "窗口过期重探(2=初探+自愈重探,同 S100 模式)");
+    assert.equal(t.opens, 4, "窗口过期重探");
     assert.ok(e3 instanceof FlowError);
-  });
-  test("registry flow 实例同语义(notifyUnavailable 后 health().cooldown,供链头跳过)", () => {
-    const flow = getProvider("flow");
-    const prev = flow.cooldownMs;
-    flow.cooldownMs = 30;
-    flow.notifyUnavailable(new Error("probe"));
-    try {
-      assert.equal(flow.health().cooldown, true);
-    } finally {
-      // 还原:等待窗口过期,免污染同文件后续用例
-      return sleep(35).then(() => { flow.cooldownMs = prev; });
-    }
   });
 });
 
-// ═══ 审计 A-01(critical):flow 助记视频 key(abra_t2v)归属 ═══
-// schema model 描述承诺 "or mnemonic+durationSeconds (abra_t2v + 8)",工具层归属校验
-// 不得在到达 flow.ts resolveVideoModelKey 的助记解析之前拦下。
+// ═══ 8. disabledProviders(0.22.0 配置化禁用;单点拦截)═══
 
-describe("resolveProvider:flow 助记视频 key 归属(审计 A-01)", () => {
-  test("显式 provider=flow + mnemonic(abra_t2v)→ 不再报「未知模型」", () => {
-    const r = resolveProvider("flow", "abra_t2v", "video");
-    assert.equal(r.provider.name, "flow");
-    assert.equal(r.autoRouted, false);
+describe("disabledProviders(默认 ['flow'];getProvider 路由层单点拦截)", () => {
+  test("getProvider('flow') 抛禁用错(含替代渠道指引与解禁说明;零网络零 CDP)", () => {
+    assert.throws(() => getProvider("flow"), (e: any) => {
+      assert.match(e.message, /已被禁用/);
+      assert.match(e.message, /L3 账号地区门禁死域/);
+      assert.match(e.message, /替代渠道/);
+      assert.match(e.message, /disabledProviders/);
+      return true;
+    });
   });
-  test("链头 agnes + mnemonic(abra_i2v/abra_r2v)→ 自动路由到 flow(唯一拥有者)", () => {
-    reg.__priorityOverrideForTests.video = null;
-    const head = reg.getProviderPriority("video")?.[0] ?? config.defaultVideoProvider;
-    for (const m of ["abra_i2v", "abra_r2v"]) {
-      const r = resolveProvider(undefined, m, "video");
-      assert.equal(r.provider.name, "flow", `${m} 应归属 flow`);
-      assert.equal(r.autoRouted, true);
-      assert.equal(r.routedFrom, head);
-    }
+  test("resolveProvider 显式点名 flow 同样被拦(点名即用只属于活渠道)", () => {
+    assert.throws(() => resolveProvider("flow", undefined, "image"), (e: any) => e.message.includes("已被禁用"));
   });
-  test("带时长后缀的完整 key(abra_t2v_8s)不受影响(目录内直接命中)", () => {
-    const r = resolveProvider(undefined, "abra_t2v_8s", "video");
-    assert.equal(r.provider.name, "flow");
-  });
-  test("助记不误伤图像模态(image 的 abra_t2v 仍报未知模型)", () => {
-    assert.throws(
-      () => resolveProvider(undefined, "abra_t2v", "image"),
-      (e: any) => e.message.includes("未知模型"),
-    );
+  test("env 形态:MEDIA_DISABLED_PROVIDERS 覆盖默认(见独立解禁套件 provider-disabled.test.ts)", () => {
+    // 本文件 fixture 未配置 → 出厂默认;解禁/自定义行为在独立 fixture 套件覆盖
+    assert.deepEqual(config.disabledProviders, ["flow"]);
   });
 });

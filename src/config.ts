@@ -163,10 +163,30 @@ export const config = {
    * (defaultImageProvider + agnes/zhipu tier 免费链,零回归)。optIn provider(如 flow)
    * 只有显式列入本链才可被默认路由/链内回落选中。
    */
+  /** @deprecated 0.22.0 起优先级链已废弃(渠道选择交给调用方按业务点名;缺省=免费池 agnes→zhipu)。读到即忽略。 */
   imageProviderPriority: parseProviderPriority(userCfg.imageProviderPriority, "MEDIA_IMAGE_PROVIDER_PRIORITY"),
 
-  /** C 任务:渠道优先级链(video 模态)。语义同上;默认不配置(agnes 免费),flow 需显式列入(视频消耗积分)。 */
+  /** @deprecated 同上。 */
   videoProviderPriority: parseProviderPriority(userCfg.videoProviderPriority, "MEDIA_VIDEO_PROVIDER_PRIORITY"),
+
+  /**
+   * 渠道禁用表(0.22.0 通用机制,取代硬代码):被列渠道的所有公共入口在路由层结构性拒绝
+   * (getProvider 拦截,零网络零 CDP 动作)。默认 ["flow"] —— Google Flow 2026-09-10 起
+   * L3 账号地区门禁死域(2026-09-23 用户裁决:禁止使用与测试,以默认配置形态落地);
+   * 显式配置数组【整体覆盖】默认(写 [] = 解禁全部,含 flow —— 供未来政策变化时显式解禁)。
+   * env MEDIA_DISABLED_PROVIDERS 逗号分隔(与 config 数组同覆盖语义,config 优先)。
+   */
+  disabledProviders: (() => {
+    if (Array.isArray(userCfg.disabledProviders)) {
+      const names = userCfg.disabledProviders.filter((x: unknown): x is string => typeof x === "string" && x.trim() !== "").map((x: string) => x.trim().toLowerCase());
+      return [...new Set(names)];
+    }
+    const env = process.env.MEDIA_DISABLED_PROVIDERS;
+    if (env != null && env !== "") {
+      return [...new Set(env.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean))];
+    }
+    return ["flow"]; // 出厂默认:死域渠道禁用(用户 2026-09-23 裁决;显式 [] 可解禁)
+  })(),
 
   // 注:链头不再单设 getter(F1 后唯一真源 = registry getProviderPriority(modality)?.[0] ?? defaultXxxProvider,
   // src/index.ts buildTools 与 scripts/check-schema.mjs 用同一表达式;tsconfig noUnusedLocals 不覆盖
@@ -225,6 +245,19 @@ export const config = {
 
   configFile: CONFIG_FILE,
 };
+// 0.22.0:优先级链废弃警告(读到非空配置即提示;不 fatal,平滑迁移)。
+{
+  const dep = (label: string, v: string[] | undefined) => {
+    if (v?.length) {
+      console.warn(
+        `[media-gen-mcp] ⚠️ ${label} 已于 0.22.0 废弃(优先级链体系移除):渠道选择现由调用方按业务点名(provider 参数),缺省 = 免费池 agnes→zhipu 自动容灾;opt-in 渠道(gemini/pixverse)点名即用,费用安全由计费确认门/配额警示兜底。该配置将被忽略,可从 config.json 删除。`,
+      );
+    }
+  };
+  dep("imageProviderPriority / MEDIA_IMAGE_PROVIDER_PRIORITY", parseProviderPriority(userCfg.imageProviderPriority, "MEDIA_IMAGE_PROVIDER_PRIORITY"));
+  dep("videoProviderPriority / MEDIA_VIDEO_PROVIDER_PRIORITY", parseProviderPriority(userCfg.videoProviderPriority, "MEDIA_VIDEO_PROVIDER_PRIORITY"));
+}
+
 
 /**
  * 原子回写 provider 字段到 config.json(temp + rename)。

@@ -80,10 +80,13 @@ function writeCfg() {
   fs.writeFileSync(cfgPath, JSON.stringify({
     // 网络错误零重试:连接拒绝立即抛(测试确定性 + 不引入退避延迟)
     http: { maxRetries: 0 },
-    // 链 = [flow, zhipu]:flow 显式列入(知情同意),使「免费渠道失败回落到 flow」可达
-    imageProviderPriority: ["flow", "zhipu"],
+    // 0.22.0:链已废弃(优先级配置被忽略);免费池回落 = agnes↔zhipu(均配死端口,回落后同样失败,
+    // 产生 fallback 告警 + 最终错误,断言回落确实发生)
     providers: {
-      flow: { cdpPort: DEAD_CDP_PORT },              // 死端口:结构性零积分
+      agnes: {                                        // 哑 key + 死端口(承接回落后同样失败;绝不打真网)
+        apiKey: "pin-test-key-agnes",
+        baseUrl: `http://127.0.0.1:${DEAD_HTTP_PORT}`,
+      },
       zhipu: {                                        // 死 HTTP 端口 + 假 key(仅过 configured 门)
         apiKey: "pin-test-key",
         baseUrl: `http://127.0.0.1:${DEAD_HTTP_PORT}`,
@@ -104,26 +107,30 @@ describe("钉死守卫集成(死端口 CDP + 死端口 zhipu;确定性零积分)
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   });
 
-  test("显式 provider=flow(opt-in)+ 环境前置失败 → 直抛 [flow] S1xx,零 fallback 告警", async () => {
-    const { isError, text } = await c.callTool("generate_image", { prompt: "pin-guard-probe", provider: "flow" });
-    assert.ok(isError, "钉死 = 失败直抛");
-    assert.match(text, /\[flow\] S1\d\d /, "首例错误是 flow 的环境前置错(S100/S101/S102)");
-    assert.doesNotMatch(text, /已自动 fallback/, "opt-in 渠道显式点名绝不静默回落(语义劫持防护)");
+  test("显式 provider=flow(禁用渠道)→ 路由层禁用拦截,零网络零 CDP 零 fallback(0.22.0)", async () => {
+    const { isError, text } = await c.callTool("generate_image", { prompt: "disabled-guard-probe", provider: "flow" });
+    assert.ok(isError, "禁用 = 直抛");
+    assert.match(text, /已被禁用/, "禁用错(含死域背景)");
+    assert.match(text, /disabledProviders/, "错误附解禁指引(配置化非硬代码)");
+    assert.match(text, /替代渠道/, "错误附替代渠道");
+    assert.doesNotMatch(text, /已自动 fallback/, "禁用渠道绝不静默回落");
   });
 
-  test("显式 provider=zhipu(免费)+ 失败 → 带告警按链回落到 flow(链内 opt-in 成员承接)", async () => {
+  test("显式 provider=zhipu(免费)+ 失败 → 带告警按免费池回落到 agnes(0.22.0:回落只落免费渠道)", async () => {
     const { isError, text } = await c.callTool("generate_image", { prompt: "free-fallthrough-probe", provider: "zhipu" });
-    assert.ok(isError, "回落目标(flow 死 CDP)也失败 → 最终错误");
-    assert.match(text, /已自动 fallback 到 "flow"/, "免费渠道显式点名后失败仍按链回落(带告警,非钉死)");
-    assert.match(text, /\[flow\] S1\d\d /, "回落后的最终错误来自 flow(证明回落确实发生,而非 zhipu 直抛)");
+    // agnes 也失败(fixture 死 baseUrl)→ 最终错误;但回落告警必须出现且回落目标是免费渠道
+    assert.ok(isError, "回落目标(agnes)也失败 → 最终错误");
+    assert.match(text, /已自动 fallback 到 "agnes"/, "免费渠道显式点名后失败仍回落(带告警,非钉死)");
+    assert.doesNotMatch(text, /已自动 fallback 到 "(flow|gemini|pixverse)"/, "回落永不落 opt-in/禁用渠道");
   });
 
   test("schema 契约同步:provider 描述按收窄后措辞(opt-in 钉死;免费渠道回落)", async () => {
     const r = await c.send("tools/list", {});
     const gi = r.result.tools.find((t) => t.name === "generate_image");
     const desc = gi.inputSchema.properties.provider.description;
-    assert.match(desc, /naming an opt-in provider \(flow\/pixverse\/gemini\) pins it/, "收窄后的钉死承诺(opt-in 限定;pixverse 同为 opt-in 计费渠道)在册");
-    assert.match(desc, /free providers \(agnes\/zhipu\) named explicitly still fall through/, "免费渠道回落语义在册");
+    assert.match(desc, /Naming gemini\/pixverse pins that channel/, "点名即用+钉死承诺(活 opt-in 渠道)在册");
+    assert.match(desc, /naming a free channel still fails over within the free pool/, "免费池回落语义在册");
+    assert.match(desc, /disabledProviders/, "禁用机制(配置化)在描述中可见");
     assert.doesNotMatch(desc, /explicitly naming a provider pins it/, "旧的全渠道钉死措辞必须移除(契约与实现分歧源)");
   });
 
@@ -132,7 +139,8 @@ describe("钉死守卫集成(死端口 CDP + 死端口 zhipu;确定性零积分)
     let parsed = null;
     try { parsed = JSON.parse(text); } catch {}
     assert.ok(parsed, "list_models 返回 JSON");
-    assert.match(parsed.imageRoutingNote, /显式点名 opt-in 渠道/, "routingNote 收窄为 opt-in 钉死");
-    assert.match(parsed.imageRoutingNote, /免费渠道.*带告警回落/, "routingNote 声明免费渠道回落语义");
+    assert.match(parsed.imageRoutingNote, /点名即用且钉死/, "routingNote:opt-in 点名即用+钉死");
+    assert.match(parsed.imageRoutingNote, /免费渠道.*带告警回落/, "routingNote:免费池回落语义");
+    assert.match(parsed.imageRoutingNote, /disabledProviders/, "routingNote:禁用机制可见");
   });
 });

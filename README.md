@@ -260,8 +260,8 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | 酷炫动效视频 / 滤镜 SVG 100% 保真(`render_video` / `render_svg` Chrome 后端) | 推荐装 **lasso 渲染档**:`npm i -g lasso-mcp` 后跑一次 `npx -y lasso-mcp render-chrome --ensure`(空闲 10 分钟自动回收) | 装上即用;未装 lasso 时滤镜 SVG 自动降级 resvg(~92% 保真),动效视频返回带修复指引的结构化错误(legacy 自管池已退役) |
 | AI 写实图 / AI 视频(文生图、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
 | 用 Google Flow 生图(0 积分)/ 管理生成资产 | **不用配 Key**:本机 Chrome 登录 Flow 即可(`lasso launch-chrome` 启动) | 生图 / 放大 / 上传 / 删除 / 分享 / 取消 / 查询全 0 积分;视频按积分计费(7–100 积分/条)。🔴 2026-09-10 起 L3 账号地区门禁不可用,恢复无时间表 |
-| 用 PixVerse 订阅池生图 / 生视频(一个订阅聚合 25 个视频 + 14 个图像模型) | 需 PixVerse 订阅 + CLI 登录一次(`npx pixverse login`;**opt-in 渠道,不进默认链**,须点名 `provider="pixverse"` 或列入优先级链) | 按订阅积分计费,提交前必经**两段式计费确认门**(预估+确认令牌);各模型价格经 `list_models` 的 costCatalog 可查(实测价 > 静态估 > 未发布) |
-| 用 Gemini 网页生图(Nano Banana 2)/ 生视频(Omni = Veo 3.1 系) | 本机 Chrome CDP 9225 + Google AI 订阅登录(`lasso launch-chrome --port 9225 --idle-ms 0` 后在窗口登录一次;**opt-in 渠道**,点名 `provider="gemini"` 或列入优先级链) | 消耗 Google AI 订阅**算力配额**(5 小时滚动窗 + 周上限;视频单条实测 ≈15-20% 窗口,每次提交带配额警示);文生图 / 文生视频 MVP(8s 16:9 固定档) |
+| 用 PixVerse 订阅池生图 / 生视频(一个订阅聚合 25 个视频 + 14 个图像模型) | 需 PixVerse 订阅 + CLI 登录一次(`npx pixverse login`;**opt-in 渠道,不进默认链**,须点名 `provider="pixverse"`(0.22.0 起点名即用) | 按订阅积分计费,提交前必经**两段式计费确认门**(预估+确认令牌);各模型价格经 `list_models` 的 costCatalog 可查(实测价 > 静态估 > 未发布) |
+| 用 Gemini 网页生图(Nano Banana 2)/ 生视频(Omni = Veo 3.1 系) | 本机 Chrome CDP 9225 + Google AI 订阅登录(`lasso launch-chrome --port 9225 --idle-ms 0` 后在窗口登录一次;**opt-in 渠道**,点名 `provider="gemini"`(0.22.0 起点名即用) | 消耗 Google AI 订阅**算力配额**(5 小时滚动窗 + 周上限;视频单条实测 ≈15-20% 窗口,每次提交带配额警示);文生图 / 文生视频 MVP(8s 16:9 固定档) |
 | OCR 文字识别(英文 / 验证码 / 数字 / 简单文档) | **什么都不用配** | 默认走进程内轻量引擎,装完即用 |
 | 中文 OCR / 发票表格 / 图表读数 / 看图问答 / 手写 / 公式 | **配一行智谱 GLM Key**(零部署,云端永久免费)**或** 自托管 PaddleX / vLLM | 配 GLM Key 即开即用;自托管服务跑起来后填一行 baseUrl |
 | **PDF 文字提取**(数字版 / 扫描件 / 多页) | 装两个依赖 `npm i pdfjs-dist @napi-rs/canvas`(首次用 PDF 时装) | 数字版 PDF 秒出;扫描件按上面 OCR 档位走(默认零配置也能跑) |
@@ -288,24 +288,18 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 - 配两家更稳:任一家限流/波动,另一家自动顶上,零感知零重复扣费
 - 配置文件:`~/.media-gen-mcp/config.json`(Windows:`%USERPROFILE%\.media-gen-mcp\config.json`);**没有也不崩** —— 结构化能力与默认 OCR 照常工作
 
-**渠道优先级链(可选)**——一行让"生图"自动走 Flow 免费档:
+**渠道路由(0.22.0:优先级链已废弃,选择权交给调用方)**——渠道选择是业务决策(免费试稿 → 付费定稿),由调用时点按工具描述的选型对比面自主点名:
 
-```json
-{
-  "imageProviderPriority": ["flow", "agnes", "zhipu"],
-  "videoProviderPriority": ["agnes", "zhipu"]
-}
-```
-
-- **链即开关**:渠道列进链 = 启用(链头即默认),不列 = 不启用;链头失败自动按序回落(60 秒熔断,不反复重试);显式 `provider="flow"` 点名永远合法且失败直抛(环境不可用返回带启动指引的 `[flow] S1xx`,绝不静默换渠道)
-- **视频默认不走 Flow**(消耗积分,刻意不进默认链):要么写进 `videoProviderPriority` 自担积分,要么每次显式 `provider="flow"`
-- **计费确认门(两段式,默认开)**:Flow 视频第一次调用不提交,只返回 `{needConfirm, estimatedCost, confirmToken}`;**原参数 + confirmToken** 再调才真提交。令牌 10 分钟有效、与全部计费参数绑定(改任一项失效);当前会员档不可用的 key 不发令牌直接拒绝并附各档价目;0 积分操作与非 Flow 渠道不触发。关闭:`"flow": { "videoConfirm": false }`
+- **缺省 = 免费池**:省略 `provider` → 免费渠道自动容灾互备(agnes 失败自动切 zhipu,反之亦然,60 秒熔断),零成本试稿首选
+- **opt-in 渠道点名即用**:`gemini`(订阅配额制高质量)/`pixverse`(订阅积分制多模型)经 `provider` 显式点名(`provider="gemini"` / `provider="pixverse"`)即用且钉死(失败直抛结构化错,绝不静默换渠道);费用安全由各自机制兜底(gemini 每次提交带配额警示;pixverse 两段式计费确认门 —— 首次只返回 `{needConfirm, estimatedCost, confirmToken}`,原参数 + confirmToken 复调才真提交,令牌 10 分钟有效与全部计费参数绑定)
+- **渠道禁用表(配置化)**:`"disabledProviders": ["flow"]`(默认值)—— 被列渠道对任何 `provider` 调用在路由层结构性拒绝(零网络零 CDP;默认含 flow:2026-09-10 起 L3 账号地区门禁死域);显式写 `[]` 解禁全部,可列任意渠道名自定义禁用;env `MEDIA_DISABLED_PROVIDERS` 逗号分隔同语义
+- 🔴 **旧的 `imageProviderPriority` / `videoProviderPriority` 配置已废弃**:读到即打警告并忽略(可从 config.json 删除);渠道选择知识已内置于 generate_image / create_video 的 `provider` 参数描述(`provider` 选型对比:免费池 / gemini 高质量 / pixverse 多模型),`list_models` 同步透出路由说明
 
 **Flow 资产管理(全 0 积分)**:`flow_status` 支持查积分/查状态/下载,以及分享(`shareMediaIds`)/取消(`cancelMediaIds`)/批量删除(`deleteMediaIds`)。配套 `"flow": { "toolDeadlineMs": 110000 }` 为 Flow 长操作设工具级截止(防卡死,超时转 `[flow] S410`,底层不取消,稍后经 `flow_status` 复查)。
 
-**PixVerse 渠道(第 4 生成渠道,订阅积分池)**:spawn 官方 CLI(`pixverse --json`)接入你已登录的订阅池 —— 一个订阅聚合 25 个视频模型 + 14 个图像模型。**opt-in 红线**:不进任何默认链,要么显式 `provider="pixverse"` 点名,要么写入 `"imageProviderPriority"` / `"videoProviderPriority"` 自担积分;一切 image/video 提交必经**两段式计费确认门**(与 Flow 同款:首次只返回积分预估+确认令牌,原参数+令牌复调才真提交;令牌 10 分钟有效且单次消费)。各模型价格在 `list_models` 的 costCatalog 三态可查(实测落账 > 静态估算 > 未发布)。配置段 `"pixverse": { "confirm": true, "confirmTtlMs": 600000, "pinnedVersion": "1.4.3" }`;CLI 版本锁定 + 启动自检,漂移响亮告警。详见 `doc/PixVerse-provider集成.md`。
+**PixVerse 渠道(第 4 生成渠道,订阅积分池)**:spawn 官方 CLI(`pixverse --json`)接入你已登录的订阅池 —— 一个订阅聚合 25 个视频模型 + 14 个图像模型。**opt-in 语义(0.22.0)**:不进默认路由(缺省永远免费池),显式 `provider="pixverse"` 点名即用且钉死;一切 image/video 提交必经**两段式计费确认门**(与 Flow 同款:首次只返回积分预估+确认令牌,原参数+令牌复调才真提交;令牌 10 分钟有效且单次消费)。各模型价格在 `list_models` 的 costCatalog 三态可查(实测落账 > 静态估算 > 未发布)。配置段 `"pixverse": { "confirm": true, "confirmTtlMs": 600000, "pinnedVersion": "1.4.3" }`;CLI 版本锁定 + 启动自检,漂移响亮告警。详见 `doc/PixVerse-provider集成.md`。
 
-**Gemini 网页渠道(第 5 生成渠道,订阅算力配额)**:CDP UI 驱动 gemini.google.com 网页(「制作图片」= Nano Banana 2 /「制作视频」= Omni = Veo 3.1 系),零 API Key —— 用你已登录 Google AI 订阅的本机 Chrome。**opt-in 红线**:不进默认链,显式 `provider="gemini"` 或写入优先级链。
+**Gemini 网页渠道(第 5 生成渠道,订阅算力配额)**:CDP UI 驱动 gemini.google.com 网页(「制作图片」= Nano Banana 2 /「制作视频」= Omni = Veo 3.1 系),零 API Key —— 用你已登录 Google AI 订阅的本机 Chrome。**opt-in 语义(0.22.0)**:不进默认路由(缺省永远免费池),显式 `provider="gemini"` 点名即用且钉死。
 
 前置一次性(3 步):①`lasso launch-chrome --port 9225 --mode visible --idle-ms 0` ②在窗口里登录 Google(gemini.google.com 显示账号徽章)③`lasso chrome-hide` 收回后台;此后日常拉起用 hidden 档即可(`--idle-ms 0` 防回收,登录态在 profile)。端口可配(`GEMINI_CDP_PORT` / `providers.gemini.cdpPort`)。
 

@@ -517,8 +517,9 @@ describe("pixverse registry 接线", () => {
     assert.ok(p.listVideoModels().includes("v6"));
   });
 
-  test("flow:视频门在册;图像豁免 = 不实现钩子(0 积分模态零影响)", () => {
-    const flow: any = reg.getProvider("flow");
+  test("flow:视频门在册;图像豁免 = 不实现钩子(0 积分模态零影响;直构实例 —— registry 默认禁用 flow)", () => {
+    const { FlowProvider } = require_("../dist/providers/flow.js");
+    const flow: any = new FlowProvider({});
     assert.equal(typeof flow.beginVideoSubmissionConfirm, "function");
     assert.equal(flow.beginImageSubmissionConfirm, undefined, "flow 图片 0 点 → 不实现即豁免(P0-2 豁免路径,无形状猜测)");
   });

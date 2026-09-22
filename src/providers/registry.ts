@@ -5,7 +5,7 @@ import { TesseractProvider } from "./tesseract.js";
 import { PaddleocrProvider } from "./paddle.js";
 import { VlmProvider } from "./vlm.js";
 import { GlmVisionProvider } from "./glm-vision.js";
-import { FlowProvider, FLOW_MNEMONIC_RE, abraCreditRange, veoCreditRange } from "./flow.js";
+import { FlowProvider, FLOW_MNEMONIC_RE } from "./flow.js";
 import { PixverseProvider } from "./pixverse.js";
 import { GeminiWebProvider } from "./gemini-web.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
@@ -95,96 +95,40 @@ const registry: Record<string, MediaProvider> = {
   }
 }
 
-// ── C 任务:渠道优先级链(config 解析 + 测试注入缝)。 ──
+// ── 渠道路由(0.22.0 起:优先级链已废弃)。 ──
+//
+// 2026-09-23 用户裁决 + 深度分析定谳:渠道选择是「调用时点」的业务决策(免费试稿 → 付费定稿),
+// 静态优先级链(装机时点决策)表达不了任务内变化,且链头为计费渠道时产生确认门摩擦。
+// 新契约:
+//   - provider 缺省 = 免费池(agnes → zhipu 容灾互备,硬编码,不可配);
+//   - opt-in 渠道(gemini/pixverse/flow)点名即用 —— 费用安全由计费确认门(pixverse/flow
+//     两段式 confirmToken)与配额警示(gemini)兜底,不再依赖「链内列入=知情同意」;
+//   - config 的 *ProviderPriority / MEDIA_*_PROVIDER_PRIORITY 读到即废弃警告并忽略(config.ts 发警告)。
+// 保留的函数签名仅为消费方(index.ts/check-schema)兼容,行为恒「无链」。
 
-/** 测试注入缝:非 null 覆盖 config(隔离 ~/.media-gen-mcp/config.json 差异,保 CI 确定性)。仅供测试消费。 */
+/** 测试注入缝(0.22.0 起无效,保留导出面兼容既有 import;链语义测试已改写为「配置无效」断言)。 */
 export const __priorityOverrideForTests: { image?: string[] | null; video?: string[] | null } = {};
 
-/** 未知 provider 名的优先级项剔除时的告警(每模态至多一次,防刷屏)。 */
-const warnedUnknownPriority = new Set<string>();
-
-/**
- * per-modality 优先级链(config.imageProviderPriority / videoProviderPriority,已小写/去重)。
- * 校验:未知 provider 名剔除 + warn(不 fatal —— 配置错误不该杀死 server);已知但不具备该模态
- * 能力的项保留(list 头选择与 fallback 排序各自再按能力过滤)。未配置 = undefined(现行为)。
- * 链即开关(2026-08-26):链中不配置某 opt-in 渠道(如 flow)= 不启用 —— 不自动路由、
- * 不进 fallback;显式点名仍合法。
- */
-/**
- * 原始优先级链(小写归一;不做未知名剔除)。
- * 仅供 getFallbackProvider 的 inPriority 判定:链 = 用户知情同意序(显式列入 flow
- * = 同意其计费/隐私边界)。未知名无害:listProviders() 不含未注册名,inPriority 查不到即 false。
- */
-export function getRawProviderPriority(modality: "image" | "video"): string[] | undefined {
-  const override = __priorityOverrideForTests[modality];
-  const raw = override !== undefined
-    ? (override ?? undefined)
-    : (modality === "image" ? config.imageProviderPriority : config.videoProviderPriority);
-  return raw?.length ? raw.map((n) => n.toLowerCase()) : undefined;
+/** 优先级链原始值(已废弃):恒 undefined。 */
+export function getRawProviderPriority(_modality: "image" | "video"): string[] | undefined {
+  return undefined;
 }
 
-export function getProviderPriority(modality: "image" | "video"): string[] | undefined {
-  const override = __priorityOverrideForTests[modality];
-  const raw = override !== undefined
-    ? (override ?? undefined)
-    : (modality === "image" ? config.imageProviderPriority : config.videoProviderPriority);
-  if (!raw?.length) return undefined;
-  const valid = raw.filter((n) => {
-    if (!Object.prototype.hasOwnProperty.call(registry, n)) {
-      if (!warnedUnknownPriority.has(`${modality}:${n}`)) {
-        warnedUnknownPriority.add(`${modality}:${n}`);
-        console.warn(`[media-gen-mcp] ⚠️ ${modality}ProviderPriority 中的 "${n}" 不是已注册 provider,已忽略。Available: ${Object.keys(registry).join(", ")}`);
-      }
-      return false;
-    }
-    return true;
-  });
-  return valid.length ? valid : undefined;
-}
-
-/** provider 是否具备模态方法组(头选择用;窄化守卫 as*Provider 的宽松前置)。 */
-function hasModality(p: MediaProvider, modality: "image" | "video"): boolean {
-  return modality === "image"
-    ? typeof p.generateImage === "function" && typeof p.listImageModels === "function"
-    : typeof p.createVideo === "function" && typeof p.videoConstraints === "function" && typeof p.listVideoModels === "function";
-}
-
-// C 任务:videoProviderPriority 显式列入 flow = 用户知情同意付费档,启动时强提示(积分红线)。
-{
-  const vPrio = config.videoProviderPriority;
-  if (vPrio?.includes("flow")) {
-    console.warn(
-      `[media-gen-mcp] ⚠️ videoProviderPriority 包含 "flow":Flow 视频消耗积分(abra ${abraCreditRange()} / veo ${veoCreditRange()} 点每条)。仅当你在 config.json 显式如此配置时才会走到该链;未列入时 flow 视频只能显式 provider=flow 调用。`,
-    );
-  }
-}
-
-// Gemini 网页渠道(2026-09-22):链内列入 = 知情同意订阅算力配额消耗(算力制无按次积分;
-// 视频消耗显著,实测单条 ≈15-20% 5h 滚动窗口)。任一模态链列入都提示。
-{
-  for (const [modality, prio] of [["image", config.imageProviderPriority], ["video", config.videoProviderPriority]] as const) {
-    if (prio?.includes("gemini")) {
-      console.warn(
-        `[media-gen-mcp] ⚠️ ${modality}ProviderPriority 包含 "gemini":走 Google AI 订阅算力配额(5h 滚动窗 + 周上限;视频单条实测 ≈15-20% 窗口,图像少量)。消耗订阅配额非现金积分;未列入时只能显式 provider=gemini 调用。`,
-      );
-    }
-  }
-}
-
-// PixVerse(2026-09-14):链内列入 = 知情同意订阅积分消耗(09-14 终局裁决:CLI 无 Relax 免费池,
-// image/video 一律计费 —— qwen-image 实扣 5/10cr)。任一模态链列入都强提示。
-{
-  for (const [modality, prio] of [["image", config.imageProviderPriority], ["video", config.videoProviderPriority]] as const) {
-    if (prio?.includes("pixverse")) {
-      console.warn(
-        `[media-gen-mcp] ⚠️ ${modality}ProviderPriority 包含 "pixverse":PixVerse 走付费订阅积分池(09-14 终局裁决:CLI 无 Relax 免费池,Standard 无免费白名单;静态首估 v6-720p 9cr/s、qwen-image 1080p 10cr/张)。提交前有两段式计费确认门;未列入时只能显式 provider=pixverse 调用。`,
-      );
-    }
-  }
+/** 优先级链(已废弃):恒 undefined。provider 缺省 = defaultXxxProvider(免费池头)。 */
+export function getProviderPriority(_modality: "image" | "video"): string[] | undefined {
+  return undefined;
 }
 
 export function getProvider(name?: string): MediaProvider {
   const n = (name ?? config.defaultProvider).toLowerCase();
+  // 0.22.0 通用渠道禁用(config.disabledProviders;默认 ["flow"] 死域):路由层单点结构性拒绝,
+  // 零网络零 CDP 动作 —— 显式点名/模型归属路由/自省全路径共用此闸。
+  if ((config.disabledProviders ?? []).includes(n)) {
+    const dead = n === "flow" ? "(Google Flow 2026-09-10 起 L3 账号地区门禁死域,默认禁用)" : "";
+    throw new Error(
+      `Provider "${n}" 已被禁用 ${dead}。替代渠道:图像 → agnes/zhipu(免费)或 gemini/pixverse(点名);视频 → agnes/zhipu(免费)或 gemini(Omni)/pixverse(点名)。如需解禁/调整,改 config.json 的 disabledProviders(默认 ["flow"];写 [] 解禁全部)。`,
+    );
+  }
   const p = registry[n];
   if (!p) {
     throw new Error(
@@ -268,7 +212,9 @@ export function resolveProvider(
 
   if (owns(target)) return { provider: target, autoRouted: false };
 
+  const disabledSet = new Set(config.disabledProviders ?? []);
   const owners = listProviders()
+    .filter((n) => !disabledSet.has(n.toLowerCase())) // 禁用渠道不参与模型归属(死渠道模型无归属,显式点名在 getProvider 拦截)
     .filter((n) => n.toLowerCase() !== targetName.toLowerCase())
     .map((n) => ({ name: n, p: getProvider(n) }))
     .filter((x) => owns(x.p));
@@ -296,17 +242,7 @@ export function resolveProvider(
  * 「轮到该 provider 真正尝试」时(provider 自身 ensureReady,30s 正缓存),满足惰性化约束。
  */
 function defaultHead(modality: Modality): string {
-  if (modality === "image" || modality === "video") {
-    const prio = getProviderPriority(modality);
-    if (prio?.length) {
-      for (const n of prio) {
-        const p = registry[n];
-        if (!p || !hasModality(p, modality)) continue;
-        if (p.health?.().cooldown === true) continue; // 60s 熔断窗口内跳过(链自动降级)
-        return n;
-      }
-    }
-  }
+  // 0.22.0:链已废弃,缺省 = legacy 默认(免费池头 agnes;defaultXxxProvider 仍可配)。
   return modality === "image" ? config.defaultImageProvider :
     modality === "video" ? config.defaultVideoProvider :
     config.defaultVisionProvider;
@@ -319,8 +255,14 @@ function defaultHead(modality: Modality): string {
  */
 export function buildListModelsDetail(provider?: string): Record<string, any> {
   const names = provider ? [provider] : listProviders();
+  const disabledSet = new Set(config.disabledProviders ?? []);
   const out: Record<string, any> = {};
   for (const n of names) {
+    if (disabledSet.has(n.toLowerCase())) {
+      // 禁用渠道:诚实可见但不可用(零实例化零方法组;点名单查也返回禁用条目而非抛,自省工具语义)
+      out[n] = { disabled: true, note: "渠道已禁用(disabledProviders);模型清单不可用,调用一律被路由层拒绝" };
+      continue;
+    }
     const prov = getProvider(n);
     const vc = prov.videoConstraints?.();
     const ic = prov.imageConstraints?.() ?? null;
@@ -489,18 +431,15 @@ function capableOf(p: MediaProvider, modality: Modality, req?: FallbackReq): boo
 /**
  * Provider 自动 Fallback(pares3;C 任务统一进优先级机制):当前 provider 不可用时,找下一个候选承接。
  *
- * 候选过滤(vision 模态不受 priority 影响,保持 pares5 语义):
+ * 候选过滤(vision 模态不受影响,保持 pares5 语义):
  *   - 排除 currentName
- *   - configured 过滤对「priority 链内成员」豁免(optIn provider 如 flow 首次探测前 configured=false,
- *     显式列入即视为已同意,允许被尝试 —— 探测由尝试本身惰性触发)
+ *   - configured 过滤(免费渠道 agnes/zhipu 恒 configured)
  *   - cooldown 过滤(60s 熔断窗口内跳过,notifyUnavailable 置位)
  *   - capableOf 能力矩阵(capabilities() 事实声明)
- *   - 渠道准入:requiresOptIn(modality) 的 provider 仅在显式列入 priority 链时放行
- *     (默认 = 旧「不实现 capabilities()」门禁的等价物:flow 永不进隐式免费链)
+ *   - 渠道准入:requiresOptIn(modality) 的 provider 永不放行(opt-in 渠道只能显式点名,
+ *     0.22.0 起无链豁免通道 —— 语义比链时代更严:隐式路径永远免费)
  *
- * 排序(单一管线,优先级与 fallback 两机制在此统一):
- *   1. priority 链内按 list 位置升序(用户的偏好序)
- *   2. 链外成员按 tier 降序(legacy 免费链行为,未配置时全走此序 → 零回归)
+ * 排序(0.22.0:priority 链已废弃,只剩 tier 降序 —— 免费池内 agnes/zhipu 序):
  */
 export function getFallbackProvider(currentName: string, modality: Modality, req?: FallbackReq): MediaProvider | undefined {
   const prio = modality === "image" || modality === "video" ? getRawProviderPriority(modality) : undefined;
@@ -509,7 +448,9 @@ export function getFallbackProvider(currentName: string, modality: Modality, req
     return i === -1 ? Number.POSITIVE_INFINITY : i;
   };
   const inPriority = (n: string) => prio?.includes(n.toLowerCase()) === true;
+  const disabled = new Set(config.disabledProviders ?? []);
   const candidates = listProviders()
+    .filter((n) => !disabled.has(n.toLowerCase()))
     .filter((n) => n.toLowerCase() !== currentName.toLowerCase())
     .map((n) => getProvider(n))
     .filter((p) => p.health?.().configured !== false || inPriority(p.name))

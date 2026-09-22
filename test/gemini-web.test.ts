@@ -314,9 +314,9 @@ describe("gemini registry 接线", () => {
     assert.equal(typeof p.generateImage, "function");
     assert.equal(typeof p.createVideo, "function");
     assert.equal(p.requiresOptIn("image"), true);
-    // 链内合法(显式同意序)
+    // 0.22.0:链已废弃 —— 配置对 gemini 同样无效(恒 undefined,缺省走免费池)
     __priorityOverrideForTests.image = ["gemini", "agnes"];
-    assert.deepEqual(getProviderPriority("image"), ["gemini", "agnes"]);
+    assert.equal(getProviderPriority("image"), undefined);
     __priorityOverrideForTests.image = null;
   });
 

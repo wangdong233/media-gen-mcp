@@ -82,15 +82,18 @@ describe("链即开关(不配置 = 不自动路由;显式点名永远合法)", (
     assert.notEqual(r.provider.name, "flow", "flow 未列入链 = 未启用,默认路由绝不指向它");
   });
 
-  test("显式 provider=flow 点名 → 正常解析(原 S000 拦截的反向钉死:点名永远合法)", () => {
-    reg.__priorityOverrideForTests.image = null;
-    assert.equal(resolveProvider("flow", undefined, "image").provider.name, "flow");
-  });
+  test("显式 provider=flow 点名 → 被禁用拦截(0.22.0:disabledProviders 默认含 flow;点名即用只属活渠道)", () => {
+    assert.throws(() => resolveProvider("flow", undefined, "image"), (e: any) => {
+      assert.match(e.message, /已被禁用/);
+      assert.match(e.message, /disabledProviders/);
+      return true;
+    });
+  }););
 
-  test("配置链含 flow → getProviderPriority 保留(列入 = 启用,保序)", () => {
+  test("配置链含 flow → 同样无效(0.22.0 链废弃;flow 唯一可达路径 = 解禁后显式点名)", () => {
     reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];
     try {
-      assert.deepEqual(getProviderPriority("image"), ["flow", "agnes", "zhipu"]);
+      assert.equal(getProviderPriority("image"), undefined);
     } finally {
       reg.__priorityOverrideForTests.image = null;
     }
