@@ -288,7 +288,14 @@ describe("config parsePixverseSection", () => {
 
 // ── 3+4+5. 计费确认门(两段式)+ P0-1 HMAC 回归 + P0-2 模态判别 ──
 
-describe("pixverse 计费确认门(两段式;stub 零 spawn)", () => {
+// Node 版本环境门:provider 的 assertNodeEngine(引擎前置,CLI 要求 ≥22.12)在低版本 Node
+// (CI 矩阵含 20)按设计 S102 拒绝 —— 确认门路径在该环境结构性不可测,套件环境性 skip
+//(产品行为正确;非测试缺陷。0.21.x CI 红的根因即此,2026-09-23 定谳)。
+const nodeLtCliReq = (() => {
+  const [ma, mi] = process.versions.node.split(".").map(Number);
+  return ma < 22 || (ma === 22 && mi < 12);
+})();
+describe("pixverse 计费确认门(两段式;stub 零 spawn)", { skip: nodeLtCliReq }, () => {
   const IMG_REQ = { prompt: "a cat", model: "qwen-image", quality: "720p" };
   const VID_REQ = { prompt: "t2v clip", model: "v6", resolution: "720p" as const, durationSeconds: 5 };
 
