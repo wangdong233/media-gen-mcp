@@ -75,7 +75,7 @@ function makeClient(cfgPath, homeDir) {
 describe("本地图片路径输入(日志#16;死端口 CDP,确定性零积分)", { skip: await (async () => await portAlive(DEAD_CDP_PORT))() }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flow-localinput-"));
   const cfgPath = path.join(dir, "config.json");
-  fs.writeFileSync(cfgPath, JSON.stringify({ providers: { flow: { cdpPort: DEAD_CDP_PORT } } }, null, 2));
+  fs.writeFileSync(cfgPath, JSON.stringify({ disabledProviders: [], providers: { flow: { cdpPort: DEAD_CDP_PORT } } }, null, 2)); // 0.22.0 解禁 flow(测输入管线;死端口零积分)
   const client = makeClient(cfgPath, dir);
 
   // 输入 fixture

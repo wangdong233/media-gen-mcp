@@ -42,10 +42,7 @@ describe("disabledProviders 解禁路径(配置驱动非硬代码)", () => {
   test("解禁后 flow 仍不进隐式 fallback(optIn 门禁独立于禁用表)", () => {
     assert.notEqual(getFallbackProvider("agnes", "image", {})?.name, "flow");
   });
-  test("自定义禁用任意渠道(例:pixverse)同样生效", () => {
-    // env 形态验证(另一个覆盖面:MEDIA_DISABLED_PROVIDERS)
-    // —— 本文件 config 已定,env 组在下方独立子进程语义由 parse 顺序保证(config 优先),
-    // 这里静态断言形态存在即可,不重复进程级注入。
-    assert.equal(typeof config.disabledProviders, "object");
-  });
+  // P2-1(审查):原"自定义禁用任意渠道"用例为空转断言(typeof 检查不可能失败)已删。
+  // env 形态(MEDIA_DISABLED_PROVIDERS)的进程级真测试待独立 fixture 文件(模块加载期读 env,
+  // 单进程多形态不可行);行为由 config 解析优先级(config 数组 > env > 默认)的解析函数语义保证。
 });

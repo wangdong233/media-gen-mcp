@@ -309,10 +309,12 @@ export function buildVisionCapabilitiesDetail(provider?: string): {
   routingGuidance: Record<string, string>;
 } {
   const names = provider ? [provider] : listProviders();
+  const disabledSet = new Set(config.disabledProviders ?? []);
   const providers: any[] = [];
   const taskCoverage: Record<string, string[]> = {};
 
   for (const n of names) {
+    if (disabledSet.has(n.toLowerCase())) continue; // 禁用渠道零实例化(与 buildListModelsDetail 同语义;P1-1 修复)
     const p = getProvider(n);
     if (!isVisionProvider(p)) continue; // 跳过 agnes/zhipu(非 vision)
     const h = p.health?.() ?? { configured: true, cooldown: false };
@@ -442,22 +444,18 @@ function capableOf(p: MediaProvider, modality: Modality, req?: FallbackReq): boo
  * 排序(0.22.0:priority 链已废弃,只剩 tier 降序 —— 免费池内 agnes/zhipu 序):
  */
 export function getFallbackProvider(currentName: string, modality: Modality, req?: FallbackReq): MediaProvider | undefined {
-  const prio = modality === "image" || modality === "video" ? getRawProviderPriority(modality) : undefined;
-  const pos = (n: string) => {
-    const i = prio?.indexOf(n.toLowerCase()) ?? -1;
-    return i === -1 ? Number.POSITIVE_INFINITY : i;
-  };
-  const inPriority = (n: string) => prio?.includes(n.toLowerCase()) === true;
+  // 0.22.0:链已废弃 —— 候选 = 非禁用 + 非 current + configured + 非熔断 + 能力胜任 + 非 optIn
+  // (optIn 永不承接隐式回落,无链豁免通道);排序 = tier 降序(免费池内 agnes/zhipu 序)。
   const disabled = new Set(config.disabledProviders ?? []);
   const candidates = listProviders()
     .filter((n) => !disabled.has(n.toLowerCase()))
     .filter((n) => n.toLowerCase() !== currentName.toLowerCase())
     .map((n) => getProvider(n))
-    .filter((p) => p.health?.().configured !== false || inPriority(p.name))
+    .filter((p) => p.health?.().configured !== false)
     .filter((p) => p.health?.().cooldown !== true)
     .filter((p) => capableOf(p, modality, req))
-    .filter((p) => !p.requiresOptIn?.(modality) || inPriority(p.name));
+    .filter((p) => p.requiresOptIn?.(modality) !== true);
   if (!candidates.length) return undefined;
-  candidates.sort((a, b) => (pos(a.name) - pos(b.name)) || ((b.tier?.() ?? 0) - (a.tier?.() ?? 0)));
+  candidates.sort((a, b) => (b.tier?.() ?? 0) - (a.tier?.() ?? 0));
   return candidates[0];
 }

@@ -88,7 +88,7 @@ describe("链即开关(不配置 = 不自动路由;显式点名永远合法)", (
       assert.match(e.message, /disabledProviders/);
       return true;
     });
-  }););
+  });
 
   test("配置链含 flow → 同样无效(0.22.0 链废弃;flow 唯一可达路径 = 解禁后显式点名)", () => {
     reg.__priorityOverrideForTests.image = ["flow", "agnes", "zhipu"];

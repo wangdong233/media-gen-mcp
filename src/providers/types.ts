@@ -375,16 +375,14 @@ export interface MediaProviderBase {
   /** 能力矩阵,供 fallback 路由判断能否承接。未实现 → 保守默认(不承接 fallback)。 */
   capabilities?(): ProviderCapabilities;
   /**
-   * 渠道准入策略(C 任务:渠道优先级链):true = 该模态仅经「显式同意」介入 ——
-   * (a) 调用方显式 provider=X / model 归属该 provider,或
-   * (b) 用户在 `<modality>ProviderPriority`(config.json / env)中显式列入。
-   * 未实现 / false = 免费直连 provider,默认可进隐式免费 fallback 链(agnes/zhipu 现行为)。
+   * 渠道准入策略(0.22.0 语义:点名即用):true = 该模态仅经调用方显式介入 ——
+   * provider=X 点名或 model 归属该 provider(0.22.0 起优先级链已废弃,点名是唯一通道;
+   * 显式点名同时钉死:失败直抛,绝不静默换渠道)。
+   * 未实现 / false = 免费直连 provider,默认可进隐式免费 fallback 池(agnes↔zhipu 容灾)。
    *
    * 语义分工:capabilities() 陈述「能做什么」(能力事实);本方法陈述「默认可否被路由」(准入策略)。
-   * flow 对 image/video 都返回 true:image 零积分但路由到 Google Flow 项目(隐私边界 + 模型语义
-   * 变更须显式同意,防默认路由随「本机 Chrome 是否开着」漂移);video 消耗积分(误耗红线)。
-   * 取代旧门禁「flow 刻意不实现 capabilities()」—— 用缺失表达策略是语义超载,且让优先级链
-   * 无法经 capableOf 谈判(迫使旁路);显式策略位让 fallback 与 priority 共用同一管线。
+   * gemini/pixverse/flow 对消耗模态返回 true(配额/积分误耗红线 + 本机 Chrome 隐私边界)。
+   * 另有渠道级 disabledProviders 禁用表(getProvider 路由层拦截)—— 禁用与 opt-in 独立双闸。
    */
   requiresOptIn?(modality: Modality): boolean;
   // 注:渠道级硬禁用钩子 disabledReason(S000)已于 2026-08-26 删除 —— 渠道启用的唯一控制源

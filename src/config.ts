@@ -157,12 +157,7 @@ export const config = {
   /** pares5: 识别模态默认 provider(未显式指定时);M1 起注册 tesseract 进程内兜底。与 image/video 一致,不暴露 per-modality env。 */
   defaultVisionProvider: userCfg.defaultVisionProvider ?? "tesseract",
 
-  /**
-   * C 任务:渠道优先级链(image 模态)。priority[0] = 未显式指定 provider 时的链头;
-   * 链头失败(fallback-worthy / 环境前置失败)按序惰性推进。未配置 = undefined → 现行为
-   * (defaultImageProvider + agnes/zhipu tier 免费链,零回归)。optIn provider(如 flow)
-   * 只有显式列入本链才可被默认路由/链内回落选中。
-   */
+  /** @deprecated 0.22.0:链机制已废弃(仅存解析供废弃警告;见下方 disabledProviders 新机制)。 */
   /** @deprecated 0.22.0 起优先级链已废弃(渠道选择交给调用方按业务点名;缺省=免费池 agnes→zhipu)。读到即忽略。 */
   imageProviderPriority: parseProviderPriority(userCfg.imageProviderPriority, "MEDIA_IMAGE_PROVIDER_PRIORITY"),
 

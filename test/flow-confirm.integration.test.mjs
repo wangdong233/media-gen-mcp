@@ -80,6 +80,7 @@ function writeCfg(flowSection) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flow-confirm-"));
   const cfgPath = path.join(dir, "config.json");
   fs.writeFileSync(cfgPath, JSON.stringify({
+    disabledProviders: [], // 0.22.0:解禁 flow(本套件测确认门本身;死端口 CDP 零积分)
     ...(flowSection ? { flow: flowSection } : {}),
     providers: { flow: { cdpPort: DEAD_CDP_PORT } }, // 死端口:结构性零积分(不碰 9223 真 Chrome)
   }, null, 2));

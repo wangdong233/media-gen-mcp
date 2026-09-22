@@ -43,7 +43,7 @@ before(async () => {
   // ② FLOW_NEVER_CREATE_PROJECT=1 探针护栏(文件 miss 即结构化拒,结构性不可建项目)
   // ③ stderr 收集 + after 断言无「已自动新建」(把留痕从"日志"升级为"会红的门禁")
   const probeCfg = path.join(tmpOut, "probe-config.json");
-  fs.writeFileSync(probeCfg, JSON.stringify({ providers: { flow: { settings: { cdpPort: 9299 } } } }));
+  fs.writeFileSync(probeCfg, JSON.stringify({ disabledProviders: [], providers: { flow: { settings: { cdpPort: 9299 } } } })); // 0.22.0 解禁 flow(测确认门+A-01 助记;死端口零积分)
   proc = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"], cwd: PROJECT_ROOT, env: { ...process.env, HOME: tmpOut, MEDIA_GEN_MCP_CONFIG: probeCfg, FLOW_NEVER_CREATE_PROJECT: "1" } });
   proc.stdout.on("data", (chunk) => {
     buf += chunk.toString();

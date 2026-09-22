@@ -35,6 +35,8 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "provider-priority-"));
 const cfgPath = path.join(tmpDir, "config.json");
 fs.writeFileSync(cfgPath, JSON.stringify({
   defaultImageProvider: "agnes",
+  // P2-2(审查):真写一条废弃链 —— 断言「配置了也被忽略」(杀 config 复活链 mutant;override 缝测试杀不到此路径)
+  imageProviderPriority: ["zhipu", "agnes"],
   providers: {
     agnes: { apiKey: "test-agnes-key" },
     zhipu: {
@@ -75,6 +77,12 @@ describe("测试环境自足性(fixture 注入缝机械化盯防)", () => {
   });
   test("出厂默认:disabledProviders = ['flow'](死域渠道,配置化默认非硬代码)", () => {
     assert.deepEqual(config.disabledProviders, ["flow"]);
+  });
+  test("P2-2:config 真写 imageProviderPriority=['zhipu','agnes'] → 路由忽略(fixture 内联复活链 mutant)", () => {
+    assert.deepEqual(config.imageProviderPriority, ["zhipu", "agnes"], "前提:fixture 链确实写入了");
+    assert.equal(getProviderPriority("image"), undefined, "registry 读不到链(恒 undefined)");
+    assert.equal(resolveProvider(undefined, undefined, "image").provider.name, "agnes", "缺省恒默认头,不取链头 zhipu");
+    assert.equal(getFallbackProvider("agnes", "image", {})?.name, "zhipu", "fallback 恒 tier 序,不受链影响");
   });
 });
 
