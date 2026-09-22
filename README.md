@@ -305,7 +305,21 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 
 **PixVerse 渠道(第 4 生成渠道,订阅积分池)**:spawn 官方 CLI(`pixverse --json`)接入你已登录的订阅池 —— 一个订阅聚合 25 个视频模型 + 14 个图像模型。**opt-in 红线**:不进任何默认链,要么显式 `provider="pixverse"` 点名,要么写入 `"imageProviderPriority"` / `"videoProviderPriority"` 自担积分;一切 image/video 提交必经**两段式计费确认门**(与 Flow 同款:首次只返回积分预估+确认令牌,原参数+令牌复调才真提交;令牌 10 分钟有效且单次消费)。各模型价格在 `list_models` 的 costCatalog 三态可查(实测落账 > 静态估算 > 未发布)。配置段 `"pixverse": { "confirm": true, "confirmTtlMs": 600000, "pinnedVersion": "1.4.3" }`;CLI 版本锁定 + 启动自检,漂移响亮告警。详见 `doc/PixVerse-provider集成.md`。
 
-**Gemini 网页渠道(第 5 生成渠道,订阅算力配额)**:CDP UI 驱动 gemini.google.com 网页(「制作图片」= Nano Banana 2 /「制作视频」= Omni),零 API Key —— 用你已登录 Google AI 订阅的本机 Chrome(lasso `launch-chrome --port 9225 --idle-ms 0`,首次 visible 窗口登录一次)。**opt-in 红线**:不进默认链,显式 `provider="gemini"` 或写入优先级链。计费为订阅**算力配额**(5h 滚动窗 + 周上限,无按次积分、无确认门——视频每次提交带配额警示 warning)。产物:图像 JPEG(页面 canvas 抓取)、视频 MP4 直链;视频提交返回伪 handle,`get_video` 轮询取件。端口可配(`GEMINI_CDP_PORT` / `providers.gemini.cdpPort`)。MVP 边界:文生图/文生视频(图生图、宽高比/风格参数化未接)。详见 `doc/Gemini渠道调研-2026-09-22.md`。
+**Gemini 网页渠道(第 5 生成渠道,订阅算力配额)**:CDP UI 驱动 gemini.google.com 网页(「制作图片」= Nano Banana 2 /「制作视频」= Omni = Veo 3.1 系),零 API Key —— 用你已登录 Google AI 订阅的本机 Chrome。**opt-in 红线**:不进默认链,显式 `provider="gemini"` 或写入优先级链。
+
+前置一次性(3 步):①`lasso launch-chrome --port 9225 --mode visible --idle-ms 0` ②在窗口里登录 Google(gemini.google.com 显示账号徽章)③`lasso chrome-hide` 收回后台;此后日常拉起用 hidden 档即可(`--idle-ms 0` 防回收,登录态在 profile)。端口可配(`GEMINI_CDP_PORT` / `providers.gemini.cdpPort`)。
+
+用法:
+- 生图:`generate_image(prompt="…", provider="gemini")`(模型固定 nano-banana-2;仅文生图,`images`/`aspect`/`size`/`seed`/`quality` 不消费,逐项 warning 告知;产物 JPEG)
+- 生视频:`create_video(prompt="…", provider="gemini")`(模型 omni;**固定 8s / 24fps / 16:9**,`numFrames`/`frameRate`/`ratio` 等异值自动忽略并 warning)→ 返回伪 handle,`get_video(taskId=…, provider="gemini")` 轮询至 completed(MP4 直链自动落盘)
+
+限制与纪律:
+- **计费 = 订阅算力配额**(5h 滚动窗 + 周上限,无按次积分、无确认门):视频单条实测 ≈15-20% 5h 窗口,每次提交带配额警示 warning;图像消耗少量。配额读数唯一入口 = 网页 设置 → 用量限额;耗尽时页面报错转结构化 `[gemini] S400`(终态,等窗口刷新;**切 VPN 不重置**——配额绑账号,IP 只影响地区可用性)
+- 🔴 **单 live 会话纪律**:一个 attach 页同时只驱动一个生成 —— 前一条 gemini 视频未 `get_video` 取件前,新提交被 `[gemini] S303` 拒绝(文案指路先取件;防导航走产物页导致配额沉没)
+- 错误码族 `[gemini]`:S100 CDP 不可连 / S101 无页面或菜单入口缺失(附 UI 诊断)/ S102 未登录 / S103 页面执行异常 / S200 产物下载失败 / S300 模型 / S301 视频仅文生 / **S303 交错守卫** / S400 页面报错(含配额耗尽)/ S410 轮询超时(会话保留可重试)
+- MVP 边界:文生图/文生视频(图生图、宽高比/风格参数化、视频图生视频未接,后续增强)
+
+调研与实现全录:`doc/Gemini渠道调研-2026-09-22.md` + `doc/Gemini渠道落地-飞轮计划.md`。
 
 ---
 
