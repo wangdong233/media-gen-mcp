@@ -12,6 +12,7 @@ import { SiliconflowProvider } from "./siliconflow.js";
 import { PixaiProvider } from "./pixai.js";
 import { CloudflareProvider } from "./cloudflare.js";
 import { ImagineartProvider } from "./imagineart.js";
+import { HfspacesProvider } from "./hfspaces.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -89,6 +90,10 @@ const registry: Record<string, MediaProvider> = {
     apiToken: config.providers.cloudflare?.apiToken ?? config.providers.cloudflare?.apiKey ?? process.env.CLOUDFLARE_API_TOKEN,
     accountId: config.providers.cloudflare?.accountId ?? process.env.CLOUDFLARE_ACCOUNT_ID,
     baseUrl: config.providers.cloudflare?.baseUrl,
+  }),
+  hfspaces: new HfspacesProvider({ // HF Spaces(渠道工厂飞轮轮 24 GO,2026-09-24;免部署跑开源视频,ZeroGPU 公共配额)。
+    // requiresOptIn=true(共享公共资源自律);可选 HF token 提额(匿名 2min/天 → 免费号 5min/天)。
+    token: config.providers.hfspaces?.token ?? process.env.HF_TOKEN ?? process.env.HFSPACES_TOKEN,
   }),
   imagineart: new ImagineartProvider({ // ImagineArt(渠道工厂飞轮轮 13 GO,2026-09-23;官方 MCP 同池免费 100 credits/日)。
     // requiresOptIn=true —— spawn 官方 CLI(PixVerse 先例,版本锁 0.10.0);免费产出限非商用。
