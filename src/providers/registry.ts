@@ -10,6 +10,7 @@ import { PixverseProvider } from "./pixverse.js";
 import { GeminiWebProvider } from "./gemini-web.js";
 import { SiliconflowProvider } from "./siliconflow.js";
 import { PixaiProvider } from "./pixai.js";
+import { CloudflareProvider } from "./cloudflare.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -80,6 +81,13 @@ const registry: Record<string, MediaProvider> = {
     email: config.providers.pixai?.email ?? process.env.PIXAI_EMAIL,
     password: config.providers.pixai?.password ?? process.env.PIXAI_PASSWORD,
     baseUrl: config.providers.pixai?.baseUrl,
+  }),
+  cloudflare: new CloudflareProvider({ // Cloudflare Workers AI(渠道工厂飞轮轮 12 GO,2026-09-23;C 类:image-only)。
+    // requiresOptIn=true —— 10,000 neurons/天全账号续杯(Workers Paid 超额自动计费,需档位警示);
+    // flux-2 多参考编辑 REST 直达;SDXL 双 $0 Beta。凭证 = API Token + Account ID 双必需。
+    apiToken: config.providers.cloudflare?.apiToken ?? config.providers.cloudflare?.apiKey ?? process.env.CLOUDFLARE_API_TOKEN,
+    accountId: config.providers.cloudflare?.accountId ?? process.env.CLOUDFLARE_ACCOUNT_ID,
+    baseUrl: config.providers.cloudflare?.baseUrl,
   }),
   gemini: new GeminiWebProvider({ // Gemini 网页渠道(CDP UI 驱动;调研 doc/Gemini渠道调研-2026-09-22.md)。
     // 渠道准入(对齐 flow/pixverse):requiresOptIn()=true —— Google AI 订阅算力配额制(视频消耗
