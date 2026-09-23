@@ -46,7 +46,7 @@ export const HFSPACES_MODELS: Record<string, HfSpaceTarget> = {
     apiName: "generate_video",
     label: "Wan2.2-I2V 蒸馏(prithivMLmods,4 步 Lightning,≤5s,i2v;内嵌 b64 返回)",
     kind: "i2v", maxDurationSeconds: 5,
-    buildData: (req, h) => [h.dataUriB64(req.image!), req.prompt ?? "", 4, "", Math.min(5, req.durationSeconds ?? 3.5), 1.0, 1.0, req.seed ?? 42, false],
+    buildData: (req, h) => [h.dataUriB64(req.image!), req.prompt ?? "", 4, "", Math.min(5, req.durationSeconds ?? 3.5), 1.0, 1.0, req.seed ?? 0, req.seed == null], // 无 seed→randomize=true(防同图复印)
     parse: (d) => {
       const v = (d?.[0] as any)?.video ?? d?.[0];
       if (typeof v === "string" && v.includes("base64")) {
@@ -63,7 +63,7 @@ export const HFSPACES_MODELS: Record<string, HfSpaceTarget> = {
     kind: "i2v-relay", maxDurationSeconds: 10,
     buildData: (req, h) => [
       h.toImageData(req.image!), req.keyframes?.[1] ? h.toImageData(req.keyframes[1]) : h.toImageData(req.image!),
-      req.prompt ?? "", 4, "", Math.min(10, req.durationSeconds ?? 3.5), 1.0, 1.0, req.seed ?? 42, false, 5, "UniPCMultistep", 3, "16", false, true,
+      req.prompt ?? "", 4, "", Math.min(10, req.durationSeconds ?? 3.5), 1.0, 1.0, req.seed ?? 0, req.seed == null, 5, "UniPCMultistep", 3, "16", false, true,
     ],
     parse: (d) => {
       const u = (d?.[0] as any)?.url;
@@ -175,6 +175,10 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     if (req.videoMediaId) warnings.push("hfspaces 无视频续写,videoMediaId 已忽略。");
     if (req.audioMediaIds?.length) warnings.push("hfspaces 无音频参考(audioMediaIds),已忽略。");
     if (req.resolution && req.resolution !== "480p" && req.resolution !== "720p") warnings.push(`hfspaces 无显式分辨率参数(自动方裁/随图比例),resolution=${req.resolution} 已忽略。`);
+    if (req.mode && req.mode !== "text-to-video" && req.mode !== "image-to-video" && req.mode !== "keyframes") warnings.push(`hfspaces 仅 t2v/i2v/keyframes 接力,mode=${req.mode} 已忽略。`);
+    if (req.ratio) warnings.push("hfspaces 目标表无 ratio 参数(随图比例/方裁),已忽略。");
+    if (req.images?.length) warnings.push("hfspaces 视频无参考图模式(r2v),images 已忽略(单首帧用 image/接力用 keyframes)。");
+    if (req.keyframes?.length && req.keyframes.length === 1) warnings.push("keyframes 仅 1 张(无末帧)——按首帧 i2v 处理;接力需 keyframes[2] 末帧。");
     // 模型路由:显式 > 按输入形态默认(i2v→wan22-i2v;image+keyframes[1]→relay;t2v→cogvideox)
     let model = req.model;
     if (!model) {
@@ -186,7 +190,12 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     if (!target) throw new HfspacesError("H300", `未知模型 "${model}"。hfspaces 可用:${HFSPACES_MODEL_NAMES.join(", ")}。`);
     if (target.kind !== "t2v" && !req.image) throw new HfspacesError("H302", `${model} 是 i2v 模型,须传 image(纯文生视频用 cogvideox)。`);
     if (target.kind === "t2v" && req.image) warnings.push("cogvideox 为 t2v,image 已忽略。");
-    if (req.durationSeconds != null && req.durationSeconds > target.maxDurationSeconds) warnings.push(`${model} 时长上限 ${target.maxDurationSeconds}s,durationSeconds=${req.durationSeconds} 已截断。`);
+    let durationSeconds = req.durationSeconds;
+    if (durationSeconds == null && req.numFrames != null) {
+      durationSeconds = Math.max(0.5, Math.round((req.numFrames / 16) * 2) / 2); // 16fps 半秒粒度(🔴 S6 审查 D:原静默忽略致错时长产物)
+      warnings.push(`hfspaces 无 numFrames 参数,已按 16fps 换算 duration=${durationSeconds}s(numFrames=${req.numFrames})。`);
+    }
+    if (durationSeconds != null && durationSeconds > target.maxDurationSeconds) warnings.push(`${model} 时长上限 ${target.maxDurationSeconds}s,durationSeconds=${durationSeconds} 已截断。`);
     if (target.kind === "i2v-relay" && !req.keyframes?.[1]) warnings.push("wan22-relay 是首末帧接力模型但仅收到首帧,last_image 将复用首帧(等效单帧 i2v);首尾帧请用 keyframes[2] 传。");
     if (target.kind === "i2v" && req.keyframes?.[1]) warnings.push("wan22-i2v 不支持末帧(keyframes[1] 已忽略;接力用 wan22-relay)。");
 
@@ -204,7 +213,7 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
       },
     };
     const data = target.buildData(
-      { ...req, image: req.image, durationSeconds: Math.min(req.durationSeconds ?? 3.5, target.maxDurationSeconds) } as VideoRequest,
+      { ...req, image: req.image, durationSeconds: Math.min(durationSeconds ?? 3.5, target.maxDurationSeconds) } as VideoRequest,
       helpers,
     );
     const headers: Record<string, string> = { "content-type": "application/json" };
@@ -220,6 +229,7 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     const j = await res.json() as any;
     const eventId = j?.event_id;
     if (!eventId) throw new HfspacesError("H400", `无 event_id:${JSON.stringify(j).slice(0, 150)}`);
+    if (this.taskModels.size > 500) { const k = this.taskModels.keys().next().value as string; this.taskModels.delete(k); } // FIFO 上限(S6 审查 B:无界泄漏)
     this.taskModels.set(String(eventId), model);
     warnings.push(`hfspaces=${model}(${target.label});ZeroGPU 公共配额,排队时长取决于优先级${this.token ? "(带 token)" : "(匿名低优先级,建议 config providers.hfspaces.token)"}。`);
     return { taskId: String(eventId), status: "submitted", raw: { provider: "hfspaces", model }, warnings };
@@ -230,14 +240,15 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     const eventId = handle.taskId ?? handle.videoId;
     if (!eventId) return { status: "failed", error: "hfspaces 取件需 taskId(event_id)" };
     const model = this.taskModels.get(eventId);
+    this.taskModels.delete(eventId); // S6 审查 B:所有退出路径统一先删(含 !ok/异常,防泄漏)
     if (!model) return { status: "failed", error: `event_id ${eventId} 无模型上下文(进程内 Map;重启后不可恢复——gradio event 短时效,本属正常)` };
     const target = HFSPACES_MODELS[model];
     const headers: Record<string, string> = {};
     if (this.token) headers.authorization = `Bearer ${this.token}`;
-    const res = await this.fetchImpl(`https://${target.subdomain}.hf.space/gradio_api/call/${target.apiName}/${eventId}`, { method: "GET", headers });
-    if (!res.ok) return { status: "failed", error: `SSE GET HTTP ${res.status}(event 可能已过期;gradio event 短时效,请重新提交)` };
+    // 🔴 S6 审查 A:deadline 在 pending read 期间永不触发——AbortSignal 让收流整体可掐断
+    const res = await this.fetchImpl(`https://${target.subdomain}.hf.space/gradio_api/call/${target.apiName}/${eventId}`, { method: "GET", headers, signal: AbortSignal.timeout(this.pollDeadlineMs) });
+    if (!res.ok) return { status: "failed", error: `SSE GET HTTP ${res.status}(${res.status === 404 ? "event 可能已过期" : "请求被拒"};gradio event 短时效,请重新提交)` };
     const events = await this.readSse(res);
-    this.taskModels.delete(eventId);
     for (const ev of events) {
       if (ev.event === "error") {
         if (ev.data == null || ev.data === "null") {
@@ -264,6 +275,7 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
   /** SSE 解析(fetch 流式 body;"event: X\ndata: Y" 帧;data:null 保 null)。 */
   private async readSse(res: Response): Promise<SseEvent[]> {
     const deadline = Date.now() + this.pollDeadlineMs;
+    if (!res.body?.getReader) throw new HfspacesError("H202", "响应无可读流(body 为空;环境 fetchImpl 异常)");
     const reader = (res.body as any).getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -272,7 +284,7 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
       if (Date.now() > deadline) throw new HfspacesError("H201", `SSE 收流超时(>${Math.round(this.pollDeadlineMs / 1000)}s;排队+生成;可重试同 event_id 或重新提交)`, { httpStatus: 0 });
       const { done, value } = await reader.read();
       if (done) break;
-      buf += decoder.decode(value, { stream: true });
+      buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n"); // CRLF 归一(SSE 规范允许 \r\n 分隔)
       let idx: number;
       while ((idx = buf.indexOf("\n\n")) >= 0) {
         const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
@@ -292,8 +304,9 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
   }
 
   private async downloadUrl(url: string): Promise<ArrayBuffer> {
+    // 🔴 S6 审查 F:FileData.url 由半信任社区 Space 控制——token 仅发给 HF 自有域,防恶意 Space 收割
     const headers: Record<string, string> = {};
-    if (this.token) headers.authorization = `Bearer ${this.token}`;
+    if (this.token && /(^|\.)hf\.space$|(^|\.)huggingface\.co$/i.test(new URL(url, "https://x.hf.space").hostname)) headers.authorization = `Bearer ${this.token}`;
     const r = await this.fetchImpl(url, { method: "GET", headers });
     if (!r.ok) throw new HfspacesError("H201", `产物下载失败 HTTP ${r.status}(FileData.url 临时链接,须即时取)`, { httpStatus: 0 });
     return r.arrayBuffer();

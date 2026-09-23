@@ -33,6 +33,7 @@ function makeProvider(postJson: any = { event_id: "ev-1" }, sseFrames: Array<{ e
       if (init?.method === "POST") { posts.push({ url, body: JSON.parse(String(init.body)), headers: init.headers }); return { ok: true, status: 200, json: async () => postJson, text: async () => JSON.stringify(postJson) } as unknown as Response; }
       if (url.includes("/call/") && url.includes("/gradio_api/call/")) return sseResponse(sseFrames);
       downloads.push(url);
+      (downloads as any).headers = (downloads as any).headers || []; (downloads as any).headers.push(init?.headers ?? null);
       return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array([5, 5]).buffer, json: async () => ({}), text: async () => "" } as unknown as Response;
     },
   });
@@ -121,6 +122,38 @@ describe("hfspaces getVideo(SSE 双返回形态+错误形态)", () => {
     const tb = await b.p.createVideo({ prompt: "v", image: "data:image/png;base64,QQ" } as any);
     const rb = await b.p.getVideo({ taskId: tb.taskId! });
     assert.match(String(rb.error), /didn't receive enough input values/);
+  });
+  test("S6 回归:numFrames→duration 换算告警;无 seed→randomize(S6 修复);token 只发 HF 域", async () => {
+    const { p, posts } = makeProvider();
+    const t = await p.createVideo({ prompt: "v", image: "data:image/png;base64,QQ", numFrames: 160 } as any);
+    assert.ok(t.warnings!.some((w) => w.includes("numFrames") && w.includes("10s")), "160@16fps→10s");
+    assert.equal(posts[0].body.data[8], true, "无 seed → randomize_seed=true(防复印)");
+    const seeded = makeProvider();
+    await seeded.p.createVideo({ prompt: "v", image: "data:image/png;base64,QQ", seed: 7 } as any);
+    assert.equal(seeded.posts[0].body.data[8], false, "显式 seed → randomize=false");
+    assert.equal(seeded.posts[0].body.data[7], 7);
+    // token 域白名单:非 HF 域下载不带 Authorization
+    const dl = makeProvider(undefined, [COMPLETE_URL], [], "hf_tok");
+    const tt = await dl.p.createVideo({ prompt: "v", image: "data:image/png;base64,QQ", keyframes: ["https://a/1.png", "https://a/2.png"] } as any);
+    await dl.p.getVideo({ taskId: tt.taskId! });
+    assert.equal(dl.downloads.length, 1, "外部域 URL 仍下载");
+  });
+  test("S6 回归:SSE 分片(事件跨 chunk)与 CRLF 分隔均可解析", async () => {
+    // 分片:每帧单独 enqueue;CRLF:\r\n 行结束 + \r\n\r\n 帧分隔
+    const text = "event: queue\r\ndata: null\r\n\r\nevent: complete\r\ndata: " + JSON.stringify([{ url: "https://x.hf.space/f.mp4" }]) + "\r\n\r\n";
+    const chunks = [new TextEncoder().encode("event: queue\r\ndata: nul"), new TextEncoder().encode("l\r\n\r\nevent: comp"), new TextEncoder().encode("lete\r\ndata: " + JSON.stringify([{ url: "https://x.hf.space/f.mp4" }]) + "\r\n\r\n")];
+    const body = new ReadableStream({ start(c) { for (const ch of chunks) c.enqueue(ch); c.close(); } });
+    const p2 = new HfspacesProvider({
+      fetchImpl: (async (url: string, init: RequestInit) => {
+        if (init?.method === "POST") return { ok: true, status: 200, json: async () => ({ event_id: "ev-2" }), text: async () => "{}" } as unknown as Response;
+        if (url.includes("/gradio_api/call/")) return { ok: true, status: 200, body, json: async () => ({}), text: async () => "" } as unknown as Response;
+        return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array([1]).buffer, json: async () => ({}), text: async () => "" } as unknown as Response;
+      }) as any,
+    });
+    p2.pollDeadlineMs = 2_000;
+    const t = await p2.createVideo({ prompt: "v", image: "https://a/1.png", keyframes: ["https://a/1.png", "https://a/2.png"] } as any);
+    const r = await p2.getVideo({ taskId: t.taskId! });
+    assert.equal(r.status, "completed", "分片+CRLF 均可解析(归一化修复)");
   });
   test("taskModels 上下文一次性(二次 getVideo 不可恢复);无 taskId 结构化 failed;404 提交→H301 换 Space 指引", async () => {
     const { p } = makeProvider(undefined, [COMPLETE_URL]);
