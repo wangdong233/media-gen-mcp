@@ -8,6 +8,7 @@ import { GlmVisionProvider } from "./glm-vision.js";
 import { FlowProvider, FLOW_MNEMONIC_RE } from "./flow.js";
 import { PixverseProvider } from "./pixverse.js";
 import { GeminiWebProvider } from "./gemini-web.js";
+import { SiliconflowProvider } from "./siliconflow.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -64,6 +65,11 @@ const registry: Record<string, MediaProvider> = {
     bin: process.env.PIXVERSE_BIN || config.providers.pixverse?.settings?.bin,
     models: config.providers.pixverse?.models,
     pixverseCfg: config.pixverse,
+  }),
+  siliconflow: new SiliconflowProvider({ // 硅基流动(渠道工厂飞轮 v2 #1,2026-09-23 GO;Kolors 免费+代金券付费线)。
+    // requiresOptIn=true(池含付费模型;Kolors 免费但实名门槛)—— 点名即用;真机门需用户注册配 key。
+    apiKey: config.providers.siliconflow?.apiKey ?? process.env.SILICONFLOW_API_KEY,
+    baseUrl: config.providers.siliconflow?.baseUrl,
   }),
   gemini: new GeminiWebProvider({ // Gemini 网页渠道(CDP UI 驱动;调研 doc/Gemini渠道调研-2026-09-22.md)。
     // 渠道准入(对齐 flow/pixverse):requiresOptIn()=true —— Google AI 订阅算力配额制(视频消耗
