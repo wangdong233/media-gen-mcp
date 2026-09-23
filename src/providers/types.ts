@@ -363,6 +363,26 @@ export interface ProviderHealth {
   lastErrorAt?: string;
 }
 
+/** 渠道说明卡(渠道工厂飞轮):调用方一眼看清额度/能力/限制/前置/风险。 */
+export interface ChannelInfo {
+  /** 渠道状态:live=可直接用;blocked-on-login=等用户配登录态/API key;disabled=经 disabledProviders 禁用。 */
+  status: "live" | "blocked-on-login" | "disabled";
+  /** 计费形态一句话(如 "免费(阿里账号)"/"订阅算力配额"/"订阅积分+确认门"/"免费 HTTP")。 */
+  cost: string;
+  /** 免费额度(精确值或已知口径;未知写 "未公开/待实测")。 */
+  freeQuota: string;
+  /** 能力矩阵(未支持项显式 false,不省略)。 */
+  capabilities: { t2i: boolean; i2i: boolean; t2v: boolean; i2v: boolean; keyframes: boolean };
+  /** 已知限制(频率/日额/参数档/审核/排队)。 */
+  limits: string[];
+  /** 产物水印(如 "无"/"默认水印,协议禁删"/"可关")。 */
+  watermark: string;
+  /** 前置条件(登录态来源/代理/CLI 版本)。 */
+  prerequisites: string[];
+  /** 风险提示(风控/条款灰色度/封号口碑)。 */
+  risks: string[];
+}
+
 /**
  * pares5: 能力袋 MediaProvider(采纳审查 finding-2)。
  * 子接口 ImageProvider/VideoProvider/VisionProvider 是单一声明源(各自描述能力组形状);
@@ -389,6 +409,12 @@ export interface MediaProviderBase {
   // 是优先级链(链中不配置 = 不启用),显式点名永远合法;与 requiresOptIn 不再需要两个正交维度。
   /** 健康状态。未实现 → { configured: true, cooldown: false }。 */
   health?(): ProviderHealth;
+  /**
+   * 渠道说明卡(0.23.0 渠道工厂飞轮:调用方选型知识结构化,三处一致 —— list_models detail /
+   * 工具 provider 描述 / README 渠道总表)。每渠道必答:免费额度/能力矩阵/限制/水印/前置/风险/状态。
+   * status 三态:live(可直接用)/ blocked-on-login(等用户配登录态或 key)/ disabled(默认禁用)。
+   */
+  channelInfo?(): ChannelInfo;
   /** 优先级(数字大优先)。未实现 → 0。 */
   tier?(): number;
   /** fallback 失败时回调,让 provider 自更新 cooldown。 */

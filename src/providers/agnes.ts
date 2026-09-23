@@ -71,6 +71,20 @@ function framesForDuration(seconds: number, frameRate: number): number {
  * 时钟 per-model:lastSubmitAt 按 model 独立计时,多模型交替不被错误全局串行。
  */
 export class AgnesProvider implements MediaProviderBase, ImageProvider, VideoProvider {
+  /** 渠道说明卡(0.23.0):list_models/工具描述/README 三处一致。 */
+  channelInfo(): import("./types.js").ChannelInfo {
+    return {
+      status: "live",
+      cost: "免费 HTTP API(Agnes 中转)",
+      freeQuota: "免费(项目实测无限额;偶发 503 自动重试)",
+      capabilities: { t2i: true, i2i: true, t2v: true, i2v: true, keyframes: true },
+      limits: ["视频帧数随分辨率递减(1080p≤241 / 720p≤441 帧)", "真实武器词触发内容过滤(改科幻设定词可绕)"],
+      watermark: "无",
+      prerequisites: ["apiKey(已配于 ~/.media-gen-mcp/config.json)"],
+      risks: ["第三方中转稳定性一般(503 常见,内置重试)"],
+    };
+  }
+
   readonly name = "agnes";
   private readonly apiKey: string;
   private readonly baseUrl: string;

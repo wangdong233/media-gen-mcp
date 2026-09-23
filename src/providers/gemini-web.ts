@@ -417,6 +417,19 @@ export class GeminiWebProvider {
 
   // ── MediaProviderBase ──
 
+  channelInfo(): import("./types.js").ChannelInfo {
+    return {
+      status: "live",
+      cost: "Google AI 订阅算力配额(5h 滚动窗+周上限;无按次积分/确认门)",
+      freeQuota: "图像低耗;视频单条实测 ≈15-20% 的 5h 窗口(PRO 档,每次提交带配额警示)",
+      capabilities: { t2i: true, i2i: false, t2v: true, i2v: false, keyframes: false },
+      limits: ["视频固定 8s/24fps/16:9(异值参数逐项告警)", "单 live 会话(未取件视频存续期拒绝新提交 S303)", "图像仅文生图(图生图未接)"],
+      watermark: "无",
+      prerequisites: ["本机 Chrome CDP 9225 + Google AI 订阅登录(lasso launch-chrome --port 9225)"],
+      risks: ["ToS 自动化灰色(单账号自用,与 flow 同级)", "IP 漂出可用区则服务不可用(配额不重置)"],
+    };
+  }
+
   capabilities(): ProviderCapabilities {
     return {
       image: { textToImage: true, imageToImage: false },

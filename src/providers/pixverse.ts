@@ -518,6 +518,19 @@ export interface PixverseProviderConfig {
 }
 
 export class PixverseProvider implements MediaProviderBase, ImageProvider, VideoProvider {
+  channelInfo(): import("./types.js").ChannelInfo {
+    return {
+      status: "live",
+      cost: "订阅积分池(CLI 同池;一切提交过两段式计费确认门)",
+      freeQuota: "无免费层(09-14 终局:CLI 无 Relax 池;qwen-image 1080p 实扣 10cr)",
+      capabilities: { t2i: true, i2i: true, t2v: true, i2v: true, keyframes: true },
+      limits: ["并发 Standard=3(超限 S403 退避 5/10/20s)", "Node ≥22.12(引擎前置 S102)", "价格三态 costCatalog 可查(实测>静态>unknown)"],
+      watermark: "无",
+      prerequisites: ["PixVerse 订阅 + CLI 登录(npx pixverse login)"],
+      risks: ["商用条款矛盾(ToS 非商用 vs 博客 FAQ 允许——书面确认前勿商用产出)"],
+    };
+  }
+
   readonly name = "pixverse";
   private readonly transport: PixverseTransport;
   private readonly cfgModels?: PixverseProviderConfig["models"];

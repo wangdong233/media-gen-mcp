@@ -556,3 +556,34 @@ describe("gemini 审查修复回归(P1-B/D/E)", () => {
     assert.equal(stub.opened, true, "getVideo 须先 open 重连");
   });
 });
+
+// ── 8. channelInfo 守护(0.23.0 渠道工厂飞轮:说明卡三处一致的真源) ──
+
+describe("channelInfo 渠道说明卡(五存量渠道全量在位)", () => {
+  const { getProvider, listProviders } = require("../dist/providers/registry.js");
+  test("五生成渠道全部实现且字段完整(costCatalog 被误删两次的同款守护)", () => {
+    const { buildListModelsDetail } = require("../dist/providers/registry.js");
+    for (const n of ["agnes", "zhipu", "gemini", "pixverse", "flow"]) {
+      // 统一经 detail 拿(flow 默认禁用,getProvider 会拦;禁用条目也附 channelInfo —— 说明卡对死域渠道同样有价值)
+      const ci = (buildListModelsDetail(n)[n] as any).channelInfo;
+      assert.ok(ci, `${n} 须实现 channelInfo`);
+      assert.ok(["live", "blocked-on-login", "disabled"].includes(ci.status), `${n} status 合法`);
+      for (const k of ["cost", "freeQuota", "watermark"]) assert.ok(typeof ci[k] === "string" && ci[k], `${n}.${k} 非空`);
+      for (const k of ["capabilities", "limits", "prerequisites", "risks"]) assert.ok(ci[k] != null, `${n}.${k} 在位`);
+      for (const cap of ["t2i", "i2i", "t2v", "i2v", "keyframes"]) assert.equal(typeof ci.capabilities[cap], "boolean", `${n}.capabilities.${cap} 显式 boolean`);
+    }
+  });
+  test("registry buildListModelsDetail 透出 channelInfo", () => {
+    const { buildListModelsDetail } = require("../dist/providers/registry.js");
+    const d = buildListModelsDetail("gemini");
+    assert.equal(d.gemini.channelInfo.status, "live");
+    assert.equal(d.gemini.channelInfo.capabilities.keyframes, false, "gemini 首尾帧=false 如实");
+  });
+  test("flow 说明卡 status=disabled(死域如实呈现;经 detail 禁用条目)", () => {
+    const { buildListModelsDetail } = require("../dist/providers/registry.js");
+    const entry: any = buildListModelsDetail("flow").flow;
+    assert.equal(entry.disabled, true);
+    assert.equal(entry.channelInfo.status, "disabled");
+    assert.ok(entry.channelInfo.risks.some((r: string) => r.includes("死域") || r.includes("死亡")));
+  });
+});

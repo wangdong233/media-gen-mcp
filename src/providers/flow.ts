@@ -843,6 +843,19 @@ export interface FlowProviderConfig {
 }
 
 export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProvider {
+  channelInfo(): import("./types.js").ChannelInfo {
+    return {
+      status: "disabled",
+      cost: "积分制(不可用)",
+      freeQuota: "不可用",
+      capabilities: { t2i: false, i2i: false, t2v: false, i2v: false, keyframes: false },
+      limits: ["🔴 2026-09-10 起 L3 账号地区门禁死域,disabledProviders 默认禁用"],
+      watermark: "—",
+      prerequisites: ["显式解禁(config disabledProviders: [])且知悉死域现状"],
+      risks: ["渠道死亡(换节点无解;wire 契约存档 doc/flow-api-contract.md)"],
+    };
+  }
+
   readonly name = "flow";
   private readonly transport: FlowTransport;
   private readonly cfgProjectId?: string;

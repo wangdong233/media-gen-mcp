@@ -259,8 +259,10 @@ export function buildListModelsDetail(provider?: string): Record<string, any> {
   const out: Record<string, any> = {};
   for (const n of names) {
     if (disabledSet.has(n.toLowerCase())) {
-      // 禁用渠道:诚实可见但不可用(零实例化零方法组;点名单查也返回禁用条目而非抛,自省工具语义)
-      out[n] = { disabled: true, note: "渠道已禁用(disabledProviders);模型清单不可用,调用一律被路由层拒绝" };
+      // 禁用渠道:诚实可见但不可用(零方法组;点名单查也返回禁用条目而非抛,自省工具语义)。
+      // channelInfo 说明卡仍附上(死域原因/解禁法对调用方有信息价值;经内部表直取,不走 getProvider 拦截)。
+      const ci = typeof registry[n].channelInfo === "function" ? registry[n].channelInfo!() : undefined;
+      out[n] = { disabled: true, note: "渠道已禁用(disabledProviders);模型清单不可用,调用一律被路由层拒绝", ...(ci ? { channelInfo: ci } : {}) };
       continue;
     }
     const prov = getProvider(n);
@@ -281,6 +283,7 @@ export function buildListModelsDetail(provider?: string): Record<string, any> {
         ? { estimate_example: `${dv} 帧 → ~${prov.estimateGenerationSeconds(dv)}s 生成` }
         : {}),
       ...(typeof prov.costCatalog === "function" ? { costCatalog: prov.costCatalog() } : {}),
+      ...(typeof prov.channelInfo === "function" ? { channelInfo: prov.channelInfo() } : {}),
     };
   }
   return out;

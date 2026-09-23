@@ -135,6 +135,19 @@ function nearestDuration(seconds: number): number {
  * 智谱限流为"并发在途任务数"(按账户权益),非固定 QPM;learnRateLimit 仅在文案可解析时生效,否则 inert。
  */
 export class ZhipuProvider implements MediaProviderBase, ImageProvider, VideoProvider {
+  channelInfo(): import("./types.js").ChannelInfo {
+    return {
+      status: "live",
+      cost: "免费(智谱官方免费层)",
+      freeQuota: "cogview/cogvideox 免费额度(平台动态,未公布硬上限)",
+      capabilities: { t2i: true, i2i: true, t2v: true, i2v: true, keyframes: true },
+      limits: ["size 须 512-2880 且 16 倍数(自动吸附)", "cogvideox 帧率仅 30/60"],
+      watermark: "默认关(watermark_enabled=false;免费档可能强制)",
+      prerequisites: ["apiKey(智谱开放平台)"],
+      risks: [],
+    };
+  }
+
   readonly name = "zhipu";
   private readonly client: ZhipuClient;
   private readonly videoMinIntervalMs: number;
