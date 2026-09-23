@@ -9,6 +9,7 @@ import { FlowProvider, FLOW_MNEMONIC_RE } from "./flow.js";
 import { PixverseProvider } from "./pixverse.js";
 import { GeminiWebProvider } from "./gemini-web.js";
 import { SiliconflowProvider } from "./siliconflow.js";
+import { PixaiProvider } from "./pixai.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -70,6 +71,15 @@ const registry: Record<string, MediaProvider> = {
     // requiresOptIn=true(池含付费模型;Kolors 免费但实名门槛)—— 点名即用;真机门需用户注册配 key。
     apiKey: config.providers.siliconflow?.apiKey ?? process.env.SILICONFLOW_API_KEY,
     baseUrl: config.providers.siliconflow?.baseUrl,
+  }),
+  pixai: new PixaiProvider({ // PixAI(渠道工厂飞轮轮 7 GO,2026-09-23;动漫垂直,模式 B:免费积分跟账号走)。
+    // requiresOptIn=true —— 凭证三选一:apiKey(官方 REST v2,计费未公开)/token(GraphQL 免费通道,
+    // DevTools 手动取)/email+password(recaptcha 自动登录,脆弱逆向)。10,000 积分/日≈12 张 Standard。
+    apiKey: config.providers.pixai?.apiKey ?? process.env.PIXAI_API_KEY,
+    token: config.providers.pixai?.token ?? process.env.PIXAI_TOKEN,
+    email: config.providers.pixai?.email ?? process.env.PIXAI_EMAIL,
+    password: config.providers.pixai?.password ?? process.env.PIXAI_PASSWORD,
+    baseUrl: config.providers.pixai?.baseUrl,
   }),
   gemini: new GeminiWebProvider({ // Gemini 网页渠道(CDP UI 驱动;调研 doc/Gemini渠道调研-2026-09-22.md)。
     // 渠道准入(对齐 flow/pixverse):requiresOptIn()=true —— Google AI 订阅算力配额制(视频消耗
