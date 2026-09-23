@@ -83,10 +83,11 @@ describe("pixai 目录/说明/成本", () => {
     const gql = makeProvider({});
     assert.equal(gql.p.supportsImageToImage(), true);
   });
-  test("costCatalog:积分/张(tsubaki2_standard=800);无视频条目", () => {
+  test("costCatalog:积分/张(真机实测 tsubaki2=2100/haruka2=4100);无视频条目", () => {
     const { p } = makeProvider({});
     const cat = p.costCatalog();
-    assert.equal(cat.tsubaki2_standard.credits, 800);
+    assert.equal(cat.tsubaki2.credits, 2100);
+    assert.equal(cat.haruka2.credits, 4100);
     assert.equal(Object.values(cat).every((v: any) => v.mode === "image"), true);
   });
 });

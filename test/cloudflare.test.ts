@@ -66,11 +66,12 @@ describe("cloudflare 目录/说明/成本", () => {
 });
 
 describe("cloudflare JSON 族(schnell/SDXL)", () => {
-  test("schnell:{prompt,steps:4,seed} 精确 body;size 被忽略并告警;产出 data:image/jpeg", async () => {
+  test("schnell:{prompt,steps:4} 精确 body;🔴 真机实证 seed 被现行 schema 拒 → 告警忽略;size 忽略告警", async () => {
     const { p, calls } = makeProvider([OK]);
     const r = await p.generateImage({ prompt: "cat", size: "768x768", seed: 9 } as any);
     const body = JSON.parse(calls[0].body);
-    assert.deepEqual(Object.keys(body).sort(), ["prompt", "seed", "steps"]);
+    assert.deepEqual(Object.keys(body).sort(), ["prompt", "steps"], "seed 不进 body(2026-09-23 真机 400 cf5006 实证)");
+    assert.ok(r.warnings!.some((w) => w.includes("seed")));
     assert.equal(body.steps, 4);
     assert.match(r.outputs[0].url, /^data:image\/jpeg;base64,/);
     assert.ok(r.warnings!.some((w) => w.includes("size 已忽略")));

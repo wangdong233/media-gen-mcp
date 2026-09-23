@@ -149,11 +149,16 @@ export class ImagineartProvider implements MediaProviderBase, ImageProvider, Vid
     const credits = this.statusCache?.st?.credits;
     return {
       status: signed ? "live" : "blocked-on-login",
-      cost: "免费 100 credits/日(官方 MCP 同池计费;z-image-turbo 5cr/张≈16-20 张/日,wan-2-2 视频 30cr/条≈3 条/日)",
-      freeQuota: `每日 100 credits(24h;免费层仅 standard 模型/720p/产出公开/1 并发)${credits?.current != null ? `;当前余额 ${credits.current}${credits.unit ?? ""}` : ""}`,
+      // 🔴 真机实证 2026-09-23:官方 MCP 文档承诺「免费 100 credits/日同池可编程」,但实际生成被双重墙挡:
+      // 图像=模型墙(z-image-turbo 与 nano-banana-pro 均 1114「plan 不含此模型」,首条报错文案自相矛盾);
+      // 视频=订阅墙(「requires an active subscription」明文)。100 免费 credits 可见(status)但花不出去——
+      // 免费层对本工具实际价值=0;解锁生成需 Basic $13/mo(年付 $9/mo)。
+      cost: "🔴 免费层生成实际被锁(2026-09-23 真机):credits 100/日可见但图像/视频均被 plan 墙拒;解锁需 Basic $13/mo(年付 $9/mo)——付费后 credits 计价(z-image-turbo 5cr/张,wan-2-2 视频 30cr/条)",
+      freeQuota: `每日 100 credits(🔴 可见不可花:实测图像/视频生成均要求付费 plan)${credits?.current != null ? `;当前余额 ${credits.current}${credits.unit ?? ""}` : ""}`,
       capabilities: { t2i: true, i2i: true, t2v: true, i2v: true, keyframes: false },
       limits: [
-        "免费产出限非商用(terms 软措辞;商用成片需 $13/mo);产出公开(无私私生成)",
+        "🔴 免费层生成被锁(真机实证):图像报 1114 模型不在 plan、视频明文要订阅——官方「同池免费」文档与现实不符,Basic $13/mo 后才可生成",
+        "免费产出限非商用(terms 软措辞);产出公开(无私私生成)",
         "seed 不支持(CLI 无该参数,告警忽略);n 批量由工具层扇出(每张独立计 credits)",
         "i2v 首帧:公网 URL 直传;本地文件经工具层转 data:URI 后自动解码写临时文件再传(CLI 只收 URL/文件路径)",
         "CLI 阻塞式出图(image 默认 600s/video 1200s);视频走伪 handle 轮询",

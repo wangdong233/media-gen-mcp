@@ -33,6 +33,8 @@ export interface CfModelSpec {
   /** 免费额度内单张 neuron 估算(1024² 默认档;±50% 余量——tile 取整规则官方未定义)。 */
   neuronsPerImage: number;
   steps?: { key: "steps" | "num_steps"; def: number; max: number };
+  /** 该模型是否接受 seed(🔴 真机实证 2026-09-23:flux-schnell 现行 schema 拒绝 seed,文档漂移) */
+  supportsSeed?: boolean;
   size?: { w: [number, number]; h: [number, number]; def: [number, number] };
   /** i2i 形态:sdxl=JSON image_b64 单图 / flux2=multipart input_image_0..3(≤4,<512²)/ none。 */
   i2i: "sdxl-b64" | "flux2-multipart" | "none";
@@ -40,7 +42,7 @@ export interface CfModelSpec {
 
 /** 简单名 → 模型规格(官方定价页/模型页逐字;neurons 为 1024² 默认档估算)。 */
 export const CLOUDFLARE_MODELS: Record<string, CfModelSpec> = {
-  "flux-schnell": { full: "@cf/black-forest-labs/flux-1-schnell", family: "json", label: "FLUX.1 schnell(文生图主力,≈57.6 neurons/张 → 10k/日≈173 张)", neuronsPerImage: 58, steps: { key: "steps", def: 4, max: 8 }, i2i: "none" },
+  "flux-schnell": { full: "@cf/black-forest-labs/flux-1-schnell", family: "json", label: "FLUX.1 schnell(文生图主力,≈58 neurons/张 → 10k/日≈173 张)", neuronsPerImage: 58, steps: { key: "steps", def: 4, max: 8 }, i2i: "none", supportsSeed: false },
   "flux-2-klein": { full: "@cf/black-forest-labs/flux-2-klein-4b", family: "multipart", label: "FLUX.2 klein 4B(多参考编辑主力,≈104 neurons/张;固定 4 步)", neuronsPerImage: 104, size: { w: [256, 1920], h: [256, 1920], def: [1024, 768] }, i2i: "flux2-multipart" },
   "flux-2-dev": { full: "@cf/black-forest-labs/flux-2-dev", family: "multipart", label: "FLUX.2 dev(premium:≈3,750 neurons/张@25步 —— 10k/日仅 2 张!)", neuronsPerImage: 3750, size: { w: [256, 1920], h: [256, 1920], def: [1024, 768] }, steps: { key: "steps", def: 25, max: 50 }, i2i: "flux2-multipart" },
   "flux-2-klein-9b": { full: "@cf/black-forest-labs/flux-2-klein-9b", family: "multipart", label: "FLUX.2 klein 9B(premium:≈1,364 neurons/张)", neuronsPerImage: 1364, size: { w: [256, 1920], h: [256, 1920], def: [1024, 768] }, i2i: "flux2-multipart" },
@@ -226,7 +228,10 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
     // A 族 JSON
     const body: Record<string, unknown> = { prompt: req.prompt };
     if (spec.steps) body[spec.steps.key] = spec.steps.def;
-    if (req.seed != null && Number.isFinite(req.seed)) body.seed = Math.trunc(req.seed);
+    if (req.seed != null && Number.isFinite(req.seed)) {
+      if (spec.supportsSeed === false) warnings.push(`${spec.full} 现行 schema 不接受 seed(真机实证),已忽略。`);
+      else body.seed = Math.trunc(req.seed);
+    }
     if (spec.size) { body.width = size.w; body.height = size.h; }
     if (req.images?.length) {
       if (spec.i2i !== "sdxl-b64") throw new CloudflareError("C302", `模型 ${spec.full} 不接受 images(仅 SDXL 系 image_b64 / flux-2 系 multipart)。`);
@@ -264,8 +269,10 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
         const code = extractCfCode(body);
         throw new CloudflareError("C300", `请求错误 ${res.status}${code ? `(cf ${code})` : ""}:${body.slice(0, 180)}`, { httpStatus: res.status, cfCode: code });
       }
-      // 防御分支:历史上有裸二进制返回路径的报告 —— Content-Type image/* 时按二进制转 b64(信响应 mime)
-      const ct = (res.headers ?? {})["content-type"] ?? "";
+      // 防御分支(🔴 真机实证 2026-09-23:schnell 即便带 Accept: application/json 也返回裸 JPEG 二进制)
+      // —— Content-Type image/* 时按二进制转 b64(信响应 mime)。headers 兼容 Headers 实例与 plain 对象。
+      const h = res.headers as any;
+      const ct = (typeof h?.get === "function" ? h.get("content-type") : h?.["content-type"]) ?? "";
       if (ct.startsWith("image/")) {
         const buf = await res.arrayBuffer!();
         return { result: { image: Buffer.from(buf).toString("base64") }, success: true, _binaryFallback: true, _mime: ct.split(";")[0] };

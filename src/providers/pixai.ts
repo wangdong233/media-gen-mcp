@@ -43,8 +43,9 @@ const RATIO_1K: Record<string, [number, number]> = {
   "1:1": [1024, 1024], "2:3": [848, 1280], "3:2": [1280, 848], "3:4": [864, 1152], "4:3": [1152, 864],
   "3:5": [768, 1280], "5:3": [1280, 768], "9:16": [720, 1280], "16:9": [1280, 720], "1:3": [512, 1536], "3:1": [1536, 512],
 };
-/** Tsubaki.2 积分价(×4 批次官方价/4;source:官方 docs 模型页)。 */
-const PIXAI_CREDITS_PER_IMAGE: Record<string, number> = { tsubaki2_lite: 550, tsubaki2_standard: 800, tsubaki2_pro: 1700, tsubaki2_ultimate: 1750, haruka2: 400, hoshino2: 400 };
+/** 单张积分价(🔴 真机实测 2026-09-23:provider 单张直调,扣除额=quota 差值;tsubaki2=2100/haruka2=4100;
+ * ×4 批次 800/张折扣仅 UI,API 单张不享。hoshino2=同族估算未实测)。 */
+const PIXAI_CREDITS_PER_IMAGE: Record<string, number> = { tsubaki2: 2100, haruka2: 4100, hoshino2: 4100 };
 const DEFAULT_NEGATIVE = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, low score, bad score, average score, signature, watermark, username, blurry";
 const RECAPTCHA_SITEKEY = "6Ld_hskiAAAAADfg9HredZvZx8Z_C8FrNJ519Rc6";
 const TOKEN_STORE = path.join(os.homedir(), ".media-gen-mcp", "pixai-token.json");
@@ -160,7 +161,7 @@ export class PixaiProvider implements MediaProviderBase, ImageProvider {
     return {
       status: this.hasCredential() ? "live" : "blocked-on-login",
       cost: "免费 10,000 积分/日(GraphQL token 通道,≈12 张 Standard/日;claim 制)+ 官方 REST API key 通道计费未公开(❓待实测)",
-      freeQuota: "每日 10,000 积分(绑定账号;须邮箱验证;每日 claim 领取,provider 首次生成自动领取并告警);发图/任务/LoRA 返利可加赚",
+      freeQuota: "每日 10,000 积分(绑定账号;须邮箱验证;claim 领取)——🔴 真机实测单张价:tsubaki2=2,100/张(≈4 张/日)、haruka2=4,100/张(≈2 张/日);×4 批次 800/张折扣仅 UI,API 单张不享;发图/任务/LoRA 返利可加赚",
       capabilities: { t2i: true, i2i: this.channel() === "graphql", t2v: false, i2v: false, keyframes: false },
       limits: [
         "API 无视频(官方 limits 明确;视频仅 UI)——本 provider 仅生图",
@@ -322,7 +323,7 @@ export class PixaiProvider implements MediaProviderBase, ImageProvider {
   async generateImage(req: ImageRequest): Promise<ImageResult> {
     const warnings: string[] = [];
     // 告警忽略块(纪律:丢弃参数必告警;images 走明确拒绝非告警)
-    if (req.n && req.n > 1) warnings.push(`pixai provider 恒单张(工具层扇出);注意 ×4 批次五折仅 UI/直调可得,当前每张按单价(${PIXAI_CREDITS_PER_IMAGE.tsubaki2_standard} 积分/张 Standard 级)。`);
+    if (req.n && req.n > 1) warnings.push(`pixai provider 恒单张(工具层扇出);单张实测 ${PIXAI_CREDITS_PER_IMAGE.tsubaki2} 积分/张(tsubaki2)——×4 批次 800/张折扣仅 UI,API 不享,n 张=×${PIXAI_CREDITS_PER_IMAGE.tsubaki2} 积分。`);
     if (req.quality) warnings.push("pixai 不支持 quality,已忽略(档位由模型+mode 决定)。");
     const extraKeys = Object.keys(req.extra ?? {});
     if (extraKeys.length) warnings.push(`pixai 不消费 extra(${extraKeys.join("/")}),已忽略。`);
