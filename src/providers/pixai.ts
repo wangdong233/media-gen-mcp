@@ -82,6 +82,8 @@ export interface PixaiProviderOpts {
   fetchImpl?: (url: string, init: RequestInit) => Promise<PixaiHttpResp>;
   /** 测试注入缝:下载产物(PixAI 产物不永久保留,生产立即下载)。 */
   downloadImpl?: (url: string) => Promise<ArrayBuffer>;
+  /** 测试缝:禁读宿主 token 存储(白盒测试防真发网络请求;S6 审查 D-2)。 */
+  disableStoredTokenLoad?: boolean;
 }
 
 export class PixaiProvider implements MediaProviderBase, ImageProvider {
@@ -106,7 +108,7 @@ export class PixaiProvider implements MediaProviderBase, ImageProvider {
 
   constructor(opts: PixaiProviderOpts = {}) {
     this.apiKey = opts.apiKey;
-    this.token = opts.token ?? PixaiProvider.loadStoredToken();
+    this.token = opts.token ?? (opts.disableStoredTokenLoad ? undefined : PixaiProvider.loadStoredToken());
     this.email = opts.email;
     this.password = opts.password;
     this.baseUrl = (opts.baseUrl || "https://api.pixai.art").replace(/\/$/, "");
@@ -122,7 +124,7 @@ export class PixaiProvider implements MediaProviderBase, ImageProvider {
   }
   private storeToken(token: string): void {
     if (!this.persistToken) return;
-    try { fs.mkdirSync(path.dirname(TOKEN_STORE), { recursive: true }); fs.writeFileSync(TOKEN_STORE, JSON.stringify({ token, savedAt: new Date().toISOString() })); } catch { /* 持久化失败不阻断会话 */ }
+    try { fs.mkdirSync(path.dirname(TOKEN_STORE), { recursive: true }); fs.writeFileSync(TOKEN_STORE, JSON.stringify({ token, savedAt: new Date().toISOString() }), { mode: 0o600 }); } catch { /* 持久化失败不阻断会话 */ }
   }
 
   /** 通道判定:apiKey=官方 REST v2;否则 token/email-password=GraphQL 免费通道。 */
@@ -214,7 +216,7 @@ export class PixaiProvider implements MediaProviderBase, ImageProvider {
       if (j?.errors?.length) {
         const code = j.errors[0]?.extensions?.code;
         if (code === "UNAUTHENTICATED") throw new PixaiError("P101", `GraphQL UNAUTHENTICATED:${j.errors[0]?.message}`, { httpStatus: 401, precondition: true });
-        throw new PixaiError("P301", `GraphQL 业务错误:${JSON.stringify(j.errors).slice(0, 200)}`);
+        throw new PixaiError("P301", `GraphQL 业务错误:${JSON.stringify(j.errors).slice(0, 200)}`, { httpStatus: 400 });
       }
       return j.data as T;
     }, { tag: "Pixai" });
@@ -289,16 +291,23 @@ export class PixaiProvider implements MediaProviderBase, ImageProvider {
     }
   }
 
-  /** 每日 claim(领取制配额):进程内按日幂等;非凭证类失败不阻断生成(可能已领);凭证错快速失败;顺带回读余额。 */
+  /** 每日 claim(领取制配额):进程内按日幂等 + in-flight memo(并发扇出共享一次请求);非凭证类失败不阻断生成(可能已领);凭证错快速失败;顺带回读余额。 */
+  private claimInFlight?: Promise<void>;
   private async claimDailyIfNeeded(warnings: string[]): Promise<void> {
     const today = new Date().toISOString().slice(0, 10);
     if (this.claimedOn === today || this.channel() !== "graphql") return;
+    if (this.claimInFlight) return this.claimInFlight; // 并发扇出共享同一 claim(S6 审查 A-4)
+    this.claimInFlight = this.doClaim(warnings).finally(() => { this.claimInFlight = undefined; });
+    return this.claimInFlight;
+  }
+  private async doClaim(warnings: string[]): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
     try {
-      await this.gql(GQL_CLAIM, undefined, { browserHeaders: false });
+      await this.gql(GQL_CLAIM);
       this.claimedOn = today;
       let quotaNote = "";
       try {
-        const q = await this.gql(GQL_QUOTA, undefined, { browserHeaders: false });
+        const q = await this.gql(GQL_QUOTA);
         const amt = parseInt(String(q?.me?.quotaAmount ?? ""), 10);
         if (Number.isFinite(amt)) quotaNote = `(当前余额 ${amt} 积分)`;
       } catch { /* 余额读取失败不阻断 */ }

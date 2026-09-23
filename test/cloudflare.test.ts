@@ -28,15 +28,17 @@ function mkResp(status: number, body: unknown, headers: Record<string, string> =
 }
 function makeProvider(script: Array<{ status: number; body: unknown; headers?: Record<string, string> }>, creds: { apiToken?: string; accountId?: string } = { apiToken: "cf-token", accountId: "acc123" }) {
   const calls: { url: string; body: any; headers: any }[] = [];
+  const binFetches: string[] = [];
   const p = new CloudflareProvider({
     ...creds,
+    fetchBinaryImpl: async (u: string) => { binFetches.push(u); return { bytes: new Uint8Array([1, 2, 3]).buffer, mime: "image/png" }; },
     fetchImpl: async (url: string, init: RequestInit) => {
       calls.push({ url, body: init.body, headers: init.headers });
       const next = script.shift() ?? { status: 200, body: { success: true, result: { image: "/9j/4AAQ" } } };
       return mkResp(next.status, next.body, next.headers);
     },
   });
-  return { p, calls };
+  return { p, calls, binFetches };
 }
 const OK = { status: 200, body: { success: true, result: { image: "/9j/4AAQ" } } };
 
@@ -102,15 +104,18 @@ describe("cloudflare multipart 族(flux-2)", () => {
     assert.equal(fd.get("seed"), "3");
     assert.ok(!r.warnings!.some((w) => w.includes("premium")));
   });
-  test("dev 多参考:input_image_0..2 映射;>4 截断告警;<512 硬限告警;premium 档警示(3,750)", async () => {
-    const { p, calls } = makeProvider([OK]);
+  test("dev 多参考:参考图取字节转 Blob 文件部件(官方 wire=二进制);>4 截断;<512 告警;premium 警示", async () => {
+    const { p, calls, binFetches } = makeProvider([OK]);
     const r = await p.generateImage({
       prompt: "edit", model: "flux-2-dev",
       images: ["https://a/1.png", "https://a/2.png", "https://a/3.png", "https://a/4.png", "https://a/5.png"],
     } as any);
     const fd = calls[0].body as FormData;
-    assert.equal(fd.get("input_image_0"), "https://a/1.png");
-    assert.equal(fd.get("input_image_3"), "https://a/4.png");
+    const part = fd.get("input_image_0") as Blob;
+    assert.ok(part instanceof Blob, "S6 A-1:参考图必须是二进制文件部件(Blob)而非 URL 字符串");
+    assert.equal(part.size, 3, "字节来自 fetchBinaryImpl");
+    assert.equal((fd.get("input_image_0") as File).name, "ref_0.png", "文件部件带 filename");
+    assert.equal(binFetches.length, 4, "4 张参考图各取一次字节(第 5 截断)");
     assert.equal(fd.get("input_image_4"), null, "≤4 截断");
     assert.ok(r.warnings!.some((w) => w.includes("截断")));
     assert.ok(r.warnings!.some((w) => w.includes("<512×512")));

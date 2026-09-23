@@ -242,7 +242,7 @@ function buildTools() {
       inputSchema: {
         type: "object",
         properties: {
-          videoId: { type: "string", description: "Task id from create_video (agnes/zhipu async handle). provider=flow: pass the mediaId as taskId instead (flow has no separate videoId). provider=pixverse: pass the numeric video_id as taskId. provider=gemini: pass the taskId returned by create_video (pseudo handle, in-process only — claim it before submitting another gemini generation). provider=siliconflow: pass the requestId as taskId." },
+          videoId: { type: "string", description: "Task id from create_video (agnes/zhipu async handle). provider=flow: pass the mediaId as taskId instead (flow has no separate videoId). provider=pixverse: pass the numeric video_id as taskId. provider=gemini: pass the taskId returned by create_video (pseudo handle, in-process only — claim it before submitting another gemini generation). provider=imagineart: pass the taskId returned by create_video (in-process pseudo handle — claim before submitting another imagineart video). provider=siliconflow: pass the requestId as taskId." },
           taskId: { type: "string", description: "legacy fallback endpoint; provider=flow = mediaId, provider=pixverse = numeric video_id, provider=gemini = the pseudo handle from create_video (task status polling), provider=siliconflow = submit's requestId" },
           download: { type: "boolean", default: true, description: "Set false to skip writing the file locally — with data:-URI providers (flow/zhipu) the url is then omitted from the response and you get raw metadata only." },
           name: { type: "string", description: "Output filename (without extension). Defaults to vid_<uuid>. For Flow: mediaId/seed/model/prompt are returned alongside local_path so each file maps back to its exact input. Existing files get -2/-3… suffix (never silently overwrites)." },
@@ -770,6 +770,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             } catch (e: any) {
               // pares3 语义保留:非 fallback-worthy 的业务错直抛;钉死链(opt-in 渠道显式点名)直抛。
               // isChainAdvanceable = isFallbackWorthy ∪ 环境前置失败(请求从未提交,非业务错)。
+              // S6 审查 A-3:pinned 直抛前也回调 notifyUnavailable —— provider 熔断/额度冷却态
+              // (如 cloudflare 429/3036 每日额度尽→冷却至 00:00 UTC)不能只在 fallback 分支生效。
+              active.notifyUnavailable?.(e);
               if (pinned || hop >= MAX_CHAIN_HOPS || !isChainAdvanceable(e)) throw e;
               const fbRaw = getFallbackProvider(active.name, "image", { images: imgs });
               if (!fbRaw) throw e;

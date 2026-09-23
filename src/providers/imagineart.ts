@@ -27,6 +27,8 @@ import type {
 } from "./types.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 /** 锁定版本(🔴 禁裸 npx 漂移;4 天 0.1.0→0.10.0 高频变更期,升级须重验契约)。 */
 export const IMAGINEART_CLI_VERSION = "0.10.0";
@@ -96,12 +98,15 @@ export interface ImagineartProviderOpts {
   transport?: ImagineartTransport;
   /** 测试注入缝:产物下载。 */
   downloadImpl?: (url: string) => Promise<ArrayBuffer>;
+  /** 测试注入缝:i2v 首帧 data:URI 临时文件目录(生产 os.tmpdir())。 */
+  tmpDir?: string;
 }
 
 export class ImagineartProvider implements MediaProviderBase, ImageProvider, VideoProvider {
   readonly name = "imagineart";
   private readonly transport: ImagineartTransport;
   private readonly downloadImpl: (url: string) => Promise<ArrayBuffer>;
+  private readonly tmpDir: string;
   /** 登录态缓存(status 探活一次/进程,避免每请求多 spawn)。 */
   private statusCache?: { at: number; st: ImagineartStatus };
   /** 视频伪 handle(gemini 先例:taskId → 阻塞 promise)。 */
@@ -115,6 +120,7 @@ export class ImagineartProvider implements MediaProviderBase, ImageProvider, Vid
       if (!r.ok) throw new ImagineartError("I203", `产物下载失败 HTTP ${r.status}`);
       return r.arrayBuffer();
     }));
+    this.tmpDir = opts.tmpDir ?? os.tmpdir();
   }
 
   // ── 基础 ──
@@ -149,6 +155,7 @@ export class ImagineartProvider implements MediaProviderBase, ImageProvider, Vid
       limits: [
         "免费产出限非商用(terms 软措辞;商用成片需 $13/mo);产出公开(无私私生成)",
         "seed 不支持(CLI 无该参数,告警忽略);n 批量由工具层扇出(每张独立计 credits)",
+        "i2v 首帧:公网 URL 直传;本地文件经工具层转 data:URI 后自动解码写临时文件再传(CLI 只收 URL/文件路径)",
         "CLI 阻塞式出图(image 默认 600s/video 1200s);视频走伪 handle 轮询",
         "模型名透传服务端校验(CLI 零本地校验);免费层仅 standard 档(Pro/Veo 不可达)",
         "疑似免费层水印(⚠️单源第三方实测,官方条款未提)",
@@ -227,11 +234,26 @@ export class ImagineartProvider implements MediaProviderBase, ImageProvider, Vid
   // ── 视频(阻塞 CLI → 伪 handle,gemini 先例) ──
   async createVideo(req: VideoRequest): Promise<VideoTask> {
     const warnings: string[] = [];
+    // 告警忽略块(S6 审查 B-1:丢弃参数必告警——numFrames 换算 duration 是功能性映射非丢弃)
     if (req.seed != null) warnings.push("imagineart CLI 无 seed,已忽略。");
+    if (req.negativePrompt) warnings.push("imagineart 不支持 negativePrompt,已忽略。");
+    if (req.frameRate != null && req.frameRate !== 24) warnings.push(`imagineart 视频固定 24fps 级,frameRate=${req.frameRate} 已忽略。`);
+    if (req.mode && req.mode !== "text-to-video" && req.mode !== "image-to-video") warnings.push(`imagineart 仅 t2v/i2v,mode=${req.mode} 已忽略。`);
+    if (req.images?.length) warnings.push("imagineart 视频无参考图模式(r2v),images 已忽略(i2v 用单首帧 image)。");
     if (req.keyframes?.length) throw new ImagineartError("I301", "imagineart 无首尾帧(参考图走 images/I2V 单图)。");
     if (req.videoMediaId) warnings.push("imagineart 无视频续写/编辑,videoMediaId 已忽略。");
     if (req.audioMediaIds?.length) warnings.push("imagineart 无音频参考(音乐另有 music 命令未接),已忽略。");
-    if (req.durationSeconds != null && ![5, 10].includes(req.durationSeconds)) warnings.push(`imagineart 视频时长档由模型定(常见 5/10s),durationSeconds=${req.durationSeconds} 直传服务端裁定。`);
+    // numFrames → --duration 映射(24fps:120=5s/240=10s;非整秒吸附最近档并告警)
+    let durationFlag: string | undefined;
+    if (req.durationSeconds != null) {
+      durationFlag = String(req.durationSeconds);
+      if (![5, 10].includes(req.durationSeconds)) warnings.push(`imagineart 视频时长档由模型定(常见 5/10s),durationSeconds=${req.durationSeconds} 直传服务端裁定。`);
+    } else if (req.numFrames != null) {
+      const secs = Math.round((req.numFrames / 24) * 2) / 2; // 半秒粒度吸附
+      const snapped = secs >= 7.5 ? 10 : 5;
+      durationFlag = String(snapped);
+      warnings.push(`imagineart CLI 无 numFrames 参数,已按 24fps 换算 --duration=${snapped}s(numFrames=${req.numFrames})。`);
+    }
     const model = req.model ?? "wan-2-2";
     const credits = IMAGINEART_VIDEO_MODELS[model];
     if (credits != null) warnings.push(`${model}:≈${credits} credits/条(免费 100/日≈${Math.floor(100 / credits)} 条;免费层 720p 上限)。`);
@@ -241,10 +263,9 @@ export class ImagineartProvider implements MediaProviderBase, ImageProvider, Vid
     if (model) args.push("--model", model);
     if (req.ratio) args.push("--ratio", req.ratio);
     if (req.resolution) args.push("--resolution", req.resolution);
-    if (req.durationSeconds != null) args.push("--duration", String(req.durationSeconds));
+    if (durationFlag != null) args.push("--duration", durationFlag);
     if (req.image) {
-      if (!/^https?:\/\//i.test(req.image) && !fs.existsSync(req.image)) throw new ImagineartError("I302", "imagineart i2v 首帧须公网 URL 或存在的本地路径。");
-      args.push("--image", req.image);
+      args.push("--image", await this.localizeFirstFrame(req.image));
     }
     const taskId = `imagineart-${Date.now().toString(36)}`;
     const p = (async (): Promise<VideoResult> => {
@@ -257,6 +278,8 @@ export class ImagineartProvider implements MediaProviderBase, ImageProvider, Vid
       const buf = await this.downloadImpl(url);
       return { status: "completed", url: `data:video/mp4;base64,${Buffer.from(buf).toString("base64")}`, raw: { provider: "imagineart", model } };
     })().finally(() => { this.videoWaiters.delete(taskId); });
+    // 🔴 S6 审查 A-2:未观察 rejection 会击穿 server(Node≥15 默认 throw)——哨兵吞掉,getVideo 仍收原 promise
+    p.catch(() => { /* handled by getVideo / discarded intentionally */ });
     this.videoWaiters.set(taskId, p);
     return { taskId, status: "submitted", raw: { provider: "imagineart", model, credits }, warnings };
   }
@@ -266,6 +289,17 @@ export class ImagineartProvider implements MediaProviderBase, ImageProvider, Vid
     const waiter = id ? this.videoWaiters.get(id) : undefined;
     if (!waiter) return { status: "failed", error: `imagineart 伪 handle 不存在或已结算(${id ?? "无 taskId"};进程内有效——重启后须重新提交)。` };
     return waiter;
+  }
+
+  /** i2v 首帧本地化:CLI --image 只收公网 URL 或本地文件路径——data:URI(工具层本地文件的标准形态)解码写临时文件(S6 审查 B-2)。 */
+  private async localizeFirstFrame(input: string): Promise<string> {
+    if (/^https?:\/\//i.test(input)) return input;
+    const m = /^data:([^;,]+);base64,(.*)$/s.exec(input);
+    if (!m) throw new ImagineartError("I302", "imagineart i2v 首帧须公网 http(s) URL 或 data:URI(本地文件经工具层自动转 data:URI)。");
+    const ext = m[1].includes("png") ? "png" : "jpg";
+    const p = path.join(this.tmpDir, `imagineart-frame-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
+    fs.writeFileSync(p, Buffer.from(m[2], "base64"));
+    return p;
   }
 
   /** CLI --json 解析:双错误路(queue 期失败=stdout 空+exit 1+stderr;wait 期=results[].error)。 */

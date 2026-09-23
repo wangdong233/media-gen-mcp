@@ -12,6 +12,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const require = createRequire(import.meta.url);
 const { ImagineartProvider, ImagineartError, IMAGINEART_IMAGE_MODELS } = require("../dist/providers/imagineart.js");
@@ -134,6 +137,29 @@ describe("imagineart 视频(伪 handle)", () => {
     const r = await pFail.getVideo({ taskId: t.taskId! });
     assert.equal(r.status, "failed");
     assert.match(String(r.error), /video render failed/);
+  });
+  test("A-2 回归:createVideo 后不 poll,内部失败不崩进程(哨兵吞未观察 rejection)", async () => {
+    const { p } = makeProvider([{ code: 1, stdout: "", stderr: "generate_video failed: insufficient credits" }]);
+    const t = await p.createVideo({ prompt: "v" } as any);
+    await new Promise((r) => setTimeout(r, 50)); // 未观察 rejection 若无哨兵,Node 默认 throw 击穿 test runner
+    assert.equal(t.status, "submitted");
+  });
+  test("B-1:numFrames 换算 --duration(240@24fps→10s)且告警;negativePrompt/images/frameRate 告警忽略", async () => {
+    const { p, calls } = makeProvider([{ code: 0, stdout: JSON.stringify({ results: [{ id: "v", asset: { mediaUrl: "https://tmp/n.mp4" }, error: null }] }) }]);
+    const t = await p.createVideo({ prompt: "v", numFrames: 240, negativePrompt: "blurry", frameRate: 30, images: ["https://a/1.png"] } as any);
+    const args = calls[1].args;
+    assert.equal(args[args.indexOf("--duration") + 1], "10");
+    for (const k of ["numFrames", "negativePrompt", "frameRate", "images"]) assert.ok(t.warnings!.some((w) => w.includes(k)), `缺 ${k} 告警`);
+  });
+  test("B-2:data:URI 首帧解码写临时文件传路径(CLI 只收 URL/文件路径)", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "imagineart-test-"));
+    const { p, calls } = makeProvider([{ code: 0, stdout: JSON.stringify({ results: [{ id: "v", asset: { mediaUrl: "https://tmp/d.mp4" }, error: null }] }) }]);
+    (p as any).tmpDir = tmp;
+    await p.createVideo({ prompt: "v", image: "data:image/png;base64,iVBORw0KGgo=" } as any);
+    const passed = calls[1].args[calls[1].args.indexOf("--image") + 1];
+    assert.ok(passed.startsWith(tmp) && passed.endsWith(".png"), `临时文件路径传 CLI:${passed}`);
+    assert.ok(fs.existsSync(passed));
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
   test("requiresOptIn=true;notifyUnavailable 记 lastErrorAt", () => {
     const { p } = makeProvider([]);

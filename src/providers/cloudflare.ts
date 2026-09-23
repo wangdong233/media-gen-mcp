@@ -77,6 +77,8 @@ export interface CloudflareProviderOpts {
   baseUrl?: string;
   /** 测试注入缝:替换底层 HTTP(白盒零网络)。 */
   fetchImpl?: (url: string, init: RequestInit) => Promise<CfHttpResp>;
+  /** 测试注入缝:取参考图二进制(生产=fetch;flux-2 multipart 参考图必须是二进制文件部件)。 */
+  fetchBinaryImpl?: (url: string) => Promise<{ bytes: ArrayBuffer; mime: string }>;
 }
 
 export class CloudflareProvider implements MediaProviderBase, ImageProvider {
@@ -85,6 +87,7 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
   private readonly accountId?: string;
   private readonly baseUrl: string;
   private readonly fetchImpl: (url: string, init: RequestInit) => Promise<CfHttpResp>;
+  private readonly fetchBinaryImpl: (url: string) => Promise<{ bytes: ArrayBuffer; mime: string }>;
   /** 每日额度尽(429/3036)冷却:至 00:00 UTC。 */
   private quotaCooldownUntil = 0;
   private cooldownUntil = 0;
@@ -95,6 +98,17 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
     this.accountId = opts.accountId;
     this.baseUrl = (opts.baseUrl || "https://api.cloudflare.com/client/v4").replace(/\/$/, "");
     this.fetchImpl = (opts.fetchImpl as any) || ((u: string, i: RequestInit) => fetch(u, i) as any);
+    this.fetchBinaryImpl = opts.fetchBinaryImpl || (async (u: string) => {
+      // S6 审查 A-1:flux-2 参考图官方 wire=二进制文件部件(changelog 实证),URL/data: 均先取字节
+      if (u.startsWith("data:")) {
+        const m = /^data:([^;,]+);base64,(.*)$/s.exec(u);
+        if (!m) throw new CloudflareError("C302", "参考图 data:URI 无法解析(须 base64 形态)。");
+        return { bytes: Buffer.from(m[2], "base64") as unknown as ArrayBuffer, mime: m[1] };
+      }
+      const r = await fetch(u);
+      if (!r.ok) throw new CloudflareError("C203", `参考图获取失败 HTTP ${r.status}`, { httpStatus: 0 });
+      return { bytes: await r.arrayBuffer(), mime: r.headers.get("content-type")?.split(";")[0] || "image/png" };
+    });
   }
 
   // ── 基础 ──
@@ -105,8 +119,8 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
   listModels(): string[] { return [...CLOUDFLARE_MODEL_NAMES]; }
   listImageModels(): string[] { return [...CLOUDFLARE_MODEL_NAMES]; }
   supportsImageToImage(): boolean { return true; }
-  /** i2i 输入形态:sdxl 系吃 data:URI(转 b64);flux-2 系 multipart 吃二进制(data:/http URL 皆可,须 <512²)。 */
-  acceptsImageInputRef(_value: string): boolean { return true; }
+  /** i2i 输入形态:flux-2 系 multipart 吃二进制(data:/http 均先取字节);SDXL 系吃 data:URI(b64)。 */
+  acceptsImageInputRef(value: string): boolean { return /^(https?:|data:)/i.test(value); }
   health() {
     const now = Date.now();
     return { configured: !!(this.apiToken && this.accountId), cooldown: now < this.cooldownUntil || now < this.quotaCooldownUntil, lastErrorAt: this.lastErrorAt };
@@ -176,9 +190,10 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
     const isPremium = spec.neuronsPerImage >= PREMIUM_THRESHOLD;
     if (isPremium) warnings.push(`premium 档 ${model}:≈${spec.neuronsPerImage} neurons/张(免费 10k/日 ≈ ${Math.floor(10_000 / spec.neuronsPerImage)} 张;Workers Paid 计划超额自动扣费 $0.011/千)。`);
     else if (spec.neuronsPerImage === 0) warnings.push(`${model} = $0 Beta(零 neurons 消耗,720 RPM 内)。`);
+    else warnings.push(`${model}:≈${spec.neuronsPerImage} neurons/张(免费 10k/日 ≈ ${Math.floor(10_000 / spec.neuronsPerImage)} 张)。`);
 
     const size = this.resolveSize(req, spec, warnings);
-    const { body, contentType } = this.buildBody(req, spec, size, warnings);
+    const { body, contentType } = await this.buildBody(req, spec, size, warnings);
     const raw = await this.run(model, body, contentType);
     // v4 envelope: result.image = 裸 base64(无 data: 前缀);mime 按 magic bytes 嗅探
     const img = raw?.result?.image ?? raw?.image;
@@ -187,21 +202,24 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
     return { outputs: [{ url: `data:${mime};base64,${img}` }], raw: { provider: "cloudflare", model, neurons: spec.neuronsPerImage }, warnings };
   }
 
-  private buildBody(req: ImageRequest, spec: CfModelSpec, size: { w: number; h: number }, warnings: string[]): { body: unknown; contentType?: string } {
+  private async buildBody(req: ImageRequest, spec: CfModelSpec, size: { w: number; h: number }, warnings: string[]): Promise<{ body: unknown; contentType?: string }> {
     if (spec.family === "multipart") {
       // flux-2 全家:纯文生图也必须 multipart;参考图 input_image_0..3(≤4 张,<512×512)
+      // 🔴 S6 审查 A-1:官方 wire=二进制文件部件(changelog 实证)——URL/data: 一律先取字节转 Blob
       const fd = new FormData();
       fd.set("prompt", req.prompt);
       fd.set("width", String(size.w));
       fd.set("height", String(size.h));
       if (req.seed != null && Number.isFinite(req.seed)) fd.set("seed", String(Math.trunc(req.seed)));
       if (spec.steps) fd.set("steps", String(spec.steps.def)); // 仅 dev 消费;klein 固定 4 步不传
-      else if (req.extra && ("steps" in (req.extra as any))) { /* klein 步数固定,外部 steps 忽略 */ }
       if (req.images?.length) {
         const imgs = req.images.slice(0, 4);
         if (req.images.length > 4) warnings.push("flux-2 参考图最多 4 张(input_image_0..3),已截断。");
         warnings.push("flux-2 参考图每张必须 <512×512(上游硬限;过大图会报错,请预缩放)。");
-        imgs.forEach((u, i) => fd.set(`input_image_${i}`, u));
+        for (let i = 0; i < imgs.length; i++) {
+          const { bytes, mime } = await this.fetchBinaryImpl(imgs[i]);
+          fd.set(`input_image_${i}`, new Blob([bytes], { type: mime }), `ref_${i}.png`);
+        }
       }
       return { body: fd }; // FormData 自动带 boundary
     }
@@ -210,13 +228,11 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
     if (spec.steps) body[spec.steps.key] = spec.steps.def;
     if (req.seed != null && Number.isFinite(req.seed)) body.seed = Math.trunc(req.seed);
     if (spec.size) { body.width = size.w; body.height = size.h; }
-    const negative = (req as any).negativePrompt as string | undefined;
-    if (negative && (model_uses_negative(spec.full))) body.negative_prompt = negative;
     if (req.images?.length) {
       if (spec.i2i !== "sdxl-b64") throw new CloudflareError("C302", `模型 ${spec.full} 不接受 images(仅 SDXL 系 image_b64 / flux-2 系 multipart)。`);
       const dataUri = req.images[0];
       const m = /^data:image\/[a-z+]+;base64,(.*)$/s.exec(dataUri);
-      if (!m) throw new CloudflareError("C302", "SDXL img2img 输入须 data:URI(工具层已本地化);http URL 请经 images 参数前检查通道。");
+      if (!m) throw new CloudflareError("C302", "SDXL img2img 输入须 data:URI(工具层已本地化);http URL 请经 flux-2 模型(multipart 参考图)。");
       body.image_b64 = m[1];
       if (req.images.length > 1) warnings.push("SDXL img2img 仅消费 images[0]。");
     }
@@ -294,9 +310,6 @@ export class CloudflareProvider implements MediaProviderBase, ImageProvider {
   }
 }
 
-function model_uses_negative(full: string): boolean {
-  return full.includes("stable-diffusion") || full.includes("phoenix");
-}
 function extractCfCode(body: string): number | undefined {
   const m = /"code"\s*:\s*(\d+)/.exec(body);
   return m ? Number(m[1]) : undefined;

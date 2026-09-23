@@ -26,6 +26,7 @@ function makeProvider(script: Record<string, Array<{ status: number; body: unkno
   const downloads: string[] = [];
   const p = new PixaiProvider({
     ...creds,
+    disableStoredTokenLoad: true,
     fetchImpl: async (url: string, init: RequestInit) => {
       let parsedBody: any = null;
       if (init.body != null) { try { parsedBody = JSON.parse(String(init.body)); } catch { parsedBody = String(init.body); } } // form 体保原串
@@ -196,8 +197,8 @@ describe("pixai 契约纪律(S6 教训固化)", () => {
 });
 
 describe("pixai 错误/门禁", () => {
-  test("P100:无凭证(结构化指引含 DevTools 路径)", async () => {
-    const p = new PixaiProvider({});
+  test("P100:无凭证(结构化指引含 DevTools 路径;不读宿主 token 存储)", async () => {
+    const p = new PixaiProvider({ disableStoredTokenLoad: true });
     p.persistToken = false;
     await assert.rejects(p.generateImage({ prompt: "x" } as any), (e: any) => e.code === "P100" && /api\.pixai\.art:token/.test(e.message));
   });
@@ -223,6 +224,22 @@ describe("pixai 错误/门禁", () => {
     assert.equal(logins.length, 1);
     const gqlAuth = calls.find((c) => c.url.includes("/graphql") && routeGql(JSON.stringify(c.body)) === "create")!.headers.authorization;
     assert.equal(gqlAuth, "Bearer jwt-fresh");
+  });
+  test("B-3 回归:HTTP-200+errors[](非 UNAUTHENTICATED)→ P301 且零重试(status=400)", async () => {
+    let hits = 0;
+    const p = new PixaiProvider({
+      token: "jwt-token", disableStoredTokenLoad: true,
+      fetchImpl: async (_u: string, _i: RequestInit) => {
+        hits++;
+        // 第 1 发=claim(放行),第 2 发=create(业务错)——若 P301 被误判瞬时,第 3 发起退避重试
+        if (hits === 1) return mkResp(200, { data: { dailyClaimQuota: true } });
+        return mkResp(200, { errors: [{ message: "quota exceeded", extensions: { code: "BAD_USER_INPUT" } }] });
+      },
+      downloadImpl: async () => new ArrayBuffer(4),
+    });
+    p.persistToken = false; p.pollIntervalMs = 1; p.pollDeadlineMs = 300;
+    await assert.rejects(p.generateImage({ prompt: "x" } as any), (e: any) => e.code === "P301");
+    assert.equal(hits, 3, "claim+余额回读+create 各 1 次,零重试(P301 带 status=400;余额读失败内部吞)");
   });
   test("P300:未知模型;任务 failed → P401;轮询超时 → P402", async () => {
     const { p } = makeProvider({});
