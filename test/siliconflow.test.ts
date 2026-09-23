@@ -32,9 +32,6 @@ function makeProvider(script: Record<string, Array<{ status: number; body: unkno
       calls.push({ path, body: JSON.parse(String(init.body)) });
       const q = script[path];
       const next = q?.shift() ?? { status: 200, body: {} };
-      if (next.status >= 400 && next.status < 500 && next.status !== 429) {
-        // 非瞬时 4xx:withRetry 不重试,直接抛 SiliconflowError —— 用 json 包装让 request 抛
-      }
       return mkResp(next.status, next.body);
     },
     downloadImpl: async (u: string) => { downloads.push(u); return new Uint8Array([1, 2, 3, 4]).buffer; },
@@ -80,15 +77,36 @@ describe("siliconflow 生图(images[].url 信封 + 立即下载)", () => {
     assert.equal(calls[0].body.image_size, "1024x1024");
     assert.ok(r.warnings!.some((w) => w.includes("免费模型")));
   });
-  test("n=3:循环 3 次独立调用 + seed 递增 + 告警", async () => {
+  test("n=3(D1 契约):provider 恒单张——忽略 req.n,禁双重扇出(n² 计费),seed verbatim", async () => {
     const { p, calls } = makeProvider({
-      "/v1/images/generations": [1, 2, 3].map(() => ({ status: 200, body: { images: [{ url: "https://tmp/y.png" }] } })),
+      "/v1/images/generations": [{ status: 200, body: { images: [{ url: "https://tmp/y.png" }] } }],
     });
     const r = await p.generateImage({ prompt: "x", n: 3, seed: 42 } as any);
-    assert.equal(r.outputs.length, 3);
-    assert.equal(calls.length, 3);
-    assert.deepEqual(calls.map((c) => c.body.seed), [42, 43, 44]);
-    assert.ok(r.warnings!.some((w) => w.includes("batch_size")));
+    assert.equal(r.outputs.length, 1, "provider 单张;批量由工具层 fan-out(agnes 惯例)");
+    assert.equal(calls.length, 1, "禁 provider 内循环(工具层已扇出 n 次)");
+    assert.equal(calls[0].body.seed, 42, "seed verbatim,无 +i 漂移");
+    assert.ok(r.warnings!.some((w) => w.includes("工具层扇出")));
+  });
+  test("aspect/quality/extra(非水印键)→ 告警忽略;watermark_enabled=true 不告警(默认即开)", async () => {
+    const { p } = makeProvider({ "/v1/images/generations": [
+      { status: 200, body: { images: [{ url: "https://tmp/z.png" }] } },
+      { status: 200, body: { images: [{ url: "https://tmp/z2.png" }] } },
+    ] });
+    const r = await p.generateImage({ prompt: "x", aspect: "4:3", quality: "1080p", extra: { watermark_enabled: true } } as any);
+    assert.ok(r.warnings!.some((w) => w.includes("aspect")));
+    assert.ok(r.warnings!.some((w) => w.includes("quality")));
+    assert.ok(!r.warnings!.some((w) => w.includes("extra")), "watermark_enabled=true 天然满足,不出误导告警");
+    const r2 = await p.generateImage({ prompt: "x", extra: { foo: 1 } } as any);
+    assert.ok(r2.warnings!.some((w) => w.includes("extra")));
+  });
+  test("下载失败 → S200 异常路径(withRetry 退避后仍失败)", async () => {
+    const p = new SiliconflowProvider({
+      apiKey: "sk-test",
+      fetchImpl: async (_u: string, _i: RequestInit) => mkResp(200, { images: [{ url: "https://tmp/dead.png" }] }) as any,
+      downloadImpl: async () => { throw new SiliconflowError("S200", "产物下载失败 HTTP 404(URL 1h TTL,须立即取)", { sfStatus: 0 }); },
+    });
+    p.pollIntervalMs = 1;
+    await assert.rejects(p.generateImage({ prompt: "x" } as any), (e: any) => e.code === "S200");
   });
   test("响应信封异常(无 images)→ S400", async () => {
     const { p } = makeProvider({ "/v1/images/generations": [{ status: 200, body: { data: [] } }] });
@@ -116,12 +134,40 @@ describe("siliconflow 视频(submit/poll 异步)", () => {
     assert.equal(calls[0].body.image_size, "1280x720");
     assert.ok(t.warnings!.some((w) => w.includes("¥2")));
   });
-  test("i2v + 9:16 → 720x1280 + image 直传;keyframes → S301", async () => {
+  test("i2v + 9:16 → 720x1280 + image 直传;keyframes → S301;ratio 4:3 → 告警回落 16:9", async () => {
     const { p, calls } = makeProvider({ "/v1/video/submit": [{ status: 200, body: { requestId: "r2" } }] });
     const t = await p.createVideo({ prompt: "v", model: "Wan-AI/Wan2.2-I2V-A14B", image: "data:image/png;base64,xx", ratio: "9:16" } as any);
     assert.equal(calls[0].body.image_size, "720x1280");
     assert.equal(calls[0].body.image, "data:image/png;base64,xx");
     await assert.rejects(p.createVideo({ prompt: "v", keyframes: ["https://a/1.png", "https://a/2.png"] } as any), (e: any) => e.code === "S301");
+    const { p: p2, calls: c2 } = makeProvider({ "/v1/video/submit": [{ status: 200, body: { requestId: "r3" } }] });
+    const t2 = await p2.createVideo({ prompt: "v", ratio: "4:3" } as any);
+    assert.equal(c2[0].body.image_size, "1280x720", "4:3 不被静默当 16:9——回落 16:9 但必告警");
+    assert.ok(t2.warnings!.some((w) => w.includes("4:3")));
+  });
+  test("不支持字段全告警忽略:negativePrompt/numFrames/frameRate/resolution/images/audioMediaIds/videoMediaId/durationSeconds", async () => {
+    const { p, calls } = makeProvider({ "/v1/video/submit": [{ status: 200, body: { requestId: "r4" } }] });
+    const t = await p.createVideo({
+      prompt: "v", negativePrompt: "blurry", numFrames: 161, frameRate: 30, resolution: "1080p",
+      images: ["https://a/1.png"], audioMediaIds: ["achernar"], videoMediaId: "m1", durationSeconds: 8,
+    } as any);
+    for (const k of ["negativePrompt", "numFrames", "frameRate", "resolution", "images", "audioMediaIds", "videoMediaId", "durationSeconds"]) {
+      assert.ok(t.warnings!.some((w) => w.includes(k)), `缺 ${k} 告警`);
+    }
+    assert.equal(calls[0].body.numFrames, undefined, "不透传上游不支持字段");
+  });
+  test("getVideo:无句柄 → 结构化 failed;Succeed 后下载失败 → 结构化 failed(可重试)而非抛出", async () => {
+    const r0 = await makeProvider({}).p.getVideo({} as any);
+    assert.equal(r0.status, "failed");
+    const bad = new SiliconflowProvider({
+      apiKey: "sk-test",
+      fetchImpl: async (_u: string, _i: RequestInit) => mkResp(200, { status: "Succeed", results: { videos: [{ url: "https://tmp/v.mp4" }] } }) as any,
+      downloadImpl: async () => { throw new Error("boom"); },
+    });
+    bad.pollIntervalMs = 1;
+    const r = await bad.getVideo({ taskId: "x" } as any);
+    assert.equal(r.status, "failed");
+    assert.match(String(r.error), /get_video/, "错误信息指引立即复调");
   });
   test("poll:Succeed → 下载 data:video;Failed → reason;超时 → timeout", async () => {
     // Succeed 路径
