@@ -52,6 +52,7 @@ describe("hfspaces 目录/说明", () => {
     assert.ok(ci.limits.some((x) => x.includes("video-only")));
     assert.ok(ci.cost.includes("2min"), "配额口径在 cost 字段(匿名 2min/免费号 5min)");
     assert.deepEqual(p.listVideoModels(), HFSPACES_MODEL_NAMES);
+    assert.equal(HFSPACES_MODEL_NAMES.length, 4, "wan22-i2v/wan22-relay/minimax-h3/cogvideox");
     assert.equal(p.requiresOptIn("video"), true);
   });
 });
@@ -78,6 +79,24 @@ describe("hfspaces createVideo 路由与参数", () => {
     t = await r3.p.createVideo({ prompt: "v" } as any);
     assert.equal((t.raw as any).model, "cogvideox");
     assert.deepEqual(r3.posts[0].body.data, ["v", 50, 6], "cogvideox 三参最简");
+  });
+  test("minimax-h3 flex:t2v 免 image 直提/首尾帧映射 last_image_path/时长 clamp 14/seed 直传", async () => {
+    const { p, posts } = makeProvider();
+    // t2v(无 image)
+    let t = await p.createVideo({ prompt: "v", model: "minimax-h3" } as any);
+    let d = posts[0].body.data;
+    assert.deepEqual([d[0], d[1], d[2]], ["v", null, null], "flex:无 image 时 image_path/last_image_path 为 null");
+    assert.equal(d[4], 5, "默认时长 5s");
+    assert.equal(d[3], "960x544 · 16:9 fast", "画布默认档");
+    // 首尾帧
+    const r2 = makeProvider();
+    t = await r2.p.createVideo({ prompt: "v", model: "minimax-h3", image: "https://a/1.png", keyframes: ["https://a/1.png", "data:image/png;base64,Qg=="], seed: 7, durationSeconds: 30 } as any);
+    d = r2.posts[0].body.data;
+    assert.deepEqual(d[1], { url: "https://a/1.png" }, "image → image_path(ImageData)");
+    assert.deepEqual(d[2], { base64: "Qg==" }, "keyframes[1] → last_image_path(base64 形态)");
+    assert.equal(d[6], 7, "seed 直传(H3 支持,官方 API 都没有)");
+    assert.equal(d[4], 14, "时长 clamp 14s");
+    assert.ok(t.warnings!.some((w) => w.includes("截断")));
   });
   test("data:URI→ImageData{base64} 剥前缀;时长超限截断+告警;i2v 缺 image 拒 H302;未知模型 H300", async () => {
     const { p, posts } = makeProvider();

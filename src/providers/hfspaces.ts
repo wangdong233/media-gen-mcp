@@ -32,7 +32,7 @@ export interface HfSpaceTarget {
   subdomain: string;
   apiName: string;
   label: string;
-  kind: "i2v" | "i2v-relay" | "t2v";
+  kind: "i2v" | "i2v-relay" | "t2v" | "flex";
   maxDurationSeconds: number;
   /** 组装 /call 的 data 数组(参数顺序=签名顺序)。 */
   buildData: (req: VideoRequest, helpers: { toImageData: (u: string) => unknown; dataUriB64: (u: string) => string }) => unknown[];
@@ -64,6 +64,26 @@ export const HFSPACES_MODELS: Record<string, HfSpaceTarget> = {
     buildData: (req, h) => [
       h.toImageData(req.image!), req.keyframes?.[1] ? h.toImageData(req.keyframes[1]) : h.toImageData(req.image!),
       req.prompt ?? "", 4, "", Math.min(10, req.durationSeconds ?? 3.5), 1.0, 1.0, req.seed ?? 0, req.seed == null, 5, "UniPCMultistep", 3, "16", false, true,
+    ],
+    parse: (d) => {
+      const u = (d?.[0] as any)?.url;
+      return typeof u === "string" && u ? { kind: "url", value: u } : undefined;
+    },
+  },
+  "minimax-h3": {
+    subdomain: "multimodalart-minimax-h3",
+    apiName: "generate",
+    label: "MiniMax-H3 开源权重 Turbo(multimodalart 官方 demo,2-14s,t2v/i2v/首尾帧;seed 支持)",
+    kind: "flex", maxDurationSeconds: 14,
+    buildData: (req, h) => [
+      req.prompt ?? "",
+      req.image ? h.toImageData(req.image) : null,
+      req.keyframes?.[1] ? h.toImageData(req.keyframes[1]) : null,
+      "960x544 · 16:9 fast",
+      Math.min(14, req.durationSeconds ?? 5),
+      28,
+      req.seed ?? 42,
+      false,
     ],
     parse: (d) => {
       const u = (d?.[0] as any)?.url;
@@ -146,11 +166,11 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     return {
       status: "live",
       cost: "免费(ZeroGPU 公共配额):匿名 2min GPU/天(按 IP,共享出口易耗尽)/免费 HF 账号 5min/天/PRO $9/月 40min —— 配 hfspaces.token 提额提优先级",
-      freeQuota: "配额账号级跨 Space 共享;≈3-5 条 Wan2.2/天(免费号);匿名出口 IP 常已耗尽(实测 data:null),正式使用建议配免费 HF token",
+      freeQuota: "配额账号级跨 Space 共享;≈3-5 条 Wan2.2/天(免费号;H3 为 33B 级更重,估计 2-3 条/天);匿名出口 IP 常已耗尽(实测 data:null),正式使用建议配免费 HF token",
       capabilities: { t2i: false, i2i: false, t2v: true, i2v: true, keyframes: true },
       limits: [
         "**video-only**(图生成不在本渠道;P1 cogvideox 为 2024 代兜底,480p 无音轨)",
-        "wan22-i2v ≤5s(9 参全必填,输入须 data:URI,内嵌 b64 返回);wan22-relay ≤10s(首末帧接力=唯一 keyframes 支持;URL 输入输出)",
+        "wan22-i2v ≤5s(9 参全必填,输入须 data:URI,内嵌 b64 返回);wan22-relay ≤10s(首末帧接力;URL 输入输出);minimax-h3 ≤14s(H3 开源权重 Turbo,t2v/i2v/首尾帧三合一+seed;Turbo 蒸馏非满血,默认 768p 级画布,音频能力未验证)",
         "无显式分辨率参数(prithiv 自动方裁 480-832;relay 随图比例;quality 是码率非分辨率)",
         "GPU 记账层拒=SSE error data:null(零延迟无文本)——换 Space/换 token 重试;FileData.url 为临时链接即时下载",
         "共享公共资源自律使用;Saravutw 的 hf_oauth 是模板装饰(实测纯 ZeroGPU)",
@@ -188,7 +208,7 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     }
     const target = HFSPACES_MODELS[model];
     if (!target) throw new HfspacesError("H300", `未知模型 "${model}"。hfspaces 可用:${HFSPACES_MODEL_NAMES.join(", ")}。`);
-    if (target.kind !== "t2v" && !req.image) throw new HfspacesError("H302", `${model} 是 i2v 模型,须传 image(纯文生视频用 cogvideox)。`);
+    if (target.kind !== "t2v" && target.kind !== "flex" && !req.image) throw new HfspacesError("H302", `${model} 是 i2v 模型,须传 image(纯文生视频用 cogvideox/minimax-h3)。`);
     if (target.kind === "t2v" && req.image) warnings.push("cogvideox 为 t2v,image 已忽略。");
     let durationSeconds = req.durationSeconds;
     if (durationSeconds == null && req.numFrames != null) {
@@ -197,7 +217,7 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     }
     if (durationSeconds != null && durationSeconds > target.maxDurationSeconds) warnings.push(`${model} 时长上限 ${target.maxDurationSeconds}s,durationSeconds=${durationSeconds} 已截断。`);
     if (target.kind === "i2v-relay" && !req.keyframes?.[1]) warnings.push("wan22-relay 是首末帧接力模型但仅收到首帧,last_image 将复用首帧(等效单帧 i2v);首尾帧请用 keyframes[2] 传。");
-    if (target.kind === "i2v" && req.keyframes?.[1]) warnings.push("wan22-i2v 不支持末帧(keyframes[1] 已忽略;接力用 wan22-relay)。");
+    if (target.kind === "i2v" && req.keyframes?.[1]) warnings.push("wan22-i2v 不支持末帧(keyframes[1] 已忽略;接力用 wan22-relay/minimax-h3)。");
 
     const helpers = {
       toImageData: (u: string) => {
@@ -213,7 +233,7 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
       },
     };
     const data = target.buildData(
-      { ...req, image: req.image, durationSeconds: Math.min(durationSeconds ?? 3.5, target.maxDurationSeconds) } as VideoRequest,
+      { ...req, image: req.image, durationSeconds } as VideoRequest, // 默认值与 clamp 由各 target 的 buildData 自决(H3 默认 5s,Wan 默认 3.5s)
       helpers,
     );
     const headers: Record<string, string> = { "content-type": "application/json" };
