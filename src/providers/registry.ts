@@ -11,6 +11,7 @@ import { GeminiWebProvider } from "./gemini-web.js";
 import { SiliconflowProvider } from "./siliconflow.js";
 import { PixaiProvider } from "./pixai.js";
 import { CloudflareProvider } from "./cloudflare.js";
+import { ImagineartProvider } from "./imagineart.js";
 import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, VisionTask, Modality } from "./types.js";
 
 /**
@@ -88,6 +89,11 @@ const registry: Record<string, MediaProvider> = {
     apiToken: config.providers.cloudflare?.apiToken ?? config.providers.cloudflare?.apiKey ?? process.env.CLOUDFLARE_API_TOKEN,
     accountId: config.providers.cloudflare?.accountId ?? process.env.CLOUDFLARE_ACCOUNT_ID,
     baseUrl: config.providers.cloudflare?.baseUrl,
+  }),
+  imagineart: new ImagineartProvider({ // ImagineArt(渠道工厂飞轮轮 13 GO,2026-09-23;官方 MCP 同池免费 100 credits/日)。
+    // requiresOptIn=true —— spawn 官方 CLI(PixVerse 先例,版本锁 0.10.0);免费产出限非商用。
+    // 凭证:一次性 `login --no-browser`(~/.imagine-mcp/)或 config providers.imagineart.token(env 正道)。
+    token: config.providers.imagineart?.token ?? process.env.IMAGINE_MCP_TOKEN,
   }),
   gemini: new GeminiWebProvider({ // Gemini 网页渠道(CDP UI 驱动;调研 doc/Gemini渠道调研-2026-09-22.md)。
     // 渠道准入(对齐 flow/pixverse):requiresOptIn()=true —— Google AI 订阅算力配额制(视频消耗
