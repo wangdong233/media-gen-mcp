@@ -570,6 +570,70 @@ function buildTools() {
       },
     },
     {
+      name: "hf_tts",
+      description:
+        "Text-to-speech with optional VOICE CLONING via HF Spaces (Chatterbox, MIT license) — free on ZeroGPU daily quota (hfspaces channel token). Zero reference audio = Space's built-in sample voice; provide a 5-15s reference audio (http/data URI or local path) to CLONE that voice. Emotional/exaggeration control.\n\nWHEN: 对白配音 / voice clone / 语音合成 where msedge-tts lacks cloning; Chinese supported (multilingual model).\n\nAVOID: plain narration without cloning needs → msedge-tts (faster, no quota); commercial output from F5/E2-TTS spaces (NC license) — Chatterbox is MIT.\n\nNEXT: pair with hf_lipsync to make a talking-head clip.\n\nMultilingual triggers: 配音 · 语音克隆 · clonación de voz · Stimmklon (zh/es/ru/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Text to speak." },
+          referenceAudio: { type: "string", description: "Voice to clone: http(s)/data: URI or absolute local path of 5-15s reference audio. Omit = built-in sample voice." },
+          exaggeration: { type: "number", description: "Emotion intensity 0-1 (default 0.5)." },
+          temperature: { type: "number", description: "Sampling temperature (default 0.8)." },
+          cfgWeight: { type: "number", description: "CFG weight (default 0.5)." },
+          seed: { type: "number", description: "Seed (default 0)." },
+          name: { type: "string", description: "Output filename (no extension; .wav). Existing files get -2/-3 suffix (never silently overwrites)." },
+          outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task)" },
+        },
+        required: ["text"],
+      },
+    },
+    {
+      name: "hf_remove_bg",
+      description:
+        "Remove image background (BiRefNet via HF Spaces) — free on ZeroGPU quota. Returns a transparent PNG.\n\nWHEN: 抠图 / 去背景 / cut out subject for compositing — high-quality matting, no local install.\n\nNEXT: feed the cutout into generate_image (qwen-image-edit) or composite in your editor.\n\nMultilingual triggers: 抠图 · 去背景 · quitar fondo · fond entfernen (zh/es/de).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          image: { type: "string", description: "Input image: http(s)/data: URI or absolute local path (read server-side, ≤15MB)." },
+          name: { type: "string", description: "Output filename (no extension; .png)." },
+          outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task)" },
+        },
+        required: ["image"],
+      },
+    },
+    {
+      name: "hf_upscale",
+      description:
+        "Upscale/enhance an image (Tile-Upscaler SUPIR family via HF Spaces) — free on ZeroGPU quota. Tile-based, handles large images.\n\nWHEN: 放大 / 超分 / enhance a low-res image 2-4×.\n\nNOTE: consumes ~20-60s GPU per call (heavier than generation); high multiples eat quota fast.\n\nMultilingual triggers: 放大 · 超分 · upscale · mejorar resolución (zh/es).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          image: { type: "string", description: "Input image: http(s)/data: URI or absolute local path (read server-side, ≤15MB)." },
+          tileSize: { type: "number", description: "Tile size in px (default 512; smaller=finer detail, more GPU)." },
+          steps: { type: "number", description: "Enhancement steps (default 20)." },
+          name: { type: "string", description: "Output filename (no extension; .png)." },
+          outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task)" },
+        },
+        required: ["image"],
+      },
+    },
+    {
+      name: "hf_lipsync",
+      description:
+        "Lip-sync a video to new audio (LatentSync via HF Spaces) — re-dub a talking-head clip so the mouth matches the audio. Free on ZeroGPU quota. 🔴 Inputs must be PUBLIC http(s) URLs (video + audio) — local files are not wired (gradio upload not implemented).\n\nWHEN: 换配音对口型 / re-dub a talking clip (e.g. pair with hf_tts output hosted anywhere reachable).\n\nNOTE: ~30-60s GPU per call; ByteDance LatentSync license — verify before commercial use.\n\nMultilingual triggers: 对口型 · 唇形同步 · sincronización labial (zh/es).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          video: { type: "string", description: "Source video: public http(s) URL (local paths NOT supported yet)." },
+          audio: { type: "string", description: "New audio track: public http(s) URL." },
+          name: { type: "string", description: "Output filename (no extension; .mp4)." },
+          outDir: { type: "string", description: "Output directory, default ./output under the server start dir (the project that launched the task)" },
+        },
+        required: ["video", "audio"],
+      },
+    },
+    {
       name: "extract_pdf",
       description:
         "Extract text from a PDF document (PDF识别/多页OCR/财务报表/发票/扫描件文字提取): supports both digital PDFs (with embedded text layer → instant text extraction) and scanned PDFs (rendered to images → OCR via configured vision provider). Smart async: long PDFs return a handle to poll with get_pdf; short ones block until done. Requires `pdfjs-dist` + `@napi-rs/canvas` (run `npm install pdfjs-dist @napi-rs/canvas` in the media-gen-mcp install dir if missing). Companion to extract_text (which is single-image).\n\nNEXT: for single images use `extract_text`; poll async jobs with `get_pdf`.\n\nMultilingual triggers: PDF识别 · PDF文字提取 · PDF OCR · 多页OCR · tabla PDF (zh/es/de).",
@@ -1981,6 +2045,83 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
       }
 
+      case "hf_tts": {
+        const text = requireString(a.text, "text");
+        const outDir = resolveOutDir(a.outDir);
+        const notes: string[] = [];
+        let refAudio: string | undefined = optString(a.referenceAudio);
+        if (refAudio && !/^https?:\/\//i.test(refAudio)) {
+          const loc = await localizeImageInput(refAudio, "`referenceAudio`", notes);
+          if (!loc.ok) return err(loc.error);
+          refAudio = loc.uri;
+        }
+        const hf = getProvider("hfspaces") as any;
+        emitProgress(10, "submitting to Chatterbox…");
+        const r = await hf.tts(text, {
+          referenceAudio: refAudio, exaggeration: optNumber(a.exaggeration), temperature: optNumber(a.temperature),
+          seed: optNumber(a.seed), cfgWeight: optNumber(a.cfgWeight),
+        });
+        await fs.mkdir(outDir, { recursive: true });
+        const safeName = path.basename(optString(a.name) ?? `tts_${Date.now().toString(36)}`);
+        const fp = uniqueFilePath(path.join(outDir, `${safeName}.wav`));
+        const buf = Buffer.from(r.audioBase64, "base64");
+        await fs.writeFile(fp, buf);
+        return ok({ local_path: fp, source_url: r.url, sizeKB: Math.round(buf.length / 1024), ...(notes.length ? { warnings: notes } : {}) });
+      }
+      case "hf_remove_bg": {
+        const img = requireString(a.image, "image");
+        const outDir = resolveOutDir(a.outDir);
+        const notes: string[] = [];
+        let uri = img;
+        if (!/^https?:\/\//i.test(uri)) {
+          const loc = await localizeImageInput(uri, "`image`", notes);
+          if (!loc.ok) return err(loc.error);
+          uri = loc.uri;
+        }
+        const hf = getProvider("hfspaces") as any;
+        emitProgress(10, "submitting to BiRefNet…");
+        const r = await hf.removeBackground(uri);
+        await fs.mkdir(outDir, { recursive: true });
+        const safeName = path.basename(optString(a.name) ?? `nobg_${Date.now().toString(36)}`);
+        const fp = uniqueFilePath(path.join(outDir, `${safeName}.png`));
+        await fs.writeFile(fp, Buffer.from(r.imageBase64, "base64"));
+        return ok({ local_path: fp, source_url: r.url, ...(notes.length ? { warnings: notes } : {}) });
+      }
+      case "hf_upscale": {
+        const img = requireString(a.image, "image");
+        const outDir = resolveOutDir(a.outDir);
+        const notes: string[] = [];
+        let uri = img;
+        if (!/^https?:\/\//i.test(uri)) {
+          const loc = await localizeImageInput(uri, "`image`", notes);
+          if (!loc.ok) return err(loc.error);
+          uri = loc.uri;
+        }
+        const hf = getProvider("hfspaces") as any;
+        emitProgress(10, "submitting to Tile-Upscaler(~20-60s GPU)…");
+        const r = await hf.upscaleImage(uri, { tileSize: optNumber(a.tileSize), steps: optNumber(a.steps) });
+        await fs.mkdir(outDir, { recursive: true });
+        const safeName = path.basename(optString(a.name) ?? `upscale_${Date.now().toString(36)}`);
+        const fp = uniqueFilePath(path.join(outDir, `${safeName}.png`));
+        await fs.writeFile(fp, Buffer.from(r.imageBase64, "base64"));
+        return ok({ local_path: fp, source_url: r.url, ...(notes.length ? { warnings: notes } : {}) });
+      }
+      case "hf_lipsync": {
+        const video = requireString(a.video, "video");
+        const audio = requireString(a.audio, "audio");
+        if (!/^https?:\/\//i.test(video) || !/^https?:\/\//i.test(audio)) {
+          return err("hf_lipsync 的 video/audio 须公网 http(s) URL(本地文件未接 gradio 上传;可先传图床/对象存储)。");
+        }
+        const outDir = resolveOutDir(a.outDir);
+        const hf = getProvider("hfspaces") as any;
+        emitProgress(10, "submitting to LatentSync(~30-60s GPU)…");
+        const r = await hf.lipsyncVideo(video, audio);
+        await fs.mkdir(outDir, { recursive: true });
+        const safeName = path.basename(optString(a.name) ?? `lipsync_${Date.now().toString(36)}`);
+        const fp = uniqueFilePath(path.join(outDir, `${safeName}.mp4`));
+        await fs.writeFile(fp, Buffer.from(r.videoBase64, "base64"));
+        return ok({ local_path: fp, source_url: r.url });
+      }
       default:
         return err(`unknown tool: ${req.params.name}`);
     }

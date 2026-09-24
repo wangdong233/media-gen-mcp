@@ -84,6 +84,34 @@ describe("hfspaces 生图(轮30 图像化)", () => {
   });
 });
 
+describe("hfspaces 全能力工具(轮30:tts/去背景/超分/唇同步)", () => {
+  test("tts:无参考音=null;参数透传;产物 base64 返回", async () => {
+    const { p, posts } = makeProvider();
+    const r = await p.tts("你好世界", { exaggeration: 0.7, seed: 3 });
+    const d = posts[0].body.data;
+    assert.equal(posts[0].url.includes("resembleai-chatterbox"), true);
+    assert.equal(d[0], "你好世界");
+    assert.equal(d[1], null, "无参考音=null(Space 用内置音色)");
+    assert.equal(d[2], 0.7);
+    assert.equal(d[4], 3);
+    assert.equal(typeof r.audioBase64, "string");
+  });
+  test("tts 克隆:参考音 data:URI→ImageData;remove_bg Imageslider 取末位;upscale 参数默认;lip 同步 URL 直传", async () => {
+    const { p, posts } = makeProvider();
+    await p.tts("hello", { referenceAudio: "data:audio/wav;base64,QUJD" });
+    assert.deepEqual(posts[0].body.data[1], { base64: "QUJD" }, "音频 data:URI→{base64}");
+    await p.removeBackground("https://a/x.png");
+    assert.equal(posts[1].url.includes("not-lain-background-removal"), true);
+    assert.deepEqual(posts[1].body.data[0], { url: "https://a/x.png" });
+    await p.upscaleImage("https://a/x.png", { tileSize: 384 });
+    assert.equal(posts[2].url.includes("tile-upscaler"), true);
+    assert.deepEqual(posts[2].body.data, [{ url: "https://a/x.png" }, 384, 20, 0.4, 0, 3], "wrapper 6 参(默认 steps=20)");
+    await p.lipsyncVideo("https://a/v.mp4", "https://a/a.wav");
+    assert.equal(posts[3].url.includes("latentsync"), true);
+    assert.deepEqual(posts[3].body.data, [{ url: "https://a/v.mp4" }, { url: "https://a/a.wav" }]);
+  });
+});
+
 describe("hfspaces createVideo 路由与参数", () => {
   test("默认路由:image→wan22-i2v(data:URI 原样进 9 参);image+keyframes[1]→relay;裸 prompt→cogvideox", async () => {
     const { p, posts } = makeProvider();

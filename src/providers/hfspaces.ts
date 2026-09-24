@@ -279,6 +279,7 @@ export class HfspacesProvider implements MediaProviderBase, ImageProvider, Video
     warnings.push(`hfspaces=${model}(${target.label});ZeroGPU 配额内秒级-十秒级出图。`);
 
     let outUrl: string | undefined;
+    void 0;
     if (target.kind === "t2i") {
       // resolution 形态 "1024x1024 ( 1:1 )"(官方默认格式;WxH→约分比例)
       const m = /^(\d{2,4})x(\d{2,4})$/.exec((req.size ?? "1024x1024").trim());
@@ -292,15 +293,9 @@ export class HfspacesProvider implements MediaProviderBase, ImageProvider, Video
       const arr = await this.callSpace(target.subdomain, target.apiName, [req.prompt, resolution, req.seed ?? 42, 8, 3.0, req.seed == null, []]);
       outUrl = this.firstImageUrl(arr);
     } else {
-      const toImageData = (u: string) => {
-        const dm = /^data:[^;]+;base64,(.*)$/s.exec(u);
-        if (dm) return { base64: dm[1] };
-        if (/^https?:\/\//i.test(u)) return { url: u };
-        throw new HfspacesError("H302", "qwen-image-edit 输入须公网 URL 或 data:URI。");
-      };
       if (req.images!.length > 1) warnings.push("qwen-image-edit 单图编辑,仅消费 images[0]。");
       const arr = await this.callSpace(target.subdomain, target.apiName, [
-        toImageData(req.images![0]), req.prompt, req.seed ?? 0, req.seed == null, 1.0, 8, true,
+        this.toImageData(req.images![0]), req.prompt, req.seed ?? 0, req.seed == null, 1.0, 8, true,
       ]);
       outUrl = this.firstImageUrl(arr);
     }
@@ -412,6 +407,59 @@ export class HfspacesProvider implements MediaProviderBase, ImageProvider, Video
       // queue/generating/未知事件:忽略继续
     }
     return { status: "failed", error: "SSE 流结束但无 complete/error(未知形态)" };
+  }
+
+  /** ImageData 归一(http URL→{url};data:URI→{base64} 剥前缀)。 */
+  private toImageData(u: string): unknown {
+    const dm = /^data:[^;]+;base64,(.*)$/s.exec(u);
+    if (dm) return { base64: dm[1] };
+    if (/^https?:\/\//i.test(u)) return { url: u };
+    throw new HfspacesError("H302", "输入须公网 http(s) URL 或 data:URI(本地文件经工具层已本地化)。");
+  }
+
+  // ── 轮 30 全能力工具(TTS/去背景/超分/唇同步;契约均一手实测 2026-09-24)──
+
+  /** TTS+语音克隆(Chatterbox,MIT 可商用;零参考音=Space 内置示例音色)。 */
+  async tts(text: string, opts: { referenceAudio?: string; exaggeration?: number; temperature?: number; seed?: number; cfgWeight?: number; trimSilence?: boolean } = {}): Promise<{ url: string; audioBase64: string }> {
+    const ref = opts.referenceAudio ? this.toImageData(opts.referenceAudio) : null;
+    const arr = await this.callSpace("resembleai-chatterbox", "generate_tts_audio", [
+      text, ref, opts.exaggeration ?? 0.5, opts.temperature ?? 0.8, opts.seed ?? 0, opts.cfgWeight ?? 0.5, opts.trimSilence ?? false,
+    ]);
+    const u = this.firstImageUrl(arr);
+    if (!u) throw new HfspacesError("H400", "TTS complete 但无音频 url");
+    const buf = await this.downloadUrl(u);
+    return { url: u, audioBase64: Buffer.from(buf).toString("base64") };
+  }
+
+  /** 背景移除(BiRefNet,not-lain Space 2954 赞;Imageslider 取末位=处理后图)。 */
+  async removeBackground(image: string): Promise<{ url: string; imageBase64: string }> {
+    const arr = await this.callSpace("not-lain-background-removal", "image", [this.toImageData(image)]);
+    const u = this.firstImageUrl(arr, true);
+    if (!u) throw new HfspacesError("H400", "去背景 complete 但无产物 url");
+    const buf = await this.downloadUrl(u);
+    return { url: u, imageBase64: Buffer.from(buf).toString("base64") };
+  }
+
+  /** 图像超分(Tile-Upscaler,SUPIR 系;tileSize 默认 512)。 */
+  async upscaleImage(image: string, opts: { tileSize?: number; steps?: number } = {}): Promise<{ url: string; imageBase64: string }> {
+    const arr = await this.callSpace("gokaygokay-tile-upscaler", "wrapper", [
+      this.toImageData(image), opts.tileSize ?? 512, opts.steps ?? 20, 0.4, 0, 3,
+    ]);
+    const u = this.firstImageUrl(arr, true);
+    if (!u) throw new HfspacesError("H400", "超分 complete 但无产物 url");
+    const buf = await this.downloadUrl(u);
+    return { url: u, imageBase64: Buffer.from(buf).toString("base64") };
+  }
+
+  /** 唇形同步(LatentSync:视频+音频→对口型视频;⚠️ ByteDance license 商用前须核)。 */
+  async lipsyncVideo(videoUrl: string, audioUrl: string): Promise<{ url: string; videoBase64: string }> {
+    const arr = await this.callSpace("fffiloni-latentsync", "generate_lip_sync_video", [
+      { url: videoUrl }, { url: audioUrl },
+    ]);
+    const u = this.firstImageUrl(arr);
+    if (!u) throw new HfspacesError("H400", "唇同步 complete 但无视频 url");
+    const buf = await this.downloadUrl(u);
+    return { url: u, videoBase64: Buffer.from(buf).toString("base64") };
   }
 
   /** SSE 解析(fetch 流式 body;"event: X\ndata: Y" 帧;data:null 保 null)。 */

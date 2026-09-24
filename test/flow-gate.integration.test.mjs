@@ -86,10 +86,10 @@ describe("链即开关(注册不受影响;链决定默认路由;点名永远合�
     before(async () => { await boot(cfgUnchained); });
     after(() => killServer());
 
-    test("tools/list:23 工具仍注册(flow_status 在列 —— 工具存在性与启用解耦)", async () => {
+    test("tools/list:27 工具仍注册(轮30 +hf_tts/hf_remove_bg/hf_upscale/hf_lipsync;flow_status 在列 —— 存在性与启用解耦)", async () => {
       const r = await send("tools/list", {});
       const names = (r?.result?.tools ?? []).map((t) => t.name);
-      assert.equal(names.length, 23);
+      assert.equal(names.length, 27);
       assert.ok(names.includes("flow_status"));
       });
 
