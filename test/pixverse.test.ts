@@ -524,7 +524,7 @@ describe("pixverse registry 接线", () => {
     assert.ok(p.listVideoModels().includes("v6"));
   });
 
-  test("flow:视频门在册;图像豁免 = 不实现钩子(0 积分模态零影响;直构实例 —— registry 默认禁用 flow)", () => {
+  test("flow:视频门在册;图像豁免 = 不实现钩子(0 积分模态零影响;直构实例 —— flow 缺省不在 enabledProviders 白名单)", () => {
     const { FlowProvider } = require_("../dist/providers/flow.js");
     const flow: any = new FlowProvider({});
     assert.equal(typeof flow.beginVideoSubmissionConfirm, "function");

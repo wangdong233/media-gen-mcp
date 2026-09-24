@@ -598,9 +598,9 @@ describe("fallback 安全", () => {
   reg.__priorityOverrideForTests.image = null;
   reg.__priorityOverrideForTests.video = null;
 
-  test("flow 实现 capabilities()(能力事实)+ requiresOptIn(准入策略)→ 任何模态的隐式 fallback 都不选 flow(直构实例 —— registry 默认禁用 flow,禁用/接入双闸)", () => {
+  test("flow 实现 capabilities()(能力事实)+ requiresOptIn(准入策略)→ 任何模态的隐式 fallback 都不选 flow(直构实例 —— flow 缺省不在 enabledProviders 白名单,白名单/opt-in 双闸)", () => {
     const { getFallbackProvider } = reg;
-    // 能力事实:capableOf 谈判可用;准入策略:两模态都 optIn-only(0.22.0:optIn 永不承接,另有 disabledProviders 双保险)
+    // 能力事实:capableOf 谈判可用;准入策略:两模态都 optIn-only(0.22.0:optIn 永不承接,另有 enabledProviders 白名单双保险)
     const flow = new FlowProvider({});
     assert.deepEqual(flow.capabilities(), {
       image: { textToImage: true, imageToImage: true },

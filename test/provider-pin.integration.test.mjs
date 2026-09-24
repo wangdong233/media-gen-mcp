@@ -107,13 +107,13 @@ describe("钉死守卫集成(死端口 CDP + 死端口 zhipu;确定性零积分)
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   });
 
-  test("显式 provider=flow(禁用渠道)→ 路由层禁用拦截,零网络零 CDP 零 fallback(0.22.0)", async () => {
+  test("显式 provider=flow(名单外渠道)→ 路由层未启用拦截,零网络零 CDP 零 fallback(白名单模型)", async () => {
     const { isError, text } = await c.callTool("generate_image", { prompt: "disabled-guard-probe", provider: "flow" });
-    assert.ok(isError, "禁用 = 直抛");
-    assert.match(text, /已被禁用/, "禁用错(含死域背景)");
-    assert.match(text, /disabledProviders/, "错误附解禁指引(配置化非硬代码)");
-    assert.match(text, /替代渠道/, "错误附替代渠道");
-    assert.doesNotMatch(text, /已自动 fallback/, "禁用渠道绝不静默回落");
+    assert.ok(isError, "未启用 = 直抛");
+    assert.match(text, /未启用/, "未启用错(白名单语义)");
+    assert.match(text, /enabledProviders/, "错误附启用指引(白名单模型)");
+    assert.match(text, /启用方法/, "错误附启用方法(零试错:告知如何开)");
+    assert.doesNotMatch(text, /已自动 fallback/, "名单外渠道绝不静默回落");
   });
 
   test("显式 provider=zhipu(免费)+ 失败 → 带告警按免费池回落到 agnes(0.22.0:回落只落免费渠道)", async () => {
@@ -130,7 +130,7 @@ describe("钉死守卫集成(死端口 CDP + 死端口 zhipu;确定性零积分)
     const desc = gi.inputSchema.properties.provider.description;
     assert.match(desc, /Naming gemini\/pixverse pins that channel/, "点名即用+钉死承诺(活 opt-in 渠道)在册");
     assert.match(desc, /naming a free channel still fails over within the free pool/, "免费池回落语义在册");
-    assert.match(desc, /disabledProviders/, "禁用机制(配置化)在描述中可见");
+    assert.match(desc, /enabledProviders/, "白名单启用机制在描述中可见");
     assert.doesNotMatch(desc, /explicitly naming a provider pins it/, "旧的全渠道钉死措辞必须移除(契约与实现分歧源)");
   });
 
@@ -141,6 +141,6 @@ describe("钉死守卫集成(死端口 CDP + 死端口 zhipu;确定性零积分)
     assert.ok(parsed, "list_models 返回 JSON");
     assert.match(parsed.imageRoutingNote, /点名即用且钉死/, "routingNote:opt-in 点名即用+钉死");
     assert.match(parsed.imageRoutingNote, /免费渠道.*带告警回落/, "routingNote:免费池回落语义");
-    assert.match(parsed.imageRoutingNote, /disabledProviders/, "routingNote:禁用机制可见");
+    assert.match(parsed.imageRoutingNote, /enabledProviders/, "routingNote:白名单机制可见");
   });
 });

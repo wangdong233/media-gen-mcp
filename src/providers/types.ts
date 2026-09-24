@@ -365,7 +365,7 @@ export interface ProviderHealth {
 
 /** 渠道说明卡(渠道工厂飞轮):调用方一眼看清额度/能力/限制/前置/风险。 */
 export interface ChannelInfo {
-  /** 渠道状态:live=可直接用;blocked-on-login=等用户配登录态/API key;disabled=经 disabledProviders 禁用。 */
+  /** 渠道状态:live=可直接用;blocked-on-login=等用户配登录态/API key;disabled=未启用(不在 enabledProviders 白名单)。 */
   status: "live" | "blocked-on-login" | "disabled";
   /** 计费形态一句话(如 "免费(阿里账号)"/"订阅算力配额"/"订阅积分+确认门"/"免费 HTTP")。 */
   cost: string;
@@ -402,17 +402,19 @@ export interface MediaProviderBase {
    *
    * 语义分工:capabilities() 陈述「能做什么」(能力事实);本方法陈述「默认可否被路由」(准入策略)。
    * gemini/pixverse/flow 对消耗模态返回 true(配额/积分误耗红线 + 本机 Chrome 隐私边界)。
-   * 另有渠道级 disabledProviders 禁用表(getProvider 路由层拦截)—— 禁用与 opt-in 独立双闸。
+   * 另有渠道级 enabledProviders 白名单(getProvider 路由层拦截,2026-09-24 起)——
+   * 白名单与 opt-in 独立双闸:白名单决定「渠道是否启用」,opt-in 决定「启用后默认可否被隐式路由」。
    */
   requiresOptIn?(modality: Modality): boolean;
-  // 注:渠道级硬禁用钩子 disabledReason(S000)已于 2026-08-26 删除 —— 渠道启用的唯一控制源
-  // 是优先级链(链中不配置 = 不启用),显式点名永远合法;与 requiresOptIn 不再需要两个正交维度。
+  // 注:渠道级硬禁用钩子 disabledReason(S000)已于 2026-08-26 删除;优先级链(0.22.0 废弃)与
+  // disabledProviders 黑名单(2026-09-24 废弃)也已退场 —— 渠道启用唯一控制源 = enabledProviders
+  // 白名单(getProvider 路由层);启用后 opt-in 语义(本方法)决定默认可否被隐式路由。
   /** 健康状态。未实现 → { configured: true, cooldown: false }。 */
   health?(): ProviderHealth;
   /**
    * 渠道说明卡(0.23.0 渠道工厂飞轮:调用方选型知识结构化,三处一致 —— list_models detail /
    * 工具 provider 描述 / README 渠道总表)。每渠道必答:免费额度/能力矩阵/限制/水印/前置/风险/状态。
-   * status 三态:live(可直接用)/ blocked-on-login(等用户配登录态或 key)/ disabled(默认禁用)。
+   * status 三态:live(可直接用)/ blocked-on-login(等用户配登录态或 key)/ disabled(不在 enabledProviders 白名单=未启用)。
    */
   channelInfo?(): ChannelInfo;
   /** 优先级(数字大优先)。未实现 → 0。 */

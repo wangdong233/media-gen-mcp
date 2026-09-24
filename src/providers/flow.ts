@@ -23,6 +23,7 @@
  *     未显式同意(点名 provider/model 或 <modality>ProviderPriority 列入)时,flow 永不进入
  *     任何模态的隐式 fallback 链(取代旧门禁「不实现 capabilities()」,见 types.ts 注释)
  */
+import { config } from "../config.js";
 import { sniffImage } from "../image-sniff.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -844,14 +845,17 @@ export interface FlowProviderConfig {
 
 export class FlowProvider implements MediaProviderBase, ImageProvider, VideoProvider {
   channelInfo(): import("./types.js").ChannelInfo {
+    // 白名单感知(2026-09-24 审查 P1-3):启用与否从 config 派生,不再硬编码 ——
+    // 显式启用后卡片如实反映「可配置」态(死域风险仍在 limits/risks 呈现)
+    const enabled = (config.enabledProviders ?? []).includes("flow");
     return {
-      status: "disabled",
-      cost: "积分制(不可用)",
-      freeQuota: "不可用",
+      status: enabled ? "blocked-on-login" : "disabled",
+      cost: enabled ? "积分制(Veo 3.1 lite 10cr/条 起)" : "积分制(未启用)",
+      freeQuota: enabled ? "无免费层(积分全付费;图像/超分 0 积分)" : "不可用(未启用)",
       capabilities: { t2i: false, i2i: false, t2v: false, i2v: false, keyframes: false },
-      limits: ["🔴 2026-09-10 起 L3 账号地区门禁死域,disabledProviders 默认禁用"],
+      limits: ["🔴 2026-09-10 起 L3 账号地区门禁死域,不在 enabledProviders 白名单即未启用"],
       watermark: "—",
-      prerequisites: ["显式解禁(config disabledProviders: [])且知悉死域现状"],
+      prerequisites: ["config enabledProviders 数组加入 \"flow\" 显式启用,且知悉死域现状"],
       risks: ["渠道死亡(换节点无解;wire 契约存档 doc/flow-api-contract.md)"],
     };
   }

@@ -23,6 +23,7 @@
  * H3xx 参数 / H4xx 结果。纪律:丢弃参数必告警;错误带 .status;能力声明与实现对齐。
  * requiresOptIn=true(共享公共资源,自律使用)。测试:fetchImpl/SSE 注入缝零网络。
  */
+import { config } from "../config.js";
 import type {
   ImageRequest, ImageResult, VideoRequest, VideoTask, VideoResult, VideoHandle,
   Modality, ProviderCapabilities, ChannelInfo, MediaProviderBase, ImageProvider, VideoProvider,
@@ -190,7 +191,8 @@ export class HfspacesProvider implements MediaProviderBase, ImageProvider, Video
 
   channelInfo(): ChannelInfo {
     return {
-      status: "live",
+      // 白名单感知(2026-09-24 审查 P1-3):出厂白名单不含 hfspaces,未启用时如实标注
+      status: (config.enabledProviders ?? []).includes("hfspaces") ? "live" : "disabled",
       cost: "免费(ZeroGPU 公共配额):匿名 2min GPU/天(按 IP,共享出口易耗尽)/免费 HF 账号 5min/天/PRO $9/月 40min —— 配 hfspaces.token 提额提优先级",
       freeQuota: "配额账号级跨 Space 共享(5min GPU/天)。🔴 真机实测(2026-09-24):Wan2.2≈3-5 条/天;**H3@10 步 ≈4-12 条短条/天且带音轨(aac 实证)**;H3@28 步高质档申请 304s GPU 超免费档单任务上限——需 PRO;匿名出口 IP 常已耗尽(data:null),建议配免费 HF token",
       capabilities: { t2i: true, i2i: true, t2v: true, i2v: true, keyframes: true },
@@ -204,7 +206,7 @@ export class HfspacesProvider implements MediaProviderBase, ImageProvider, Video
       ],
       watermark: "无平台水印(产出随模型许可:Wan=Apache2.0 商用安全;CogVideoX=zai-org 许可)",
       prerequisites: [
-        "开箱即用(匿名);正式使用:huggingface.co 免费注册 → Settings → Access Tokens 建 token → config providers.hfspaces.token(5min GPU/天+高优先级)",
+        "🔴 前置:enabledProviders 白名单加入 hfspaces(出厂默认不含,未启用=调用被路由层拒);启用后匿名即用;正式使用:huggingface.co 免费注册 → Settings → Access Tokens 建 token → config providers.hfspaces.token(5min GPU/天+高优先级)",
         "HF 直连无需代理;产出归用户(HF ToS:You own the Content you create)",
       ],
       risks: [

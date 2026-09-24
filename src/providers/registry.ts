@@ -22,6 +22,15 @@ import type { MediaProvider, ImageProvider, VideoProvider, VisionProvider, Visio
  *   3. 在 config.ts 加该 provider 的连接配置
  * 工具层与 CC 接入零改动。
  */
+/** 生成渠道全集(enabledProviders 白名单的论域;识别渠道不在此列)。 */
+const GENERATION_PROVIDERS = ["agnes", "zhipu", "siliconflow", "pixai", "cloudflare", "imagineart", "hfspaces", "pixverse", "gemini", "flow"];
+/** 2026-09-24 启用白名单(用户裁决终态):生成渠道不在 enabledProviders = 未启用;识别渠道(tesseract/paddle/vlm/glm-vision)不归白名单管辖,照常走 registry。 */
+export function isProviderEnabled(n: string): boolean {
+  const lower = n.toLowerCase();
+  if (!GENERATION_PROVIDERS.includes(lower)) return true; // 识别/未知名照旧走 registry(向后兼容)
+  return (config.enabledProviders ?? []).includes(lower);
+}
+
 const registry: Record<string, MediaProvider> = {
   agnes: new AgnesProvider({
     ...(config.providers.agnes ?? {}),
@@ -156,12 +165,13 @@ export function getProviderPriority(_modality: "image" | "video"): string[] | un
 
 export function getProvider(name?: string): MediaProvider {
   const n = (name ?? config.defaultProvider).toLowerCase();
-  // 0.22.0 通用渠道禁用(config.disabledProviders;默认 ["flow"] 死域):路由层单点结构性拒绝,
-  // 零网络零 CDP 动作 —— 显式点名/模型归属路由/自省全路径共用此闸。
-  if ((config.disabledProviders ?? []).includes(n)) {
-    const dead = n === "flow" ? "(Google Flow 2026-09-10 起 L3 账号地区门禁死域,默认禁用)" : "";
+  // 2026-09-24 启用白名单(用户裁决,取代禁用表):未列名的生成渠道 = 未启用,路由层单点
+  // 结构性拒绝,零网络零 CDP —— 显式点名/模型归属路由/自省全路径共用此闸。
+  if (GENERATION_PROVIDERS.includes(n) && !(config.enabledProviders ?? []).includes(n)) {
+    const enabledList = (config.enabledProviders ?? []).join(", ") || "(空)";
+    const flowNote = n === "flow" ? "(Google Flow 2026-09-10 起 L3 账号地区门禁死域,不建议启用)" : "";
     throw new Error(
-      `Provider "${n}" 已被禁用 ${dead}。替代渠道:图像 → agnes/zhipu(免费)或 gemini/pixverse(点名);视频 → agnes/zhipu(免费)或 gemini(Omni)/pixverse(点名)。如需解禁/调整,改 config.json 的 disabledProviders(默认 ["flow"];写 [] 解禁全部)。`,
+      `Provider "${n}" 未启用(不在 enabledProviders 白名单)${flowNote}。当前已启用:${enabledList}。启用方法:~/.media-gen-mcp/config.json 的 enabledProviders 数组加入 "${n}"(或 env MEDIA_ENABLED_PROVIDERS 逗号分隔;想启用哪种渠道就配哪种,名单外渠道一律不启用)。`,
     );
   }
   const p = registry[n];
@@ -247,9 +257,8 @@ export function resolveProvider(
 
   if (owns(target)) return { provider: target, autoRouted: false };
 
-  const disabledSet = new Set(config.disabledProviders ?? []);
   const owners = listProviders()
-    .filter((n) => !disabledSet.has(n.toLowerCase())) // 禁用渠道不参与模型归属(死渠道模型无归属,显式点名在 getProvider 拦截)
+    .filter((n) => isProviderEnabled(n)) // 未启用渠道不参与模型归属(其模型无归属,显式点名在 getProvider 拦截)
     .filter((n) => n.toLowerCase() !== targetName.toLowerCase())
     .map((n) => ({ name: n, p: getProvider(n) }))
     .filter((x) => owns(x.p));
@@ -276,8 +285,25 @@ export function resolveProvider(
  * 否则 = legacy 默认。只读本地状态(health/cooldown),零网络零探测 —— 探测只发生在
  * 「轮到该 provider 真正尝试」时(provider 自身 ensureReady,30s 正缓存),满足惰性化约束。
  */
-function defaultHead(modality: Modality): string {
-  // 0.22.0:链已废弃,缺省 = legacy 默认(免费池头 agnes;defaultXxxProvider 仍可配)。
+/**
+ * 模态有效默认头(schema default/自省/check-schema 与运行时同真源;2026-09-24 审查 P2-6):
+ * ordered 策略按 enabledProviders 序取首个可承接者;caller 策略 = defaultXxxProvider。
+ */
+export function defaultHead(modality: Modality): string {
+  // 2026-09-24 双策略(用户裁决):
+  // - "ordered":缺省按 enabledProviders 名单顺序,取首个「已配置且非熔断且有所能力」的渠道(级联起点)。
+  // - "caller"(默认):缺省 = defaultXxxProvider(免费池语义,agnes);计费/边界渠道由调用方显式点名。
+  if (config.providerStrategy === "ordered") {
+    const enabled = config.enabledProviders ?? [];
+    for (const n of enabled) {
+      const p = registry[n.toLowerCase()];
+      if (!p || isVisionProvider(p)) continue;
+      if (p.health?.().configured === false) continue;
+      const has = modality === "image" ? (p.listImageModels?.() ?? []).length > 0 : modality === "video" ? (p.listVideoModels?.() ?? []).length > 0 : true;
+      if (!has) continue;
+      return n.toLowerCase();
+    }
+  }
   return modality === "image" ? config.defaultImageProvider :
     modality === "video" ? config.defaultVideoProvider :
     config.defaultVisionProvider;
@@ -290,14 +316,16 @@ function defaultHead(modality: Modality): string {
  */
 export function buildListModelsDetail(provider?: string): Record<string, any> {
   const names = provider ? [provider] : listProviders();
-  const disabledSet = new Set(config.disabledProviders ?? []);
   const out: Record<string, any> = {};
   for (const n of names) {
-    if (disabledSet.has(n.toLowerCase())) {
-      // 禁用渠道:诚实可见但不可用(零方法组;点名单查也返回禁用条目而非抛,自省工具语义)。
-      // channelInfo 说明卡仍附上(死域原因/解禁法对调用方有信息价值;经内部表直取,不走 getProvider 拦截)。
-      const ci = typeof registry[n].channelInfo === "function" ? registry[n].channelInfo!() : undefined;
-      out[n] = { disabled: true, note: "渠道已禁用(disabledProviders);模型清单不可用,调用一律被路由层拒绝", ...(ci ? { channelInfo: ci } : {}) };
+    if (!isProviderEnabled(n)) {
+      // 未启用渠道:诚实可见但不可用(零方法组;点名单查也返回未启用条目而非抛,自省工具语义)。
+      // channelInfo 说明卡仍附上(启用法对调用方有信息价值;经内部表直取,不走 getProvider 拦截)。
+      const raw = typeof registry[n].channelInfo === "function" ? registry[n].channelInfo!() : undefined;
+      // 卡片 status 覆盖为 disabled(types 契约:disabled=不在白名单=未启用)——防 provider 内部
+      // 恒 live 卡与外层 disabled:true 自相矛盾(2026-09-24 审查 P1-3);其余字段照抄保留信息价值
+      const ci = raw ? { ...raw, status: "disabled" as const } : undefined;
+      out[n] = { disabled: true, note: "渠道未启用(不在 enabledProviders 白名单);模型清单不可用,调用一律被路由层拒绝。启用=~/.media-gen-mcp/config.json 的 enabledProviders 数组加入本渠道名(或 env MEDIA_ENABLED_PROVIDERS)", ...(ci ? { channelInfo: ci } : {}) };
       continue;
     }
     const prov = getProvider(n);
@@ -347,12 +375,11 @@ export function buildVisionCapabilitiesDetail(provider?: string): {
   routingGuidance: Record<string, string>;
 } {
   const names = provider ? [provider] : listProviders();
-  const disabledSet = new Set(config.disabledProviders ?? []);
   const providers: any[] = [];
   const taskCoverage: Record<string, string[]> = {};
 
   for (const n of names) {
-    if (disabledSet.has(n.toLowerCase())) continue; // 禁用渠道零实例化(与 buildListModelsDetail 同语义;P1-1 修复)
+    if (!isProviderEnabled(n)) continue; // 未启用渠道零实例化(与 buildListModelsDetail 同语义)
     const p = getProvider(n);
     if (!isVisionProvider(p)) continue; // 跳过 agnes/zhipu(非 vision)
     const h = p.health?.() ?? { configured: true, cooldown: false };
@@ -482,18 +509,24 @@ function capableOf(p: MediaProvider, modality: Modality, req?: FallbackReq): boo
  * 排序(0.22.0:priority 链已废弃,只剩 tier 降序 —— 免费池内 agnes/zhipu 序):
  */
 export function getFallbackProvider(currentName: string, modality: Modality, req?: FallbackReq): MediaProvider | undefined {
-  // 0.22.0:链已废弃 —— 候选 = 非禁用 + 非 current + configured + 非熔断 + 能力胜任 + 非 optIn
-  // (optIn 永不承接隐式回落,无链豁免通道);排序 = tier 降序(免费池内 agnes/zhipu 序)。
-  const disabled = new Set(config.disabledProviders ?? []);
+  // 2026-09-24 白名单+双策略:候选 = 已启用 + 非 current + configured + 非熔断 + 能力胜任;
+  // - "caller"(默认):回落仅限非 optIn 渠道(计费/边界渠道须显式点名,费用安全保留);
+  // - "ordered":按 enabledProviders 名单顺序级联(optIn 可承接回落,计费确认门仍生效)。
+  const enabled = config.enabledProviders ?? [];
+  const enabledRank = new Map(enabled.map((n: string, i: number) => [n.toLowerCase(), i]));
   const candidates = listProviders()
-    .filter((n) => !disabled.has(n.toLowerCase()))
+    .filter((n) => enabledRank.has(n.toLowerCase()))
     .filter((n) => n.toLowerCase() !== currentName.toLowerCase())
     .map((n) => getProvider(n))
     .filter((p) => p.health?.().configured !== false)
     .filter((p) => p.health?.().cooldown !== true)
     .filter((p) => capableOf(p, modality, req))
-    .filter((p) => p.requiresOptIn?.(modality) !== true);
+    .filter((p) => config.providerStrategy === "ordered" || p.requiresOptIn?.(modality) !== true);
   if (!candidates.length) return undefined;
+  if (config.providerStrategy === "ordered") {
+    candidates.sort((a, b) => (enabledRank.get(a.name.toLowerCase()) ?? 99) - (enabledRank.get(b.name.toLowerCase()) ?? 99));
+    return candidates[0];
+  }
   candidates.sort((a, b) => (b.tier?.() ?? 0) - (a.tier?.() ?? 0));
   return candidates[0];
 }

@@ -157,7 +157,7 @@ export const config = {
   /** pares5: 识别模态默认 provider(未显式指定时);M1 起注册 tesseract 进程内兜底。与 image/video 一致,不暴露 per-modality env。 */
   defaultVisionProvider: userCfg.defaultVisionProvider ?? "tesseract",
 
-  /** @deprecated 0.22.0:链机制已废弃(仅存解析供废弃警告;见下方 disabledProviders 新机制)。 */
+  /** @deprecated 0.22.0:链机制已废弃。 */
   /** @deprecated 0.22.0 起优先级链已废弃(渠道选择交给调用方按业务点名;缺省=免费池 agnes→zhipu)。读到即忽略。 */
   imageProviderPriority: parseProviderPriority(userCfg.imageProviderPriority, "MEDIA_IMAGE_PROVIDER_PRIORITY"),
 
@@ -165,23 +165,35 @@ export const config = {
   videoProviderPriority: parseProviderPriority(userCfg.videoProviderPriority, "MEDIA_VIDEO_PROVIDER_PRIORITY"),
 
   /**
-   * 渠道禁用表(0.22.0 通用机制,取代硬代码):被列渠道的所有公共入口在路由层结构性拒绝
-   * (getProvider 拦截,零网络零 CDP 动作)。默认 ["flow"] —— Google Flow 2026-09-10 起
-   * L3 账号地区门禁死域(2026-09-23 用户裁决:禁止使用与测试,以默认配置形态落地);
-   * 显式配置数组【整体覆盖】默认(写 [] = 解禁全部,含 flow —— 供未来政策变化时显式解禁)。
-   * env MEDIA_DISABLED_PROVIDERS 逗号分隔(与 config 数组同覆盖语义,config 优先)。
+   * 渠道启用白名单(2026-09-24 用户裁决,终态模型):想启用哪种渠道就配哪种;不在名单的
+   * 生成渠道 = 未启用(路由层结构性拒绝+启用指引)。缺省 = ["agnes","zhipu"](免费池)。
+   * 识别链(paddle/glm-vision/vlm/tesseract)不归本表管辖(自有 fallback)。
+   * env MEDIA_ENABLED_PROVIDERS 逗号分隔同语义(config 优先)。
    */
-  disabledProviders: (() => {
-    if (Array.isArray(userCfg.disabledProviders)) {
-      const names = userCfg.disabledProviders.filter((x: unknown): x is string => typeof x === "string" && x.trim() !== "").map((x: string) => x.trim().toLowerCase());
+  enabledProviders: (() => {
+    if (Array.isArray(userCfg.enabledProviders)) {
+      const names = userCfg.enabledProviders.filter((x: unknown): x is string => typeof x === "string" && x.trim() !== "").map((x: string) => x.trim().toLowerCase());
       return [...new Set(names)];
     }
-    const env = process.env.MEDIA_DISABLED_PROVIDERS;
+    const env = process.env.MEDIA_ENABLED_PROVIDERS;
     if (env != null && env !== "") {
       return [...new Set(env.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean))];
     }
-    return ["flow"]; // 出厂默认:死域渠道禁用(用户 2026-09-23 裁决;显式 [] 可解禁)
+    return ["agnes", "zhipu"]; // 出厂缺省:仅免费池;其余渠道配置即启用(用户裁决:没配=不启用)
   })(),
+
+  /**
+   * 渠道选择策略(2026-09-24 用户裁决,双策略):
+   * - "caller"(默认)= 调用方按业务自选:缺省 provider 走名单内第一个非 opt-in 渠道(免费池语义),
+   *   计费/隐私边界渠道(opt-in)须显式点名(费用安全保留);工具描述即选型面。
+   * - "ordered" = 按名单顺序级联:缺省 provider 按配置顺序取用,失败沿名单续走
+   *   (计费渠道的确认门仍生效——级联不豁免确认)。
+   * env MEDIA_PROVIDER_STRATEGY 同语义。
+   */
+  providerStrategy: (() => {
+    const raw = (userCfg as Record<string, unknown>).providerStrategy ?? process.env.MEDIA_PROVIDER_STRATEGY;
+    return raw === "ordered" ? "ordered" : "caller";
+  })() as "caller" | "ordered",
 
   // 注:链头不再单设 getter(F1 后唯一真源 = registry getProviderPriority(modality)?.[0] ?? defaultXxxProvider,
   // src/index.ts buildTools 与 scripts/check-schema.mjs 用同一表达式;tsconfig noUnusedLocals 不覆盖

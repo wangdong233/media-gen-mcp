@@ -13,6 +13,20 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// 测试隔离:gemini 不在出厂白名单,须显式启用后才可解析(2026-09-24 白名单模型)——
+// 在 require registry 之前写独立 fixture,绝不读真用户 config(此前依赖真配置=隔离缺陷)
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-web-"));
+fs.writeFileSync(path.join(tmpDir, "config.json"), JSON.stringify({
+  defaultImageProvider: "agnes",
+  enabledProviders: ["agnes", "zhipu", "gemini"],
+  providers: { agnes: { apiKey: "k" } },
+}, null, 2));
+process.env.MEDIA_GEN_MCP_CONFIG = path.join(tmpDir, "config.json");
 
 const require = createRequire(import.meta.url);
 const {
@@ -564,7 +578,7 @@ describe("channelInfo 渠道说明卡(五存量渠道全量在位)", () => {
   test("五生成渠道全部实现且字段完整(costCatalog 被误删两次的同款守护)", () => {
     const { buildListModelsDetail } = require("../dist/providers/registry.js");
     for (const n of ["agnes", "zhipu", "gemini", "pixverse", "flow"]) {
-      // 统一经 detail 拿(flow 默认禁用,getProvider 会拦;禁用条目也附 channelInfo —— 说明卡对死域渠道同样有价值)
+      // 统一经 detail 拿(flow 缺省不在白名单,getProvider 会拦;未启用条目也附 channelInfo —— 说明卡对死域渠道同样有价值)
       const ci = (buildListModelsDetail(n)[n] as any).channelInfo;
       assert.ok(ci, `${n} 须实现 channelInfo`);
       assert.ok(["live", "blocked-on-login", "disabled"].includes(ci.status), `${n} status 合法`);

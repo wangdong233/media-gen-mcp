@@ -1,9 +1,9 @@
 /**
- * 渠道路由单元测试(0.22.0 语义:优先级链已废弃 + disabledProviders 禁用表)—— 零网络零消耗。
+ * 渠道路由单元测试(2026-09-24 语义:enabledProviders 白名单 + providerStrategy 双策略)—— 零网络零消耗。
  *
  * 新契约(2026-09-23 用户裁决,链体系移除):
  *   - provider 缺省 = 免费池头(defaultImageProvider,agnes;agnes↔zhipu 容灾互备);
- *   - opt-in 渠道(gemini/pixverse)点名即用;flow 经 disabledProviders 禁用(默认含 flow,死域);
+ *   - opt-in 渠道(gemini/pixverse)点名即用;flow 不在缺省白名单(死域);
  *   - 优先级链配置读到即忽略(config.ts 打废弃警告);getProviderPriority 恒 undefined。
  *
  * 覆盖面:
@@ -14,12 +14,12 @@
  *   5. isChainAdvanceable:precondition(S1xx)推进;S301 业务错不推进;上游 5xx/429 推进
  *   6. flow 60s 软熔断:notifyUnavailable → health().cooldown;ensureReady 冷却窗口内零探测直抛
  *   7. isRequestPinned(钉死守卫):opt-in 渠道显式点名 → 钉死直抛;免费渠道不钉死
- *   8. disabledProviders(0.22.0):默认 ["flow"];getProvider 单点拦截(零网络零 CDP);
+ *   8. enabledProviders(2026-09-24):缺省 ["agnes","zhipu"];getProvider 单点拦截(零网络零 CDP);
  *      禁用渠道的模型无归属;解禁走独立 fixture 套件(test/provider-disabled.test.ts)
  *
  * 导入方式:与 flow.test.ts 同范式(createRequire 引编译产物 dist/;npm test 先 build 再 build:tests)。
  * 测试隔离铁律双层(2026-08-24 CI 加固,延续):① override 缝置 null;② tmp fixture 经
- * MEDIA_GEN_MCP_CONFIG 注入(本文件 fixture 未写 disabledProviders → 出厂默认 ["flow"] 生效,
+ * MEDIA_GEN_MCP_CONFIG 注入(本文件 fixture 未写 enabledProviders → 出厂缺省 ["agnes","zhipu"] 生效,
  * 与真实用户环境一致)。node --test 每文件独立进程,env 不外泄。
  */
 import { test, describe, before } from "node:test";
@@ -75,8 +75,8 @@ describe("测试环境自足性(fixture 注入缝机械化盯防)", () => {
     assert.ok((getProvider("zhipu").listVideoModels() as string[]).length > 0);
     assert.equal(getProvider("agnes").health().configured, true);
   });
-  test("出厂默认:disabledProviders = ['flow'](死域渠道,配置化默认非硬代码)", () => {
-    assert.deepEqual(config.disabledProviders, ["flow"]);
+  test("出厂缺省:enabledProviders = ['agnes','zhipu'](仅免费池;白名单模型)", () => {
+    assert.deepEqual(config.enabledProviders, ["agnes", "zhipu"]);
   });
   test("P2-2:config 真写 imageProviderPriority=['zhipu','agnes'] → 路由忽略(fixture 内联复活链 mutant)", () => {
     assert.deepEqual(config.imageProviderPriority, ["zhipu", "agnes"], "前提:fixture 链确实写入了");
@@ -198,9 +198,9 @@ describe("isRequestPinned(钉死守卫:opt-in 渠道显式点名直抛;免费渠
     assert.equal(isRequestPinned("zhipu", "cogview-4", false), false);
     assert.equal(isRequestPinned(undefined, undefined, false), false);
   });
-  test("与 registry 真源一致(gemini/pixverse opt-in;agnes/zhipu 免费[未实现钩子=undefined])", () => {
-    assert.equal(getProvider("gemini").requiresOptIn?.("image"), true);
-    assert.equal(getProvider("pixverse").requiresOptIn?.("image"), true);
+  test("与 registry 真源一致(缺省白名单外渠道未启用;agnes/zhipu 免费可解析)", () => {
+    assert.throws(() => getProvider("gemini"), /未启用/);
+    assert.throws(() => getProvider("pixverse"), /未启用/);
     assert.ok(getProvider("agnes").requiresOptIn?.("image") !== true, "免费渠道未实现钩子(undefined)≠ opt-in");
     assert.ok(getProvider("zhipu").requiresOptIn?.("image") !== true);
   });
@@ -225,7 +225,7 @@ describe("isChainAdvanceable(= isFallbackWorthy ∪ 环境前置失败)", () => 
   });
 });
 
-// ═══ 6. flow 60s 软熔断(直构实例;不经 getProvider —— flow 默认禁用)═══
+// ═══ 6. flow 60s 软熔断(直构实例;不经 getProvider —— flow 缺省不在白名单)═══
 
 class DeadCdpTransport {
   opens = 0;
@@ -257,23 +257,27 @@ describe("flow 60s 软熔断(notifyUnavailable → ensureReady 零探测)", () =
   });
 });
 
-// ═══ 8. disabledProviders(0.22.0 配置化禁用;单点拦截)═══
+// ═══ 8. enabledProviders(2026-09-24 白名单;单点拦截)═══
 
-describe("disabledProviders(默认 ['flow'];getProvider 路由层单点拦截)", () => {
-  test("getProvider('flow') 抛禁用错(含替代渠道指引与解禁说明;零网络零 CDP)", () => {
+describe("enabledProviders(缺省 [agnes,zhipu];getProvider 路由层单点拦截)", () => {
+  test("getProvider('flow') 抛未启用错(含已启用清单与启用指引;零网络零 CDP)", () => {
     assert.throws(() => getProvider("flow"), (e: any) => {
-      assert.match(e.message, /已被禁用/);
+      assert.match(e.message, /未启用/);
       assert.match(e.message, /L3 账号地区门禁死域/);
-      assert.match(e.message, /替代渠道/);
-      assert.match(e.message, /disabledProviders/);
+      assert.match(e.message, /当前已启用/);
+      assert.match(e.message, /enabledProviders/);
       return true;
     });
   });
-  test("resolveProvider 显式点名 flow 同样被拦(点名即用只属于活渠道)", () => {
-    assert.throws(() => resolveProvider("flow", undefined, "image"), (e: any) => e.message.includes("已被禁用"));
+  test("resolveProvider 显式点名 flow 同样被拦(点名即用只属于已启用渠道)", () => {
+    assert.throws(() => resolveProvider("flow", undefined, "image"), (e: any) => e.message.includes("未启用"));
   });
-  test("env 形态:MEDIA_DISABLED_PROVIDERS 覆盖默认(见独立解禁套件 provider-disabled.test.ts)", () => {
-    // 本文件 fixture 未配置 → 出厂默认;解禁/自定义行为在独立 fixture 套件覆盖
-    assert.deepEqual(config.disabledProviders, ["flow"]);
+  test("名单外新渠道(hfspaces/pixai 等)未配置同样未启用;agnes/zhipu 缺省可用", () => {
+    assert.throws(() => getProvider("hfspaces"), (e: any) => e.message.includes("未启用"));
+    assert.throws(() => getProvider("siliconflow"), (e: any) => e.message.includes("未启用"));
+    // 免费池缺省可用
+    const ag = getProvider("agnes");
+    assert.equal(ag.name, "agnes");
+    void getProvider("zhipu");
   });
 });

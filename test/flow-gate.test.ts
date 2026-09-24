@@ -82,10 +82,10 @@ describe("链即开关(不配置 = 不自动路由;显式点名永远合法)", (
     assert.notEqual(r.provider.name, "flow", "flow 未列入链 = 未启用,默认路由绝不指向它");
   });
 
-  test("显式 provider=flow 点名 → 被禁用拦截(0.22.0:disabledProviders 默认含 flow;点名即用只属活渠道)", () => {
+  test("显式 provider=flow 点名 → 未启用拦截(缺省白名单不含 flow;点名即用只属已启用渠道)", () => {
     assert.throws(() => resolveProvider("flow", undefined, "image"), (e: any) => {
-      assert.match(e.message, /已被禁用/);
-      assert.match(e.message, /disabledProviders/);
+      assert.match(e.message, /未启用/);
+      assert.match(e.message, /enabledProviders/);
       return true;
     });
   });

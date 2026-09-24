@@ -124,11 +124,11 @@ after(() => { if (proc) proc.kill(); });
 
 // 🔴 2026-09-14 用户裁决:Flow 渠道已死(L3 账号地区门禁)+ 真实 HOME 门禁会触发自动开页自愈弹大量窗口
 // —— 🔴 2026-09-23 起 flow 渠道死域禁用(用户裁决禁止使用与测试)。
-// 禁用走 config.disabledProviders(默认 ["flow"],配置化非硬代码):禁用期间本套件恒 skip
-// (含 FLOW_IT=1 —— 禁用语义优先于集成门);显式解禁(config disabledProviders: [] 且知悉
+// 未启用走 enabledProviders 白名单(缺省不含 flow):未启用期间本套件恒 skip
+// (含 FLOW_IT=1 —— 未启用语义优先于集成门);显式启用(config enabledProviders 含 flow 且知悉
 // L3 账号地区门禁现状)后才恢复 FLOW_IT 三门控制。契约存档保留 doc/flow-api-contract.md。
 const { config } = await import("../dist/config.js");
-const flowDisabled = (config.disabledProviders ?? []).includes("flow");
+const flowDisabled = !(config.enabledProviders ?? []).includes("flow");
 const flowItOff = flowDisabled || process.env.FLOW_IT !== "1" || Boolean(process.env.CI);
 describe("flow 工具集成(真实 CDP;仅零消耗端点;🔴 默认 skip——FLOW_IT=1 显式开启)", { skip: flowItOff || !(await cdpAlive()) }, () => {
 

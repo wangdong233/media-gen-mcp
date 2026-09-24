@@ -29,9 +29,9 @@ const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)))
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "flow-gate-"));
 const KNOWN_PROJECT = { providers: { flow: { settings: { projectId: "c36ca3e2-192b-41e5-9e5b-700130e3d324" } } } };
 const cfgUnchained = path.join(tmpDir, "unchained.json");
-fs.writeFileSync(cfgUnchained, JSON.stringify({ ...KNOWN_PROJECT, disabledProviders: [] }, null, 2)); // 0.22.0:链废弃;解禁 flow 供门语义测试(死端口零积分)
+fs.writeFileSync(cfgUnchained, JSON.stringify({ ...KNOWN_PROJECT, enabledProviders: ["agnes","zhipu","flow"] }, null, 2)); // 0.22.0:链废弃;解禁 flow 供门语义测试(死端口零积分)
 const cfgChained = path.join(tmpDir, "chained.json");
-fs.writeFileSync(cfgChained, JSON.stringify({ ...KNOWN_PROJECT, disabledProviders: [] }, null, 2));
+fs.writeFileSync(cfgChained, JSON.stringify({ ...KNOWN_PROJECT, enabledProviders: ["agnes","zhipu","flow"] }, null, 2));
 
 // ── MCP server stdio 客户端(同 flow-tools.integration.test.mjs 范式;可重启换 config) ──
 let proc = null, buf = "", nextId = 0;
@@ -108,7 +108,7 @@ describe("链即开关(注册不受影响;链决定默认路由;点名永远合�
     });
   });
 
-  describe("解禁 flow(disabledProviders: [])", () => {
+  describe("启用 flow(enabledProviders 白名单)", () => {
     before(async () => { await boot(cfgChained); });
     after(() => killServer());
 
