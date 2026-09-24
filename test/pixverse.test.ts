@@ -29,6 +29,17 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// 测试隔离(P0-40 CI 红根因):registry 接线/costCatalog 守护两测走 getProvider("pixverse"),
+// 出厂白名单 [agnes,zhipu] 不含 pixverse —— CI 无用户 config 必拦。require 前写 fixture 显式启用。
+// (命名避开下方既有的 tmpDir() 函数)
+const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), "pixverse-cfg-"));
+fs.writeFileSync(path.join(cfgDir, "config.json"), JSON.stringify({
+  defaultImageProvider: "agnes",
+  enabledProviders: ["agnes", "zhipu", "pixverse"],
+  providers: { agnes: { apiKey: "k" } },
+}, null, 2));
+process.env.MEDIA_GEN_MCP_CONFIG = path.join(cfgDir, "config.json");
+
 const require_ = createRequire(import.meta.url);
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 const {

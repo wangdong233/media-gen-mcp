@@ -13,6 +13,21 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// 测试隔离(P0-40 CI 红根因):channelInfo.status 自 2026-09-24 起白名单派生 ——
+// CI 无用户 config → 出厂白名单 [agnes,zhipu] 不含 hfspaces → status=disabled 断言炸。
+// 在 require 任何 dist 模块前写独立 fixture 显式启用 hfspaces(与 gemini-web.test.ts 同范式)。
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hfspaces-test-"));
+fs.writeFileSync(path.join(tmpDir, "config.json"), JSON.stringify({
+  defaultImageProvider: "agnes",
+  enabledProviders: ["agnes", "zhipu", "hfspaces"],
+  providers: { agnes: { apiKey: "k" } },
+}, null, 2));
+process.env.MEDIA_GEN_MCP_CONFIG = path.join(tmpDir, "config.json");
 
 const require = createRequire(import.meta.url);
 const { HfspacesProvider, HfspacesError, HFSPACES_MODEL_NAMES } = require("../dist/providers/hfspaces.js");
