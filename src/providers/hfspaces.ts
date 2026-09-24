@@ -73,7 +73,7 @@ export const HFSPACES_MODELS: Record<string, HfSpaceTarget> = {
   "minimax-h3": {
     subdomain: "multimodalart-minimax-h3",
     apiName: "generate",
-    label: "MiniMax-H3 开源权重 Turbo(multimodalart 官方 demo,2-14s,t2v/i2v/首尾帧;seed 支持)",
+    label: "MiniMax-H3 开源权重 Turbo(multimodalart 官方 demo,2-14s,t2v/i2v/首尾帧;✅实测有音轨 aac;seed 支持)",
     kind: "flex", maxDurationSeconds: 14,
     buildData: (req, h) => [
       req.prompt ?? "",
@@ -81,7 +81,7 @@ export const HFSPACES_MODELS: Record<string, HfSpaceTarget> = {
       req.keyframes?.[1] ? h.toImageData(req.keyframes[1]) : null,
       "960x544 · 16:9 fast",
       Math.min(14, req.durationSeconds ?? 5),
-      28,
+      10, // 🔴 实测 2026-09-24:28 步会申请 304s GPU 超免费档单任务上限被拒;10 步 ≈2.5s GPU/步免费可行(Turbo 本就为少步设计);高步数需 PRO
       req.seed ?? 42,
       false,
     ],
@@ -166,11 +166,11 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
     return {
       status: "live",
       cost: "免费(ZeroGPU 公共配额):匿名 2min GPU/天(按 IP,共享出口易耗尽)/免费 HF 账号 5min/天/PRO $9/月 40min —— 配 hfspaces.token 提额提优先级",
-      freeQuota: "配额账号级跨 Space 共享;≈3-5 条 Wan2.2/天(免费号;H3 为 33B 级更重,估计 2-3 条/天);匿名出口 IP 常已耗尽(实测 data:null),正式使用建议配免费 HF token",
+      freeQuota: "配额账号级跨 Space 共享(5min GPU/天)。🔴 真机实测(2026-09-24):Wan2.2≈3-5 条/天;**H3@10 步 ≈4-12 条短条/天且带音轨(aac 实证)**;H3@28 步高质档申请 304s GPU 超免费档单任务上限——需 PRO;匿名出口 IP 常已耗尽(data:null),建议配免费 HF token",
       capabilities: { t2i: false, i2i: false, t2v: true, i2v: true, keyframes: true },
       limits: [
         "**video-only**(图生成不在本渠道;P1 cogvideox 为 2024 代兜底,480p 无音轨)",
-        "wan22-i2v ≤5s(9 参全必填,输入须 data:URI,内嵌 b64 返回);wan22-relay ≤10s(首末帧接力;URL 输入输出);minimax-h3 ≤14s(H3 开源权重 Turbo,t2v/i2v/首尾帧三合一+seed;Turbo 蒸馏非满血,默认 768p 级画布,音频能力未验证)",
+        "wan22-i2v ≤5s(9 参全必填,输入须 data:URI,内嵌 b64 返回);wan22-relay ≤10s(首末帧接力;URL 输入输出);minimax-h3 ≤14s(H3 开源权重 Turbo,t2v/i2v/首尾帧三合一+seed;✅实测有音轨 aac=免费层唯一音画通路;步数默认 10——28 步会超免费档单任务 GPU 上限,高步数需 PRO;Turbo 蒸馏非满血,960x544 画布)",
         "无显式分辨率参数(prithiv 自动方裁 480-832;relay 随图比例;quality 是码率非分辨率)",
         "GPU 记账层拒=SSE error data:null(零延迟无文本)——换 Space/换 token 重试;FileData.url 为临时链接即时下载",
         "共享公共资源自律使用;Saravutw 的 hf_oauth 是模板装饰(实测纯 ZeroGPU)",
