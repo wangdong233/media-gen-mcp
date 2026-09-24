@@ -1,5 +1,5 @@
 /**
- * HF Spaces 渠道(渠道工厂飞轮轮 24 GO,2026-09-24)—— 免部署跑开源视频模型,gradio REST 直调。
+ * HF Spaces 渠道(渠道工厂飞轮轮 24 GO,2026-09-24;轮 30 图像化+全能力)—— 免部署跑开源模型,gradio REST 直调。
  *
  * 实测定谳(轮 24 S2 + wire 契约实测 agent,全一手 2026-09-24):
  * - 「免部署白嫖开源视频」正门:ZeroGPU 配额=匿名 2min GPU/天(按 IP,共享出口易耗尽)/
@@ -24,8 +24,8 @@
  * requiresOptIn=true(共享公共资源,自律使用)。测试:fetchImpl/SSE 注入缝零网络。
  */
 import type {
-  VideoRequest, VideoTask, VideoResult, VideoHandle,
-  Modality, ProviderCapabilities, ChannelInfo, MediaProviderBase, VideoProvider,
+  ImageRequest, ImageResult, VideoRequest, VideoTask, VideoResult, VideoHandle,
+  Modality, ProviderCapabilities, ChannelInfo, MediaProviderBase, ImageProvider, VideoProvider,
 } from "./types.js";
 
 export interface HfSpaceTarget {
@@ -104,6 +104,29 @@ export const HFSPACES_MODELS: Record<string, HfSpaceTarget> = {
 };
 export const HFSPACES_MODEL_NAMES = Object.keys(HFSPACES_MODELS);
 
+/** 图像目标(轮 30 全能力调研,全 RUNNING+签名一手实测;均 Apache-2.0 可商用)。 */
+export interface HfImageTarget {
+  subdomain: string;
+  apiName: string;
+  label: string;
+  kind: "t2i" | "i2i-edit";
+}
+export const HFSPACES_IMAGE_MODELS: Record<string, HfImageTarget> = {
+  "z-image-turbo": {
+    subdomain: "tongyi-mai-z-image-turbo",
+    apiName: "generate",
+    label: "Z-Image-Turbo(通义官方 Space,1920 赞;~秒级出图,8 步;配额效率最高的生图)",
+    kind: "t2i",
+  },
+  "qwen-image-edit": {
+    subdomain: "multimodalart-qwen-image-edit-fast",
+    apiName: "infer",
+    label: "Qwen-Image-Edit 2511 Fast(HF 官方人员维护;指令式图像编辑/改写,8 步;中文美学强)",
+    kind: "i2i-edit",
+  },
+};
+export const HFSPACES_IMAGE_MODEL_NAMES = Object.keys(HFSPACES_IMAGE_MODELS);
+
 export class HfspacesError extends Error {
   readonly code: string;
   readonly precondition?: true;
@@ -126,7 +149,7 @@ export interface HfspacesProviderOpts {
 
 interface SseEvent { event: string; data: string | null }
 
-export class HfspacesProvider implements MediaProviderBase, VideoProvider {
+export class HfspacesProvider implements MediaProviderBase, ImageProvider, VideoProvider {
   readonly name = "hfspaces";
   private readonly token?: string;
   private readonly fetchImpl: (url: string, init: RequestInit) => Promise<Response>;
@@ -145,11 +168,14 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
   // ── 基础 ──
   capabilities(): ProviderCapabilities {
     // relay=首末帧接力(Saravutw input_image+last_image),按 keyframes 能力如实声明
-    return { image: { textToImage: false, imageToImage: false }, video: { textToVideo: true, imageToVideo: true, keyframes: true } };
+    return { image: { textToImage: true, imageToImage: true }, video: { textToVideo: true, imageToVideo: true, keyframes: true } };
   }
   requiresOptIn(_m: Modality): boolean { return true; }
-  listModels(): string[] { return [...HFSPACES_MODEL_NAMES]; }
-  listImageModels(): string[] { return []; }
+  listModels(): string[] { return [...HFSPACES_IMAGE_MODEL_NAMES, ...HFSPACES_MODEL_NAMES]; }
+  listImageModels(): string[] { return [...HFSPACES_IMAGE_MODEL_NAMES]; }
+  supportsImageToImage(): boolean { return true; }
+  /** i2i 走 Qwen-Edit:吃 data:URI(转 ImageData)与公网 URL。 */
+  acceptsImageInputRef(value: string): boolean { return /^(https?:|data:)/i.test(value); }
   listVideoModels(): string[] { return [...HFSPACES_MODEL_NAMES]; }
   videoConstraints() {
     return { allowedNumFrames: [56, 80, 120, 160], defaultNumFrames: 56, defaultFrameRate: 16, allowedFrameRates: [16] }; // 16fps 实测;3.5s≈56 帧
@@ -167,9 +193,10 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
       status: "live",
       cost: "免费(ZeroGPU 公共配额):匿名 2min GPU/天(按 IP,共享出口易耗尽)/免费 HF 账号 5min/天/PRO $9/月 40min —— 配 hfspaces.token 提额提优先级",
       freeQuota: "配额账号级跨 Space 共享(5min GPU/天)。🔴 真机实测(2026-09-24):Wan2.2≈3-5 条/天;**H3@10 步 ≈4-12 条短条/天且带音轨(aac 实证)**;H3@28 步高质档申请 304s GPU 超免费档单任务上限——需 PRO;匿名出口 IP 常已耗尽(data:null),建议配免费 HF token",
-      capabilities: { t2i: false, i2i: false, t2v: true, i2v: true, keyframes: true },
+      capabilities: { t2i: true, i2i: true, t2v: true, i2v: true, keyframes: true },
       limits: [
-        "**video-only**(图生成不在本渠道;P1 cogvideox 为 2024 代兜底,480p 无音轨)",
+        "图:z-image-turbo(t2i 秒级,配额效率最高)+ qwen-image-edit(指令式编辑,2511 Fast 8 步);均 Apache-2.0 可商用",
+        "**video 为主**;P1 cogvideox 为 2024 代兜底(480p 无音轨)",
         "wan22-i2v ≤5s(9 参全必填,输入须 data:URI,内嵌 b64 返回);wan22-relay ≤10s(首末帧接力;URL 输入输出);minimax-h3 ≤14s(H3 开源权重 Turbo,t2v/i2v/首尾帧三合一+seed;✅实测有音轨 aac=免费层唯一音画通路;步数默认 10——28 步会超免费档单任务 GPU 上限,高步数需 PRO;Turbo 蒸馏非满血,960x544 画布)",
         "无显式分辨率参数(prithiv 自动方裁 480-832;relay 随图比例;quality 是码率非分辨率)",
         "GPU 记账层拒=SSE error data:null(零延迟无文本)——换 Space/换 token 重试;FileData.url 为临时链接即时下载",
@@ -186,6 +213,101 @@ export class HfspacesProvider implements MediaProviderBase, VideoProvider {
         "排队时长不可控(低优先级匿名可达数分钟)",
       ],
     };
+  }
+
+  // ── 共享底座:同步式调用(提交+SSE 收流一步完成;generateImage 用) ──
+  private async callSpace(subdomain: string, apiName: string, data: unknown[]): Promise<unknown[]> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (this.token) headers.authorization = `Bearer ${this.token}`;
+    const res = await this.fetchImpl(`https://${subdomain}.hf.space/gradio_api/call/${apiName}`, {
+      method: "POST", headers, body: JSON.stringify({ data }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      if (res.status === 404) throw new HfspacesError("H301", `Space/端点 404(${subdomain} 可能已私有化或改签名)`, { httpStatus: 404, hint: "社区 Space 漂移是常态——换模型名或稍后重试" });
+      throw new HfspacesError("H200", `提交失败 HTTP ${res.status}:${body.slice(0, 150)}`, { httpStatus: res.status });
+    }
+    const j = await res.json() as any;
+    const eventId = j?.event_id;
+    if (!eventId) throw new HfspacesError("H400", `无 event_id:${JSON.stringify(j).slice(0, 150)}`);
+    const sse = await this.fetchImpl(`https://${subdomain}.hf.space/gradio_api/call/${apiName}/${eventId}`, {
+      method: "GET", headers, signal: AbortSignal.timeout(this.pollDeadlineMs),
+    });
+    if (!sse.ok) throw new HfspacesError("H200", `SSE GET HTTP ${sse.status}(event 可能已过期)`, { httpStatus: sse.status });
+    const events = await this.readSse(sse);
+    for (const ev of events) {
+      if (ev.event === "error") {
+        if (ev.data == null || ev.data === "null") throw new HfspacesError("H201", "GPU 记账层拒(配额尽/匿名拒)——换 Space 重试或配 hfspaces.token", { httpStatus: 0 });
+        throw new HfspacesError("H300", `Space 执行错误:${String(ev.data).slice(0, 200)}`, { httpStatus: 400 });
+      }
+      if (ev.event === "complete") {
+        try { return JSON.parse(String(ev.data ?? "[]")); } catch { return []; }
+      }
+    }
+    throw new HfspacesError("H400", "SSE 流结束但无 complete/error");
+  }
+
+  /** 从 complete data 里防御性取第一个图片 url(Gallery/Image/Imageslider 形态各异)。 */
+  private firstImageUrl(arr: unknown[], preferLast = false): string | undefined {
+    const urls: string[] = [];
+    const walk = (v: any) => {
+      if (!v) return;
+      if (typeof v === "string" && /^https?:\/\//.test(v)) urls.push(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (typeof v === "object") { if (typeof v.url === "string") urls.push(v.url); else if (typeof v.image === "object" || Array.isArray(v.image)) walk(v.image); }
+    };
+    walk(arr);
+    if (!urls.length) return undefined;
+    // hf.space 临时文件 url;去重后取首(或末,Imageslider 前后对比取末=处理后)
+    const uniq = [...new Set(urls.filter((u) => u.includes("/file=/") || u.includes(".hf.space") || u.includes("gradio_api")))];
+    const pool = uniq.length ? uniq : urls;
+    return preferLast ? pool[pool.length - 1] : pool[0];
+  }
+
+  // ── 生图(轮 30:z-image-turbo t2i + qwen-image-edit i2i) ──
+  async generateImage(req: ImageRequest): Promise<ImageResult> {
+    const warnings: string[] = [];
+    if (req.n && req.n > 1) warnings.push("hfspaces 生图恒单张(工具层扇出);ZeroGPU 配额宝贵,建议批量走 cloudflare 渠道(免费量更大)。");
+    if (req.aspect) warnings.push("hfspaces z-image-turbo 用 resolution 字符串控制尺寸,aspect 已忽略(用 size=WxH)。");
+    if (req.quality) warnings.push("hfspaces 不支持 quality,已忽略。");
+    if (req.extra && Object.keys(req.extra).length) warnings.push(`hfspaces 不消费 extra,已忽略。`);
+    const model = req.model ?? (req.images?.length ? "qwen-image-edit" : "z-image-turbo");
+    const target = HFSPACES_IMAGE_MODELS[model];
+    if (!target) throw new HfspacesError("H300", `未知图像模型 "${model}"。hfspaces 可用:${HFSPACES_IMAGE_MODEL_NAMES.join(", ")}`);
+    if (target.kind === "i2i-edit" && !req.images?.length) throw new HfspacesError("H302", "qwen-image-edit 须传 images(指令式编辑;纯文生图用 z-image-turbo)。");
+    if (target.kind === "t2i" && req.images?.length) warnings.push("z-image-turbo 为 t2v…t2i 模型,images 已忽略(编辑用 qwen-image-edit)。");
+    warnings.push(`hfspaces=${model}(${target.label});ZeroGPU 配额内秒级-十秒级出图。`);
+
+    let outUrl: string | undefined;
+    if (target.kind === "t2i") {
+      // resolution 形态 "1024x1024 ( 1:1 )"(官方默认格式;WxH→约分比例)
+      const m = /^(\d{2,4})x(\d{2,4})$/.exec((req.size ?? "1024x1024").trim());
+      let resolution = "1024x1024 ( 1:1 )";
+      if (m) {
+        const w = Number(m[1]); const h = Number(m[2]);
+        const g = (a: number, b: number): number => (b ? g(b, a % b) : a);
+        const d = g(w, h) || 1;
+        resolution = `${w}x${h} ( ${w / d}:${h / d} )`;
+      }
+      const arr = await this.callSpace(target.subdomain, target.apiName, [req.prompt, resolution, req.seed ?? 42, 8, 3.0, req.seed == null, []]);
+      outUrl = this.firstImageUrl(arr);
+    } else {
+      const toImageData = (u: string) => {
+        const dm = /^data:[^;]+;base64,(.*)$/s.exec(u);
+        if (dm) return { base64: dm[1] };
+        if (/^https?:\/\//i.test(u)) return { url: u };
+        throw new HfspacesError("H302", "qwen-image-edit 输入须公网 URL 或 data:URI。");
+      };
+      if (req.images!.length > 1) warnings.push("qwen-image-edit 单图编辑,仅消费 images[0]。");
+      const arr = await this.callSpace(target.subdomain, target.apiName, [
+        toImageData(req.images![0]), req.prompt, req.seed ?? 0, req.seed == null, 1.0, 8, true,
+      ]);
+      outUrl = this.firstImageUrl(arr);
+    }
+    if (!outUrl) throw new HfspacesError("H400", `complete 但无产物 url(形态漂移?模型 ${model})`);
+    const buf = await this.downloadUrl(outUrl);
+    const mime = /\.png(\?|$)/i.test(outUrl) ? "image/png" : "image/jpeg";
+    return { outputs: [{ url: `data:${mime};base64,${Buffer.from(buf).toString("base64")}` }], raw: { provider: "hfspaces", model }, warnings };
   }
 
   // ── 提交(真异步:event_id 即句柄) ──

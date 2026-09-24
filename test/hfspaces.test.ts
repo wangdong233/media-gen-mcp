@@ -25,7 +25,7 @@ function sseResponse(frames: Array<{ event: string; data: string | null }>, { st
   });
   return { ok: status < 400, status, json: async () => ({}), body, text: async () => text, arrayBuffer: async () => bytes.buffer } as unknown as Response;
 }
-function makeProvider(postJson: any = { event_id: "ev-1" }, sseFrames: Array<{ event: string; data: string | null }> = [], downloads: string[] = [], token?: string) {
+function makeProvider(postJson: any = { event_id: "ev-1" }, sseFrames: Array<{ event: string; data: string | null }> = [{ event: "complete", data: JSON.stringify([{ url: "https://x.hf.space/gradio_api=file=/tmp/o.png" }]) }], downloads: string[] = [], token?: string) {
   const posts: any[] = [];
   const p = new HfspacesProvider({
     token,
@@ -47,13 +47,40 @@ describe("hfspaces 目录/说明", () => {
     const { p } = makeProvider();
     const ci = p.channelInfo();
     assert.equal(ci.status, "live");
-    assert.equal(ci.capabilities.t2i, false, "video-only 渠道勿虚报图能力");
+    assert.equal(ci.capabilities.t2i, true, "轮30 起支持生图(z-image-turbo/qwen-image-edit)");
+    assert.equal(p.listImageModels().length, 2, "图像目标 2 个");
     assert.equal(ci.capabilities.keyframes, true, "relay 首末帧接力=keyframes 能力");
-    assert.ok(ci.limits.some((x) => x.includes("video-only")));
+    assert.ok(ci.limits.some((x) => x.includes("video 为主")), "轮30 起图+视频双模态");
     assert.ok(ci.cost.includes("2min"), "配额口径在 cost 字段(匿名 2min/免费号 5min)");
     assert.deepEqual(p.listVideoModels(), HFSPACES_MODEL_NAMES);
     assert.equal(HFSPACES_MODEL_NAMES.length, 4, "wan22-i2v/wan22-relay/minimax-h3/cogvideox");
     assert.equal(p.requiresOptIn("video"), true);
+  });
+});
+
+describe("hfspaces 生图(轮30 图像化)", () => {
+  test("t2i 默认路由 z-image-turbo;resolution 字符串构造(WxH→约分比例);无 seed→random", async () => {
+    const { p, posts } = makeProvider();
+    const r = await p.generateImage({ prompt: "a red fox", size: "1280x720" } as any);
+    let d = posts[0].body.data;
+    assert.equal(posts[0].url.includes("tongyi-mai-z-image-turbo"), true);
+    assert.equal(d[0], "a red fox");
+    assert.equal(d[1], "1280x720 ( 16:9 )", "WxH→约分比例字符串");
+    assert.equal(d[5], true, "无 seed→random_seed");
+    assert.match(r.outputs[0].url, /^data:image\//);
+  });
+  test("i2i 路由 qwen-image-edit(images→ImageData;缺 images 拒;t2i 传 images 告警)", async () => {
+    const { p, posts } = makeProvider();
+    const r = await p.generateImage({ prompt: "make it snow", images: ["data:image/png;base64,QUJD"] } as any);
+    const d = posts[0].body.data;
+    assert.equal(posts[0].url.includes("qwen-image-edit-fast"), true);
+    assert.deepEqual(d[0], { base64: "QUJD" });
+    assert.equal(d[6], true, "rewrite_prompt 默认开");
+    await assert.rejects(makeProvider().p.generateImage({ prompt: "x", model: "qwen-image-edit" } as any), (e: any) => e.code === "H302");
+    const r2 = makeProvider();
+    const w = await r2.p.generateImage({ prompt: "x", model: "z-image-turbo", images: ["https://a/1.png"] } as any);
+    assert.ok(w.warnings!.some((x) => x.includes("images 已忽略")));
+    void r;
   });
 });
 
