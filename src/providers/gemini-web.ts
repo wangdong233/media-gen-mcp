@@ -1,7 +1,7 @@
 /**
  * Gemini 网页渠道(gemini.google.com)第 5 生成渠道 —— CDP UI 驱动。
  *
- * 形态(2026-09-22 调研定谳,doc/Gemini渠道调研-2026-09-22.md):
+ * 形态(2026-09-22 调研定谳,doc/渠道/Gemini渠道调研-2026-09-22.md):
  * - attach 本机 Chrome CDP(lasso chrome-profile-default,Google 登录态在 profile,默认 9225 ——
  *   与 flow 的 9223 独立,端口可配,吸取 lasso browse 通道硬编码 9222 的教训)
  * - 生成入口 = 对话页「上传和工具」菜单 →「制作图片」(Nano Banana 2)/「制作视频」(Omni);

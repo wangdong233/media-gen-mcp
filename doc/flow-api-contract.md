@@ -1,6 +1,6 @@
 # Google Flow API 白盒契约(经 lasso/CDP 逆向,2026-08-22)
 
-> 🔴 **渠道自 2026-09-10 起 L3 账号地区门禁不可用(flow.google.com/unsupported-country),本文档转为契约存档**(正文原样保留,凭此可在换账号地区/美区账号后恢复;治理件已被 PixVerse 渠道复用并一般化,见 `架构要求清单.md` ADR-4)。
+> 🔴 **渠道自 2026-09-10 起 L3 账号地区门禁不可用(flow.google.com/unsupported-country),本文档转为契约存档**(正文原样保留,凭此可在换账号地区/美区账号后恢复;治理件已被 PixVerse 渠道复用并一般化,见 `架构/架构要求清单.md` ADR-4)。
 >
 > 来源:真实 Chrome(lasso launch-chrome --port 9223,profile ~/.cache/lasso/chrome-profile-default,已登录 wdong4036@gmail.com)网络抓包 + 页面上下文重放验证。**已实测验证的端点**:session/credits/projectInitialData/getMediaUrlRedirect 重放 ✓;batchGenerateImages/batchAsyncGenerateVideoText 抓包 ✓(重放待实施时验证)。
 > 项目(永久复用,除非失效再新建):**c36ca3e2-192b-41e5-9e5b-700130e3d324** @ ~/.media-gen-mcp/flow-project.json
@@ -422,7 +422,7 @@ POST /v1/flow/upsampleImage
 - **活性契约**:本文档是 Flow wire 真相的唯一活性来源。新 wire 发现**追加新节**(§N+1),不追写进已定型的节;对既有结论的修正沿用先例格式「原结论 → 后被 §N.x 修正」(见 §10.4 action 误用归因的自我修正),已 live 验证的历史不删改。
 - **积分台账纪律(不变)**:每次 live 提交在对应节记录台账(如 §7 918→894、§10.6 911→901、§11 901→901);调研性探针默认零积分——优先 bundle Zod 明文 key 检索(§10.1,零请求),404 探针只作补充;严禁程序化 UI 机枪操作(§10.4 reCAPTCHA 打热 >15 分钟教训)。
 - **代码锚点**:provider 实现 `src/providers/flow.ts`(确认门 `beginVideoSubmissionConfirm` §计费确认门;渠道启停 = 优先级链,S000 硬门已于 2026-08-26 删除);工具面 `generate_image`/`create_video`(`provider=flow`)+ `flow_status`(自省/下载/删除/分享/取消;flow_entity 已按用户裁决移除 2026-08-26,存档 §13);测试 `dist-test/flow*.test.js` + `test/flow-*.integration.test.mjs`(confirmToken 单次消费 = faaeead)。
-- **历史归档**:pares0-14 各阶段实施/调研文档(含本项目 Flow 之前的全部实施方案)已于 2026-08-26 全量归档至仓库 `.doc-archive-snapshot/`(128 文件,PROVENANCE.md 记录萃取去向);渠道扩张全景与判据见 `doc/Provider扩张路线图.md`,渠道治理规则见 `doc/架构要求清单.md` §11 ADR-2。
+- **历史归档**:pares0-14 各阶段实施/调研文档(含本项目 Flow 之前的全部实施方案)已于 2026-08-26 全量归档至仓库 `.doc-archive-snapshot/`(128 文件,PROVENANCE.md 记录萃取去向);渠道扩张全景与判据见 `doc/渠道/Provider扩张路线图.md`,渠道治理规则见 `doc/架构/架构要求清单.md` §11 ADR-2。
 
 ## 13. 角色域存档:移除裁决 + 终局 wire 实证(2026-08-26;积分 1050→1050,全部 0 消耗)
 

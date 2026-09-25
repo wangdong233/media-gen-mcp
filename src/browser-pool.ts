@@ -26,7 +26,7 @@ import path from "node:path";
  *
  * 退役史:2026-09-01 P0 根治的自管池(launch + exit 钩子 + idle 5min)曾以
  * MEDIA_GEN_RENDER_MODE=legacy 逃生门保留,原定 2026-12-01 退役,经用户裁决于
- * 2026-09-03 提前彻底移除(方案:doc/legacy清除-方案与判定.md);设 legacy 现产生
+ * 2026-09-03 提前彻底移除(方案:doc/archive/legacy清除-方案与判定.md);设 legacy 现产生
  * warning 并按 auto 处理,MEDIA_GEN_BROWSER_IDLE_MS 随之一并移除。
  *
  * 注意:本文件含 Date/process.pid 等「生命周期」时源(heartbeat),不参与渲染产物 ——

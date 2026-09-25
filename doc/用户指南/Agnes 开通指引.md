@@ -1,6 +1,6 @@
 # Agnes AI 开通指引
 
-> 本文是 [`README.md`](../README.md) 的补充文档,手把手带你从零开通 Agnes AI、接入 media-gen-mcp,到跑通第一张图、第一段视频。面向首次使用者;模型可用性 / 限速 / 定价可能随时间变化,生产环境请以[官方文档](https://wiki.agnes-ai.com/zh-Hans/docs/overview)与控制台为准。
+> 本文是 [`README.md`](../../README.md) 的补充文档,手把手带你从零开通 Agnes AI、接入 media-gen-mcp,到跑通第一张图、第一段视频。面向首次使用者;模型可用性 / 限速 / 定价可能随时间变化,生产环境请以[官方文档](https://wiki.agnes-ai.com/zh-Hans/docs/overview)与控制台为准。
 
 ---
 
@@ -112,7 +112,7 @@ media-gen-mcp 的配置文件固定路径为 **`~/.media-gen-mcp/config.json`**(
 把 `sk-your-agnes-key` 替换为[上一步](#2-获取-api-key)拿到的真实密钥即可。
 
 > [!TIP]
-> 想同时配置可选的智谱(zhipu)provider 作为备份?完整双 provider 示例见仓库根目录的 [`config.example.json`](../config.example.json)。
+> 想同时配置可选的智谱(zhipu)provider 作为备份?完整双 provider 示例见仓库根目录的 [`config.example.json`](../../config.example.json)。
 
 **一句话创建**(终端执行,把 `sk-xxx` 换成你的 Key):
 

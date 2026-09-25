@@ -2,7 +2,7 @@
 
 > **定位**:活文档。回答三个问题——①现在接了哪些渠道(现状矩阵);②业界还有哪些可接的渠道(全渠道图景 + 智谱价格速查表);③下一个接谁、按什么判据(扩张路线)。
 > **来源**:现状 = 代码实况(2026-09-14,23 工具,v0.19.0+,含 PixVerse 第 4 生成渠道);全渠道图景 = 2026-07 模型调研快照(19 家厂商逐档核对,原始档案见文末归档指针,价格以官方现价为准)。
-> **关联文档**:`Agnes 开通指引.md` / `Zhipu 开通指引.md`(开通配置)/ `archive/Agnes_vs_Zhipu_横评.md`(已接入两家对比,已归档)/ `flow-api-contract.md`(Flow 渠道 wire 契约,🔴 L3 门禁后转为契约存档)/ `PixVerse-provider集成.md`(第 4 渠道契约)/ `架构要求清单.md`(渠道治理规则,ADR-2/ADR-4)。
+> **关联文档**:`../用户指南/Agnes 开通指引.md` / `../用户指南/Zhipu 开通指引.md`(开通配置)/ `../archive/Agnes_vs_Zhipu_横评.md`(已接入两家对比,已归档)/ `flow-api-contract.md`(Flow 渠道 wire 契约,🔴 L3 门禁后转为契约存档)/ `PixVerse-provider集成.md`(第 4 渠道契约)/ `../架构/架构要求清单.md`(渠道治理规则,ADR-2/ADR-4)。
 
 ---
 
@@ -56,7 +56,7 @@ tesseract(内置零配置,英文/数字)→ glm-vision(云,中文 SOTA + 看图�
 
 - 文生图 **OpenAI 兼容**(`open.bigmodel.cn/api/paas/v4/`),easy;文生视频私有异步端点(`/videos/generations`),custom(已实现 provider)。
 - 限速机制:429 → 解析 → 写入 `rateLimits` → TTL 过期降级(限流自学习,项目已内置)。
-- 开通配置详见 [`Zhipu 开通指引.md`](Zhipu%20开通指引.md);与 Agnes 的实测对比见 [`Agnes_vs_Zhipu_横评.md`](Agnes_vs_Zhipu_横评.md)。
+- 开通配置详见 [`Zhipu 开通指引.md`](../用户指南/Zhipu%20开通指引.md);与 Agnes 的实测对比见 [`Agnes_vs_Zhipu_横评.md`](../archive/Agnes_vs_Zhipu_横评.md)。
 
 ---
 
@@ -94,7 +94,7 @@ tesseract(内置零配置,英文/数字)→ glm-vision(云,中文 SOTA + 看图�
 
 1. **免费/低价层真实存在**(有官方文档佐证的永久免费档或等值赠额;纯付费需极低价,如 ¥0.06/图);
 2. **协议可落 MediaProvider 契约**(generateImage/createVideo/getVideo/listModels/videoConstraints,OpenAI 兼容优先);
-3. **合规**(API ToS 允许程序化调用;license 三梯队核查见 `架构要求清单.md` 原则);
+3. **合规**(API ToS 允许程序化调用;license 三梯队核查见 `../架构/架构要求清单.md` 原则);
 4. **差异化**(补现有渠道空缺:模态/质量档/地域/离线能力,不做同质内耗)。
 
 ### 4.2 候选排序

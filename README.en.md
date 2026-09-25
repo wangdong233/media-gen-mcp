@@ -321,7 +321,7 @@ Limits & discipline:
 - Error family `[gemini]`: S100 CDP unreachable / S101 no page or missing menu entry (UI diagnostics attached) / S102 not logged in / S103 page eval error / S200 artifact download failed / S300 model / S301 video is text-only / **S303 interleaving guard** / S400 page error (incl. quota exhausted) / S410 poll timeout (session kept, retryable)
 - MVP boundary: text-to-image / text-to-video (image-to-image, aspect/style parameterization, image-to-video not wired — future enhancements)
 
-Full research & implementation log: `doc/Gemini渠道调研-2026-09-22.md` + `doc/Gemini渠道落地-飞轮计划.md`.
+Full research & implementation log: `doc/渠道/Gemini渠道调研-2026-09-22.md` + `doc/渠道/Gemini渠道落地-飞轮计划.md`.
 
 ---
 
@@ -336,7 +336,7 @@ Recognition comes in 4 tiers — **installed on demand; tier 1 works with zero c
 | **3 PaddleX** | Chinese SOTA + invoice tables + layout analysis | self-hosted (GPU 12GB or CPU 8GB+) | free open-source |
 | **4 vLLM Qwen2.5-VL** | VQA / handwriting / formulas / complex scenes | self-hosted (GPU 16-24GB) | free open-source |
 
-> For most users: **tier 1 + one line of tier-2 GLM key covers everything**; tiers 3/4 are for users with GPUs wanting full offline (deployment details / CUDA requirements / Unlimited-OCR long-document advanced setup: [doc/自托管部署指南](doc/自托管部署指南.md)).
+> For most users: **tier 1 + one line of tier-2 GLM key covers everything**; tiers 3/4 are for users with GPUs wanting full offline (deployment details / CUDA requirements / Unlimited-OCR long-document advanced setup: [doc/自托管部署指南](doc/用户指南/自托管部署指南.md)).
 
 **Tier 2 config (most common)**:
 

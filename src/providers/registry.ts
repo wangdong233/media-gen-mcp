@@ -109,7 +109,7 @@ const registry: Record<string, MediaProvider> = {
     // 凭证:一次性 `login --no-browser`(~/.imagine-mcp/)或 config providers.imagineart.token(env 正道)。
     token: config.providers.imagineart?.token ?? process.env.IMAGINE_MCP_TOKEN,
   }),
-  gemini: new GeminiWebProvider({ // Gemini 网页渠道(CDP UI 驱动;调研 doc/Gemini渠道调研-2026-09-22.md)。
+  gemini: new GeminiWebProvider({ // Gemini 网页渠道(CDP UI 驱动;调研 doc/渠道/Gemini渠道调研-2026-09-22.md)。
     // 渠道准入(对齐 flow/pixverse):requiresOptIn()=true —— Google AI 订阅算力配额制(视频消耗
     // 显著,实测单条 ≈15-20% 5h 窗口)+ 本机 Chrome 路由隐私边界;未显式同意不进任何隐式链。
     // 端口参数化(lasso browse 通道硬编码 9222 教训):providers.gemini.cdpPort / GEMINI_CDP_PORT。

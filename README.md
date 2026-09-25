@@ -320,7 +320,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 - 错误码族 `[gemini]`:S100 CDP 不可连 / S101 无页面或菜单入口缺失(附 UI 诊断)/ S102 未登录 / S103 页面执行异常 / S200 产物下载失败 / S300 模型 / S301 视频仅文生 / **S303 交错守卫** / S400 页面报错(含配额耗尽)/ S410 轮询超时(会话保留可重试)
 - MVP 边界:文生图/文生视频(图生图、宽高比/风格参数化、视频图生视频未接,后续增强)
 
-调研与实现全录:`doc/Gemini渠道调研-2026-09-22.md` + `doc/Gemini渠道落地-飞轮计划.md`。
+调研与实现全录:`doc/渠道/Gemini渠道调研-2026-09-22.md` + `doc/渠道/Gemini渠道落地-飞轮计划.md`。
 
 ---
 
@@ -335,7 +335,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 | **3 PaddleX** | 中文 SOTA + 发票表格 + 版面分析 | 自托管(GPU 12GB 或 CPU 8GB 起)| 免费开源 |
 | **4 vLLM Qwen2.5-VL** | 看图问答/手写/公式/复杂场景 | 自托管(GPU 16-24GB)| 免费开源 |
 
-> 大多数用户:**档位 1 + 配一行档位 2 的 GLM Key 就齐了**;档位 3/4 给有 GPU、想全离线的用户(部署细节/CUDA 要求/Unlimited-OCR 长文档进阶见 [doc/自托管部署指南](doc/自托管部署指南.md))。
+> 大多数用户:**档位 1 + 配一行档位 2 的 GLM Key 就齐了**;档位 3/4 给有 GPU、想全离线的用户(部署细节/CUDA 要求/Unlimited-OCR 长文档进阶见 [doc/自托管部署指南](doc/用户指南/自托管部署指南.md))。
 
 **档位 2 配置(最常用)**:
 

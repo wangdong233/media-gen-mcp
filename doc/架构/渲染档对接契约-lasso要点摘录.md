@@ -65,7 +65,7 @@
 - legacy 退役(F6,已于 2026-09-03 执行完毕):退役日锚 `LEGACY_ESCAPE_REMOVAL_DATE` 与
   `MEDIA_GEN_BROWSER_IDLE_MS`、`setLauncherForTests` 等自管池符号已全部删除;
   原 `test/browser-pool.test.ts` 日期翻红测试按其自身规定随退役删除(3 测迁入
-  `test/browser-pool-attach.test.ts`);实施全录 = `doc/legacy清除-方案与判定.md`。
+  `test/browser-pool-attach.test.ts`);实施全录 = `../archive/legacy清除-方案与判定.md`。
 
 ## 五、v1.20 增量:端口作用域化与并行隔离【v1.20.0 起】
 
