@@ -3,7 +3,7 @@
 > The all-in-one image toolkit for Claude Code — generate, draw, and understand images in a single sentence. Free.
 
 <p align="center">
- <img src="https://img.shields.io/badge/version-0.20.0-blue">
+ <img src="https://img.shields.io/badge/version-0.23.0-blue">
  <img src="https://img.shields.io/badge/license-MIT-green">
  <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -36,6 +36,8 @@ Tired of producing images a few times a week and juggling N tools with N sets of
 | You say... | You get |
 |---|---|
 | "Draw a cyberpunk cat with neon glow" | A photorealistic AI image, saved to `output/` |
+| "Following this reference image, draw a batch of props in the same style" | A same-style image series (image-to-image style anchoring, `n` batch generation, saved to the given `outDir`) |
+| "Remove this image's background, give me a transparent PNG" | A transparent PNG (BiRefNet matting, zero local setup) |
 | "Generate a 5-second video of a seaside sunset" | An AI video MP4 (generated in the background, you're notified when done) |
 | "Draw an architecture diagram: client → API gateway → order service + payment service" | A vector architecture diagram |
 | "Plot this sales data as a bar chart" | A high-resolution data chart |
@@ -139,6 +141,18 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 > You: "Draw a cyberpunk orange cat with neon glow, photorealistic"
 > Get: a photorealistic image saved to `output/` (also supports illustrations / concept art / logo drafts / sci-fi scenes)
 
+**Draw same-style variants from a reference image (image-to-image)**
+> You: "Following this finalized prop art, draw a batch in the same style"
+> Get: a same-style series — pass reference images via the `images` param to anchor style: the agnes free pool takes 1 reference image; siliconflow's Qwen-Image-Edit-2509 takes up to 3; cloudflare's flux-2-klein takes up to 4 (style consistency = reference image + the same prompt; fixing seed makes batches steadier)
+
+**Remove the background for a transparent PNG (matting)**
+> You: "Remove this image's background, I'm making sprite assets"
+> Get: a transparent PNG (the `hf_remove_bg` tool, BiRefNet matting, zero local setup; requires the hfspaces channel in enabledProviders)
+
+**Generate a batch at once, saved locally**
+> You: "Run this prompt 8 at a time, save into the assets folder"
+> Get: 8 images saved in a batch (the `n` param fans out 1-8 concurrently, `outDir` picks the folder, multiple files get -1/-2 suffixes to avoid overwrites; local saving is the default — no manual downloads)
+
 **Turn a Sentence or an Image Into a Short Video**
 > You: "Generate a 5-second seaside sunset video"
 > Get: an MP4 video (3–18 seconds; long videos are generated in the background, and you're notified when ready to retrieve them)
@@ -150,6 +164,24 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 **Reverse-engineer the prompt & params of an AI-generated image**
 > You: "What prompt and params was this image generated with? Can I reproduce it?"
 > Get: structured params — positive/negative prompt, model, sampling steps, CFG, seed, size (parsed locally from PNG-embedded ComfyUI/A1111 metadata; Agnes-generated images carry the full generation params — recover the prompt and reproduce with generate_image in one click)
+
+### Produce a Same-Style Asset Batch (One-Chain Pipeline)
+
+Game props / icon sets / style-unified asset packs: from reference image to transparent sprite in one chain — every step saves locally by default and returns `local_path`, no manual downloads anywhere:
+
+```jsonc
+// ① Set the style anchor: generate a few, pick one as the reference
+generate_image(prompt="pixel-art RPG prop: red potion bottle, centered, plain background")
+
+// ② Batch in the same style: reference-anchored + batch output into a chosen folder
+generate_image(prompt="pixel-art RPG prop: scroll, same style as the reference", images=["/abs/path/ref.png"], n=4, outDir="assets/items")
+//    For stronger editing: provider="siliconflow" + model Qwen/Qwen-Image-Edit-2509 (up to 3 reference images)
+
+// ③ Batch matting: cut each into a transparent sprite
+hf_remove_bg(image="/abs/path/assets/items/item-1.png", outDir="assets/sprites")
+
+// ④ Steadier batch style: fixed-seed reuse (the siliconflow channel reuses the same seed when n>1)
+```
 
 ### Google Flow Provider (Veo 3.1 / Nano Banana — No API Key)
 
@@ -259,7 +291,7 @@ The default lightweight engine is fine for English and digits, but Chinese accur
 |---|---|---|
 | Draw architecture diagrams / data charts / cards / QR codes / formulas | **Nothing** | Local engine, works on install |
 | Cool motion videos / 100%-fidelity filter SVGs (`render_video` / `render_svg` Chrome backend) | Recommended: install the **lasso render tier** — `npm i -g lasso-mcp`, then run `npx -y lasso-mcp render-chrome --ensure` once (auto-reaps after 10 idle minutes) | Works on install; without lasso, filter SVGs fall back to resvg (~92% fidelity) and motion videos return a structured error with fix guidance (the legacy self-managed pool has been retired) |
-| AI photorealistic images / AI video (text-to-image, text-to-video) | One free API Key (Agnes or Zhipu, pick one) | Online generation, saved to `output/` |
+| AI photorealistic images / AI video (text-to-image, image-to-image via `images` reference, text-to-video) | One free API Key (Agnes or Zhipu, pick one) | Online generation, saved to `output/` |
 | Generate images via Google Flow (0 credits) / manage Flow assets | **No key needed**: just log into Flow in local Chrome (launch via `lasso launch-chrome`) | Images / upscaling / upload / delete / share / cancel / queries all 0-credit; video bills credits (7–100 per clip). 🔴 Unavailable since 2026-09-10 due to the L3 account-region gate; no fix timeline |
 | Generate images / videos via the PixVerse subscription pool (one subscription bundles 25 video + 14 image models) | Needs a PixVerse subscription + a one-time CLI login (`npx pixverse login`; **opt-in channel, never in default chains** — name `provider="pixverse"` (0.22.0: name to use) | Bills subscription credits; every submission passes a **two-phase billing confirm gate** (estimate + confirm token); per-model prices queryable via `list_models` costCatalog (observed > static estimate > unpublished) |
 | Generate images (Nano Banana 2) / videos (Omni = the Veo 3.1 family) via the Gemini web app | A local Chrome on CDP 9225 logged into a Google AI subscription (`lasso launch-chrome --port 9225 --idle-ms 0`, log in once in the visible window; **opt-in channel** — name `provider="gemini"` (0.22.0: name to use)) | Consumes the Google AI subscription **compute quota** (5-hour rolling window + weekly cap; a single video measured at ≈15-20% of the window, every submission carries a quota warning); text-to-image / text-to-video MVP (fixed 8s 16:9) |
@@ -319,7 +351,7 @@ Limits & discipline:
 - **Billing = subscription compute quota** (5h rolling window + weekly cap, no per-clip credits, no confirm gate): a single video measured at ≈15-20% of the 5h window, every submission carries a quota warning; images cost little. The only quota readout is the web app's Settings → Usage limits; on exhaustion the page error maps to a terminal `[gemini] S400` (wait for the window to refresh; switching VPN does NOT reset it — quota is bound to the account, the IP only affects regional availability)
 - 🔴 **Single live session**: one attached page drives one generation at a time — until the previous gemini video is claimed via `get_video`, a new submission is rejected with `[gemini] S303` (the message points at the get_video call; prevents navigating away from an unclaimed artifact and sinking the quota)
 - Error family `[gemini]`: S100 CDP unreachable / S101 no page or missing menu entry (UI diagnostics attached) / S102 not logged in / S103 page eval error / S200 artifact download failed / S300 model / S301 video is text-only / **S303 interleaving guard** / S400 page error (incl. quota exhausted) / S410 poll timeout (session kept, retryable)
-- MVP boundary: text-to-image / text-to-video (image-to-image, aspect/style parameterization, image-to-video not wired — future enhancements)
+- MVP boundary: text-to-image / text-to-video (**this channel only**: image-to-image, aspect/style parameterization, image-to-video not wired — future enhancements; image-to-image itself already exists — pass `images`, supported by the agnes / siliconflow / cloudflare channels)
 
 Full research & implementation log: `doc/渠道/Gemini渠道调研-2026-09-22.md` + `doc/渠道/Gemini渠道落地-飞轮计划.md`.
 

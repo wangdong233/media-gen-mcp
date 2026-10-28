@@ -95,9 +95,35 @@ function videoChainHeadName(): string {
   try { return asVideoProvider(getProvider(defaultHead("video"))).name; } catch { return config.defaultVideoProvider; }
 }
 
+/**
+ * initialize instructions(协议层第一屏能力矩阵):MCP 握手时随 InitializeResult 下发,
+ * 客户端注入系统提示 —— 早于任何 tools/list 描述被读到。定位=「总目录/选型面」,
+ * 参数细节仍内聚在各工具 schema 描述(两处真源分工:这里管发现,工具描述管使用)。
+ * 2026-10-29 起因:外部接入方按 README 评估得出"无图生图/无抠图/不落本地"误判 ——
+ * 能力存在但决策层不可见。本矩阵 + README 能力全家桶同步堵两层入口。
+ */
+const SERVER_INSTRUCTIONS = [
+  "media-gen-mcp — AI 图像/视频生成 + 结构化本地渲染 + 视觉识别,一站式。",
+  "",
+  "CAPABILITY MATRIX(细节看各工具 schema 描述):",
+  "• 文生图 + 图生图:generate_image —— `images` 参数传参考图(本地路径/URL/data:URI)锚定风格:agnes 免费池 1 张即用;siliconflow Qwen-Image-Edit-2509 最多 3 张;cloudflare flux-2-klein 最多 4 张。",
+  "• 抠图出透明 PNG:hf_remove_bg(BiRefNet;前置 hfspaces 渠道启用)。超分:hf_upscale;配音/克隆:hf_tts;对口型:hf_lipsync。",
+  "• 文生视频/图生视频/首尾帧:create_video(异步 handle)+ get_video 取件。",
+  "• 确定性本地渲染(零 AI,同输入同输出):generate_diagram / generate_chart / generate_card / generate_qrcode / generate_formula / generate_icon / render_svg / render_video。",
+  "• 视觉识别:extract_text / extract_table / analyze_chart / describe_image / extract_pdf。",
+  "",
+  "OUTPUT DISCIPLINE(产出纪律):所有生成/渲染默认落盘本地,响应带 local_path(s);`outDir` 选目录;批量 `n` 1-8 并发、多张自动加后缀 —— 从不需要手动下载 CDN URL。",
+  "",
+  "CHANNEL MODEL(渠道模型):省略 provider = 免费池(agnes→zhipu 容灾);opt-in 渠道(siliconflow/cloudflare/pixverse/pixai/gemini/hfspaces/imagineart)须显式点名且列入 enabledProviders 白名单(~/.media-gen-mcp/config.json)。list_models 看渠道实时清单与价目;list_vision_capabilities 看识别路由。",
+  "",
+  "ASSET PIPELINE RECIPE(同风格批量素材,如游戏道具):① generate_image 出几张定风格锚点 → ② generate_image(images=[参考图], n=N, outDir=…) 批量同风格 → ③ hf_remove_bg 逐张去底出透明 sprite → 全程本地落盘。",
+  "",
+  "Multilingual triggers: 画图 / 图生图 / 参考图 / 抠图 / 去背景 / 批量 / 落盘 / 生视频 / 识别表格 / 图表.",
+].join("\n");
+
 const server = new Server(
   { name: "media-gen-mcp", version: PKG_VERSION },
-  { capabilities: { tools: {} } },
+  { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
 );
 
 /**

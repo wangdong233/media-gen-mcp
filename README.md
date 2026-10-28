@@ -3,7 +3,7 @@
 > Claude Code 的「图像全家桶」—— 造图、画想法、看懂图,一句话搞定,全免费。
 
 <p align="center">
- <img src="https://img.shields.io/badge/version-0.20.0-blue">
+ <img src="https://img.shields.io/badge/version-0.23.0-blue">
  <img src="https://img.shields.io/badge/license-MIT-green">
  <img src="https://img.shields.io/badge/MCP-compatible-purple">
 </p>
@@ -36,6 +36,8 @@
 | 你说 …… | 你得到 |
 |---|---|
 | "画只赛博朋克猫,霓虹辉光" | AI 写实图,落盘到 `output/` |
+| "照着这张参考图,画一批同风格道具图" | 同风格系列图(图生图锚定风格,`n` 批量生成,落盘到指定 `outDir`) |
+| "把这张图去背景,给我透明底 PNG" | 透明底 PNG(BiRefNet 抠图,零本地部署) |
 | "生成 5 秒海边日落视频" | AI 视频 MP4(后台生成,完成通知你) |
 | "画个架构图:客户端 → API 网关 → 订单服务 + 支付服务" | 矢量架构图 |
 | "把这组销售数据画成柱状图" | 高清数据图表 |
@@ -138,6 +140,18 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 > 你:"画只赛博朋克橙猫,霓虹辉光,写实风"
 > 得到:写实图落盘到 `output/`(也支持插画 / 产品概念图 / Logo 草稿 / 科幻场景)
 
+**照着一张参考图画同风格变体(图生图)**
+> 你:"照着这张定稿道具图,再画一批同风格的"
+> 得到:同风格系列图 —— `images` 参数传参考图锚定风格:agnes 免费池传 1 张即用;siliconflow 的 Qwen-Image-Edit-2509 最多 3 张;cloudflare 的 flux-2-klein 最多 4 张(风格一致性 = 参考图 + 同一 prompt,批量时固定 seed 更稳)
+
+**把图去背景,出透明底 PNG(抠图)**
+> 你:"把这张图去背景,我要做 sprite 素材"
+> 得到:透明底 PNG(`hf_remove_bg` 工具,BiRefNet 抠图,零本地部署;前置 hfspaces 渠道加入 enabledProviders)
+
+**一次生成一批,批量落盘**
+> 你:"这个 prompt 一次出 8 张,存到 assets 目录"
+> 得到:8 张图批量落盘(`n` 参数 1-8 并发,`outDir` 指定目录,多张自动加 -1/-2 后缀防覆盖;默认就落本地,不需要手动下载)
+
 **把一句话或一张图变成短视频**
 > 你:"生成 5 秒海边日落视频"
 > 得到:MP4 视频(3–18 秒;长视频后台生成,完成后通知你取片)
@@ -149,6 +163,24 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 **逆向 AI 生成图的提示词与参数**
 > 你:"这张图是用什么 prompt、什么参数生成的?能复现吗?"
 > 得到:结构化参数 —— 正向 / 负向 prompt、模型、采样步数、CFG、种子、尺寸(从 PNG 嵌入的 ComfyUI / A1111 元数据本地解析;Agnes 生成的图自带完整生成参数,拿到 prompt 可用 generate_image 一键复现)
+
+### 做一批同风格素材(资产管线一条链)
+
+游戏道具 / 系列图标 / 风格统一的素材包:从参考图到透明 sprite 一条链,每步默认落盘、返回 `local_path`,全程无需手动下载:
+
+```jsonc
+// ① 定风格锚点:先生成几张,挑一张定稿当参考图
+generate_image(prompt="像素风 RPG 道具:红药水瓶,居中,纯色背景")
+
+// ② 批量同风格:参考图锚定 + 批量出图,落盘到指定目录
+generate_image(prompt="像素风 RPG 道具:卷轴,与参考图同风格", images=["/abs/path/ref.png"], n=4, outDir="assets/items")
+//    要更强编辑力:provider="siliconflow" + 模型 Qwen/Qwen-Image-Edit-2509(参考图最多 3 张)
+
+// ③ 批量去底:每张抠成透明 sprite
+hf_remove_bg(image="/abs/path/assets/items/item-1.png", outDir="assets/sprites")
+
+// ④ 批量风格更稳:固定 seed 复用(siliconflow 渠道 n>1 自动同 seed)
+```
 
 ### Google Flow 渠道(Veo 3.1 / Nano Banana,免 API Key)
 
@@ -258,7 +290,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 |---|---|---|
 | 画架构图 / 数据图表 / 卡片 / 二维码 / 公式 | **什么都不用配** | 本地引擎,装完即用 |
 | 酷炫动效视频 / 滤镜 SVG 100% 保真(`render_video` / `render_svg` Chrome 后端) | 推荐装 **lasso 渲染档**:`npm i -g lasso-mcp` 后跑一次 `npx -y lasso-mcp render-chrome --ensure`(空闲 10 分钟自动回收) | 装上即用;未装 lasso 时滤镜 SVG 自动降级 resvg(~92% 保真),动效视频返回带修复指引的结构化错误(legacy 自管池已退役) |
-| AI 写实图 / AI 视频(文生图、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
+| AI 写实图 / AI 视频(文生图、图生图(`images` 参考图)、文生视频) | 配一家免费 API Key(Agnes 或智谱,二选一) | 联网生成,落盘到 `output/` |
 | 用 Google Flow 生图(0 积分)/ 管理生成资产 | **不用配 Key**:本机 Chrome 登录 Flow 即可(`lasso launch-chrome` 启动) | 生图 / 放大 / 上传 / 删除 / 分享 / 取消 / 查询全 0 积分;视频按积分计费(7–100 积分/条)。🔴 2026-09-10 起 L3 账号地区门禁不可用,恢复无时间表 |
 | 用 PixVerse 订阅池生图 / 生视频(一个订阅聚合 25 个视频 + 14 个图像模型) | 需 PixVerse 订阅 + CLI 登录一次(`npx pixverse login`;**opt-in 渠道,不进默认链**,须点名 `provider="pixverse"`(0.22.0 起点名即用) | 按订阅积分计费,提交前必经**两段式计费确认门**(预估+确认令牌);各模型价格经 `list_models` 的 costCatalog 可查(实测价 > 静态估 > 未发布) |
 | 用 Gemini 网页生图(Nano Banana 2)/ 生视频(Omni = Veo 3.1 系) | 本机 Chrome CDP 9225 + Google AI 订阅登录(`lasso launch-chrome --port 9225 --idle-ms 0` 后在窗口登录一次;**opt-in 渠道**,点名 `provider="gemini"`(0.22.0 起点名即用) | 消耗 Google AI 订阅**算力配额**(5 小时滚动窗 + 周上限;视频单条实测 ≈15-20% 窗口,每次提交带配额警示);文生图 / 文生视频 MVP(8s 16:9 固定档) |
@@ -318,7 +350,7 @@ claude mcp add media-gen-mcp npx media-gen-mcp-server
 - **计费 = 订阅算力配额**(5h 滚动窗 + 周上限,无按次积分、无确认门):视频单条实测 ≈15-20% 5h 窗口,每次提交带配额警示 warning;图像消耗少量。配额读数唯一入口 = 网页 设置 → 用量限额;耗尽时页面报错转结构化 `[gemini] S400`(终态,等窗口刷新;**切 VPN 不重置**——配额绑账号,IP 只影响地区可用性)
 - 🔴 **单 live 会话纪律**:一个 attach 页同时只驱动一个生成 —— 前一条 gemini 视频未 `get_video` 取件前,新提交被 `[gemini] S303` 拒绝(文案指路先取件;防导航走产物页导致配额沉没)
 - 错误码族 `[gemini]`:S100 CDP 不可连 / S101 无页面或菜单入口缺失(附 UI 诊断)/ S102 未登录 / S103 页面执行异常 / S200 产物下载失败 / S300 模型 / S301 视频仅文生 / **S303 交错守卫** / S400 页面报错(含配额耗尽)/ S410 轮询超时(会话保留可重试)
-- MVP 边界:文生图/文生视频(图生图、宽高比/风格参数化、视频图生视频未接,后续增强)
+- MVP 边界:文生图/文生视频(**仅本渠道**图生图、宽高比/风格参数化、视频图生视频未接,后续增强;图生图能力本身已有 —— 走 `images` 参数,agnes / siliconflow / cloudflare 渠道支持)
 
 调研与实现全录:`doc/渠道/Gemini渠道调研-2026-09-22.md` + `doc/渠道/Gemini渠道落地-飞轮计划.md`。
 
